@@ -9,7 +9,12 @@ import httpx
 
 from app.config import settings
 from app.schemas.calibration_feedback import CalibrationFeedbackRequest
-from app.services.calibration_feedback_redaction import redact_session_messages
+from app.services.calibration_feedback_redaction import (
+    build_session_excerpt,
+    build_tool_trace_excerpt,
+    redact_session_messages,
+)
+from app.services.calibration_sync_service import list_installed_skills
 from app.services.license_service import get_installation_fingerprint, license_document_id
 from app.services.update_service import get_version_info
 
@@ -67,6 +72,20 @@ def count_planning_form_submissions(messages: list[dict[str, Any]]) -> int:
     return len(_FORM_COUNT_RE.findall(combined))
 
 
+def resolve_skill_identity(
+    *,
+    suggested_skill_id: str | None,
+    matched_skills: list[str],
+) -> tuple[str, str]:
+    skill_id = suggested_skill_id or (matched_skills[0] if matched_skills else None) or "unknown"
+    skill_version = "0.0.0"
+    for row in list_installed_skills():
+        if row.get("skillId") == skill_id and row.get("version"):
+            skill_version = str(row["version"])
+            break
+    return skill_id, skill_version
+
+
 def build_skill_feedback_payload(
     request: CalibrationFeedbackRequest,
     *,
@@ -91,29 +110,45 @@ def build_skill_feedback_payload(
         if count:
             diagnostics["formSubmissionCount"] = count
 
+    skill_id, skill_version = resolve_skill_identity(
+        suggested_skill_id=suggested,
+        matched_skills=request.matchedSkills,
+    )
+    user_comment = request.userComment.strip()
+    redacted_messages = redact_session_messages(messages, mask_ips=mask_ips)
+    session_excerpt = build_session_excerpt(redacted_messages)
+    tool_trace_excerpt = build_tool_trace_excerpt(redacted_messages)
+
     return {
         "appFingerprint": app_fingerprint,
         "installSignature": None,
         "clientId": client_id,
         "jpilotVersion": jpilot_version,
-        "objectiveMet": request.objectiveMet,
-        "userGoal": request.userGoal.strip(),
-        "vendor": request.vendor,
-        "role": request.role,
-        "category": request.category,
-        "rating": request.rating,
-        "userComment": request.userComment.strip(),
-        "matchedSkills": request.matchedSkills,
-        "suggestedSkillId": suggested,
-        "includeApplianceName": request.includeApplianceName,
-        "applianceName": request.applianceName if request.includeApplianceName else None,
-        "session": {
-            "sessionId": request.session.sessionId,
-            "startedAt": request.session.startedAt,
-            "messages": redact_session_messages(messages, mask_ips=mask_ips),
+        "feedback": {
+            "skillId": skill_id,
+            "skillVersion": skill_version,
+            "vendor": request.vendor,
+            "role": request.role,
+            "category": request.category,
+            "rating": request.rating,
+            "userMessage": user_comment,
+            "objectiveMet": request.objectiveMet,
+            "userGoal": request.userGoal.strip(),
+            "userComment": user_comment,
+            "matchedSkills": request.matchedSkills,
+            "suggestedSkillId": suggested,
+            "includeApplianceName": request.includeApplianceName,
+            "applianceName": request.applianceName if request.includeApplianceName else None,
+            "sessionExcerpt": session_excerpt,
+            "toolTraceExcerpt": tool_trace_excerpt,
+            "session": {
+                "sessionId": request.session.sessionId,
+                "startedAt": request.session.startedAt,
+                "messages": redacted_messages,
+            },
+            "diagnostics": diagnostics or None,
+            "source": request.source,
         },
-        "diagnostics": diagnostics or None,
-        "source": request.source,
     }
 
 
@@ -164,10 +199,12 @@ async def submit_calibration_feedback(
         client_id=client_id,
     )
     logger.info(
-        "calibration_feedback submit fingerprint=%s role=%s category=%s messages=%d",
+        "calibration_feedback submit fingerprint=%s role=%s category=%s messages=%d excerpt_chars=%d tools=%d",
         app_fingerprint[:12],
         request.role,
         request.category,
-        len(payload.get("session", {}).get("messages") or []),
+        len(payload.get("feedback", {}).get("session", {}).get("messages") or []),
+        len(payload.get("feedback", {}).get("sessionExcerpt") or ""),
+        len(payload.get("feedback", {}).get("toolTraceExcerpt") or []),
     )
     return await post_skill_feedback(payload)

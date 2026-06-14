@@ -1,4 +1,9 @@
-from app.services.calibration_feedback_redaction import redact_session_messages, redact_text
+from app.services.calibration_feedback_redaction import (
+    build_session_excerpt,
+    build_tool_trace_excerpt,
+    redact_session_messages,
+    redact_text,
+)
 from app.services.skill_feedback_service import (
     build_skill_feedback_payload,
     count_planning_form_submissions,
@@ -35,9 +40,29 @@ def test_build_skill_feedback_payload_suggests_firmware_skill():
         app_fingerprint="fp-test",
         jpilot_version="0.58",
     )
-    assert payload["suggestedSkillId"] == "nexxus-netscaler-firmware-ha-upgrade"
-    assert payload["diagnostics"]["planningIntent"] == "change_control"
+    assert payload["feedback"]["suggestedSkillId"] == "nexxus-netscaler-firmware-ha-upgrade"
+    assert payload["feedback"]["diagnostics"]["planningIntent"] == "change_control"
     assert payload["appFingerprint"] == "fp-test"
+    assert payload["feedback"]["skillId"] == "nexxus-netscaler-firmware-ha-upgrade"
+    assert payload["feedback"]["userMessage"] == ""
+    assert "[user]" in payload["feedback"]["sessionExcerpt"]
+    assert "firmware upgrade plan" in payload["feedback"]["sessionExcerpt"]
+
+
+def test_build_session_excerpt_includes_tool_calls():
+    messages = redact_session_messages(
+        [
+            {
+                "role": "assistant",
+                "content": "Checking inventory",
+                "toolCalls": [{"name": "netscaler_list_inventory", "arguments": {}, "result": "blocked"}],
+            }
+        ]
+    )
+    excerpt = build_session_excerpt(messages)
+    assert "netscaler_list_inventory" in excerpt
+    traces = build_tool_trace_excerpt(messages)
+    assert traces[0]["name"] == "netscaler_list_inventory"
 
 
 def test_infer_suggested_skill_id_returns_none_for_operator():

@@ -13,7 +13,6 @@ import DashboardView from '../views/DashboardView.vue'
 import LoginView from '../views/LoginView.vue'
 import LegalView from '../views/LegalView.vue'
 import AccountRecoveryView from '../views/AccountRecoveryView.vue'
-import OtherAppliancesView from '../views/OtherAppliancesView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import PricingView from '../views/PricingView.vue'
 import CalibrationStudioView from '../views/CalibrationStudioView.vue'
@@ -59,12 +58,15 @@ const router = createRouter({
         { path: 'jpilot/beta', name: 'jpilot-beta', component: CopilotBetaView },
         { path: 'copilot', redirect: '/jpilot' },
         { path: 'copilot/beta', redirect: '/jpilot/beta' },
-        { path: 'appliances', name: 'appliances', component: OtherAppliancesView },
-        { path: 'netscalers', redirect: (to) => ({ path: '/appliances', query: { ...to.query, tab: to.query.tab || 'inventory' } }) },
-        { path: 'other-appliances', redirect: '/appliances' },
-        { path: 'ssl-csr', redirect: { path: '/appliances', query: { tab: 'ssl' } } },
+        { path: 'appliances', redirect: (to) => ({ path: '/settings', query: { ...to.query, section: 'appliances' } }) },
+        { path: 'netscalers', redirect: (to) => ({ path: '/settings', query: { ...to.query, section: 'appliances', tab: to.query.tab || 'inventory' } }) },
+        { path: 'other-appliances', redirect: { path: '/settings', query: { section: 'appliances' } } },
+        { path: 'ssl-csr', redirect: { path: '/settings', query: { section: 'appliances', tab: 'ssl' } } },
         { path: 'ai-providers', redirect: { path: '/settings', query: { section: 'ai-providers' } } },
+        { path: 'web-search', redirect: { path: '/settings', query: { section: 'web-search' } } },
+        { path: 'brave-search', redirect: { path: '/settings', query: { section: 'web-search' } } },
         { path: 'next-gen-api', redirect: { path: '/settings', query: { section: 'nextgen' } } },
+        { path: 'beta-features', redirect: { path: '/settings', query: { section: 'nextgen', tab: 'beta' } } },
         { path: 'users', redirect: { path: '/settings', query: { section: 'users' } } },
         { path: 'plans', name: 'plans', component: PricingView },
         { path: 'calibration-studio', name: 'calibration-studio', component: CalibrationStudioView },

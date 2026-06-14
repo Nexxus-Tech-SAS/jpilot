@@ -15,7 +15,7 @@ from app.services.netscaler_service import (
 )
 from app.tools.tool_dispatch import call_mcp_tool, get_enabled_tools
 
-mcp_app = Server("netscaler-copilot")
+mcp_app = Server("jpilot-mcp")
 sse = SseServerTransport("/messages")
 
 

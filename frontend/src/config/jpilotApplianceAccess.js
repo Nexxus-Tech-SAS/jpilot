@@ -9,7 +9,9 @@ export function isJpilotBetaAppliance(appliance) {
 }
 
 export function appliancesForJpilotRole(appliances, roleId) {
-  const enabled = (appliances || []).filter((item) => item.enabled)
+  const enabled = (appliances || []).filter((item) =>
+    item.chatAvailable ?? (item.enabled && item.platformEnabled !== false)
+  )
   if (roleId === 'architect') {
     return [...enabled].sort(compareApplianceOptions)
   }
@@ -24,7 +26,7 @@ function compareApplianceOptions(a, b) {
 }
 
 export function isApplianceDisabledForRole(appliance, roleId) {
-  if (!appliance?.enabled) return true
+  if (!(appliance?.chatAvailable ?? (appliance?.enabled && appliance?.platformEnabled !== false))) return true
   if (roleId === 'architect') return false
   return !isNetScalerVendor(appliance.vendor)
 }

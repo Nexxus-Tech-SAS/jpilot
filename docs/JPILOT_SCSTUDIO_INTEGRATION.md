@@ -48,31 +48,40 @@ Ingest a failed or unsatisfactory JPilot session for SME calibration.
   "installSignature": null,
   "clientId": "acme-corp",
   "jpilotVersion": "0.59",
-  "objectiveMet": false,
-  "userGoal": "Phased firmware upgrade plan for HA pairs",
-  "vendor": "netscaler",
-  "role": "architect",
-  "category": "too_slow",
-  "rating": "negative",
-  "userComment": "Hit tool call limit before document was generated",
-  "matchedSkills": [],
-  "suggestedSkillId": "nexxus-netscaler-firmware-ha-upgrade",
-  "includeApplianceName": false,
-  "applianceName": null,
-  "session": {
-    "sessionId": "uuid-or-local-id",
-    "startedAt": "2026-06-13T12:03:00Z",
-    "messages": [
-      { "role": "user", "content": "Create a phased firmware upgrade plan…", "createdAt": "2026-06-13T12:03:00Z" },
-      { "role": "assistant", "content": "…", "toolCalls": [{ "name": "netscaler_list_inventory", "arguments": {}, "resultExcerpt": "BLOCKED: …" }] }
-    ]
-  },
-  "diagnostics": {
-    "lastErrorType": "tool_limit",
-    "formSubmissionCount": 8,
-    "planningIntent": "change_control"
-  },
-  "source": "jpilot_in_app"
+  "feedback": {
+    "skillId": "nexxus-netscaler-firmware-ha-upgrade",
+    "skillVersion": "1.0.0",
+    "objectiveMet": false,
+    "userGoal": "Phased firmware upgrade plan for HA pairs",
+    "vendor": "netscaler",
+    "role": "architect",
+    "category": "too_slow",
+    "rating": "negative",
+    "userMessage": "Hit tool call limit before document was generated",
+    "userComment": "Hit tool call limit before document was generated",
+    "sessionExcerpt": "[user] Create a phased firmware upgrade plan…\n\n[assistant] …",
+    "toolTraceExcerpt": [
+      { "name": "netscaler_list_inventory", "ok": false, "resultExcerpt": "BLOCKED: …" }
+    ],
+    "matchedSkills": [],
+    "suggestedSkillId": "nexxus-netscaler-firmware-ha-upgrade",
+    "includeApplianceName": false,
+    "applianceName": null,
+    "session": {
+      "sessionId": "uuid-or-local-id",
+      "startedAt": "2026-06-13T12:03:00Z",
+      "messages": [
+        { "role": "user", "content": "Create a phased firmware upgrade plan…", "createdAt": "2026-06-13T12:03:00Z" },
+        { "role": "assistant", "content": "…", "toolCalls": [{ "name": "netscaler_list_inventory", "arguments": {}, "resultExcerpt": "BLOCKED: …" }] }
+      ]
+    },
+    "diagnostics": {
+      "lastErrorType": "tool_limit",
+      "formSubmissionCount": 8,
+      "planningIntent": "change_control"
+    },
+    "source": "jpilot_in_app"
+  }
 }
 ```
 
@@ -80,15 +89,20 @@ Ingest a failed or unsatisfactory JPilot session for SME calibration.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `objectiveMet` | yes | `false` when user sends feedback / didn't achieve goal |
-| `userGoal` | recommended | First user message or edited summary |
-| `category` | yes | See categories below |
-| `rating` | yes | `positive` \| `negative` \| `neutral` |
-| `session.messages` | yes | Redacted excerpt (max messages/chars enforced by JPilot) |
-| `matchedSkills` | no | Skill IDs active during session (future matcher) |
-| `suggestedSkillId` | no | Heuristic skill to attach (e.g. firmware upgrade) |
-| `diagnostics` | no | Structured hints for calibration chat |
-| `source` | yes | `jpilot_in_app` \| `jpilot_thumbs` \| `studio_paste` |
+| `feedback.skillId` | yes | Suggested or matched skill; `unknown` when none |
+| `feedback.skillVersion` | yes | Installed skill version from local cache, else `0.0.0` |
+| `feedback.objectiveMet` | yes | `false` when user sends feedback / didn't achieve goal |
+| `feedback.userGoal` | recommended | First user message or edited summary |
+| `feedback.category` | yes | See categories below |
+| `feedback.rating` | yes | `positive` \| `negative` \| `neutral` |
+| `feedback.userMessage` | recommended | User comment (same as `userComment`) |
+| `feedback.sessionExcerpt` | recommended | Redacted transcript string shown in Studio inbox |
+| `feedback.toolTraceExcerpt` | no | Tool call summary for SME triage |
+| `feedback.session.messages` | optional | Structured messages (Studio inbox uses `sessionExcerpt`) |
+| `feedback.matchedSkills` | no | Skill IDs active during session (future matcher) |
+| `feedback.suggestedSkillId` | no | Heuristic skill to attach (e.g. firmware upgrade) |
+| `feedback.diagnostics` | no | Structured hints for calibration chat |
+| `feedback.source` | yes | `jpilot_in_app` \| `jpilot_thumbs` \| `studio_paste` |
 
 ### Categories
 

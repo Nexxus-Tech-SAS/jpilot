@@ -69,6 +69,8 @@ class CopilotApplianceItem(BaseModel):
     vendor: str = "netscaler"
     productId: str | None = None
     copilotEligible: bool = True
+    platformEnabled: bool = True
+    chatAvailable: bool = False
 
 
 class CopilotConnectRequest(BaseModel):

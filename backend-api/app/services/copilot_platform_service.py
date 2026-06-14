@@ -5,6 +5,11 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
 from app.services.encryption_service import decrypt_value, encrypt_value
+from app.services.orchestration_presets import (
+    DEFAULT_ORCHESTRATION_MODE,
+    ORCHESTRATION_PRESETS,
+    infer_orchestration_mode,
+)
 
 SETTINGS_ID = "default"
 
@@ -25,6 +30,7 @@ class CopilotPlatformSettingsUpdate(BaseModel):
     maxToolContinuationPhases: int | None = None
     longTaskToolThreshold: int | None = None
     promptBeforeLongTasks: bool | None = None
+    orchestrationMode: str | None = None
 
 
 class CopilotPlatformSettingsResponse(BaseModel):
@@ -37,6 +43,7 @@ class CopilotPlatformSettingsResponse(BaseModel):
     maxToolContinuationPhases: int = 3
     longTaskToolThreshold: int = 8
     promptBeforeLongTasks: bool = True
+    orchestrationMode: str = DEFAULT_ORCHESTRATION_MODE
 
 
 def utc_now() -> datetime:
@@ -49,10 +56,8 @@ def default_document() -> dict:
         "allowWebSearch": False,
         "encryptedBraveSearchApiKey": encrypt_value(""),
         "extraDomains": [],
-        "maxToolIterations": 20,
-        "maxToolContinuationPhases": 3,
-        "longTaskToolThreshold": 8,
-        "promptBeforeLongTasks": True,
+        "orchestrationMode": DEFAULT_ORCHESTRATION_MODE,
+        **ORCHESTRATION_PRESETS[DEFAULT_ORCHESTRATION_MODE],
         "updatedAt": utc_now(),
     }
 
@@ -92,6 +97,7 @@ async def get_platform_settings(db: AsyncIOMotorDatabase) -> CopilotPlatformSett
         maxToolContinuationPhases=int(document.get("maxToolContinuationPhases", 3)),
         longTaskToolThreshold=int(document.get("longTaskToolThreshold", 8)),
         promptBeforeLongTasks=bool(document.get("promptBeforeLongTasks", True)),
+        orchestrationMode=infer_orchestration_mode(document),
     )
 
 
@@ -143,13 +149,22 @@ async def update_platform_settings(
     if payload.extraDomains is not None:
         update_data["extraDomains"] = _sanitize_domains(payload.extraDomains)
 
-    if payload.maxToolIterations is not None:
+    if payload.orchestrationMode is not None:
+        mode = payload.orchestrationMode.strip().lower()
+        if mode in ORCHESTRATION_PRESETS:
+            update_data["orchestrationMode"] = mode
+            update_data.update(ORCHESTRATION_PRESETS[mode])
+        elif mode == "custom":
+            update_data["orchestrationMode"] = "custom"
+
+    apply_custom_orchestration = payload.orchestrationMode in (None, "custom")
+    if apply_custom_orchestration and payload.maxToolIterations is not None:
         update_data["maxToolIterations"] = max(5, min(int(payload.maxToolIterations), 60))
-    if payload.maxToolContinuationPhases is not None:
+    if apply_custom_orchestration and payload.maxToolContinuationPhases is not None:
         update_data["maxToolContinuationPhases"] = max(0, min(int(payload.maxToolContinuationPhases), 8))
-    if payload.longTaskToolThreshold is not None:
+    if apply_custom_orchestration and payload.longTaskToolThreshold is not None:
         update_data["longTaskToolThreshold"] = max(3, min(int(payload.longTaskToolThreshold), 40))
-    if payload.promptBeforeLongTasks is not None:
+    if apply_custom_orchestration and payload.promptBeforeLongTasks is not None:
         update_data["promptBeforeLongTasks"] = bool(payload.promptBeforeLongTasks)
 
     await db.copilotPlatformSettings.update_one({"_id": SETTINGS_ID}, {"$set": update_data}, upsert=True)

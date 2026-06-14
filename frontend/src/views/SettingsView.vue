@@ -1,31 +1,7 @@
 <template>
   <div class="page">
     <div class="settings-layout">
-      <!-- Section navigation -->
-      <nav class="settings-nav" aria-label="Settings sections">
-        <div class="settings-nav-list">
-          <div
-            v-for="group in navGroups"
-            :key="group.id"
-            class="settings-nav-cluster"
-          >
-            <span class="settings-nav-cluster-label">{{ group.label }}</span>
-            <ul class="settings-nav-group-tabs">
-              <li
-                v-for="section in group.sections"
-                :key="section.key"
-                class="settings-nav-item"
-                :class="{ 'is-active': activeSection === section.key }"
-              >
-                <a class="settings-nav-link" @click="selectSection(section.key)">
-                  <i :class="[section.icon, 'settings-nav-icon']" />
-                  <span>{{ section.label }}</span>
-                </a>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </nav>
+      <Menubar :model="menubarItems" class="settings-menubar" aria-label="Settings sections" />
 
       <!-- Section content (KeepAlive avoids remounting panels and refetching APIs when switching tabs) -->
       <div class="settings-content">
@@ -75,6 +51,71 @@
                     </div>
                     <ToggleSwitch v-model="mcpSettings.sseEnabled" />
                   </div>
+
+                  <div class="mcp-subsection">
+                    <h3 class="subsection-title">Appliance connection</h3>
+                    <p class="subsection-copy">Timeouts, SSL verification, and SSH fallback for MCP appliance tools.</p>
+
+                    <div class="flex flex-column gap-4 mt-3">
+                      <div class="flex align-items-center justify-content-between gap-3 setting-row">
+                        <label for="nitroTimeout" class="setting-label m-0">Next-Gen API timeout (s)</label>
+                        <InputNumber
+                          id="nitroTimeout"
+                          v-model="mcpSettings.nitroTimeoutSeconds"
+                          :min="5"
+                          :max="120"
+                          show-buttons
+                          button-layout="horizontal"
+                          class="compact-input-number"
+                        />
+                      </div>
+
+                      <div class="flex align-items-center justify-content-between gap-3 setting-row">
+                        <label for="sshPort" class="setting-label m-0">SSH port</label>
+                        <InputNumber
+                          id="sshPort"
+                          v-model="mcpSettings.sshPort"
+                          :min="1"
+                          :max="65535"
+                          :use-grouping="false"
+                          show-buttons
+                          button-layout="horizontal"
+                          class="compact-input-number compact-input-number--port"
+                        />
+                      </div>
+
+                      <div class="flex align-items-center justify-content-between gap-3 setting-row">
+                        <label for="sshTimeout" class="setting-label m-0">SSH timeout (s)</label>
+                        <InputNumber
+                          id="sshTimeout"
+                          v-model="mcpSettings.sshTimeoutSeconds"
+                          :min="5"
+                          :max="120"
+                          show-buttons
+                          button-layout="horizontal"
+                          class="compact-input-number"
+                        />
+                      </div>
+
+                      <div class="flex align-items-center justify-content-between gap-3 setting-row">
+                        <div>
+                          <div class="setting-label">Verify SSL certificates</div>
+                          <div class="setting-hint">Disable for appliances with self-signed certificates (default off).</div>
+                        </div>
+                        <ToggleSwitch v-model="mcpSettings.verifySsl" />
+                      </div>
+
+                      <div class="flex align-items-center justify-content-between gap-3 setting-row">
+                        <div>
+                          <div class="setting-label">SSH fallback</div>
+                          <div class="setting-hint">
+                            When Next-Gen API cannot answer, JPilot may run read-only show/stat/get commands via SSH.
+                          </div>
+                        </div>
+                        <ToggleSwitch v-model="mcpSettings.sshFallbackEnabled" />
+                      </div>
+                    </div>
+                  </div>
   
                   <div class="flex gap-2 pt-2">
                     <Button
@@ -116,12 +157,26 @@
                 <div class="flex align-items-start justify-content-between gap-3 flex-wrap">
                   <div>
                     <h2 class="section-title">SMTP / Email</h2>
-                    <p class="section-copy">Outbound email server used for password resets and notifications.</p>
+                    <p v-if="showSmtpConfigFields" class="section-copy">
+                      Outbound email server used for password resets and notifications.
+                    </p>
                   </div>
-                  <Tag
-                    :value="smtpSettings.hasPassword || smtpSettings.host ? 'Configured' : 'Not set up'"
-                    :severity="smtpSettings.hasPassword || smtpSettings.host ? 'success' : 'secondary'"
-                  />
+                  <div class="flex align-items-center gap-2">
+                    <Tag
+                      :value="isSmtpConfigured ? 'Configured' : 'Not set up'"
+                      :severity="isSmtpConfigured ? 'success' : 'secondary'"
+                    />
+                    <Button
+                      v-if="isSmtpConfigured && !smtpEditing"
+                      icon="pi pi-pencil"
+                      text
+                      rounded
+                      severity="secondary"
+                      aria-label="Edit SMTP settings"
+                      v-tooltip.bottom="'Edit SMTP settings'"
+                      @click="startSmtpEdit"
+                    />
+                  </div>
                 </div>
   
                 <div v-if="smtpLoading" class="mt-4">
@@ -129,7 +184,29 @@
                 </div>
   
                 <div v-else class="smtp-fields mt-4">
-                  <div class="smtp-fields-grid">
+                  <div v-if="isSmtpConfigured && !smtpEditing" class="smtp-compact flex flex-column gap-3">
+                    <div class="flex flex-column gap-2">
+                      <label for="smtpTestRecipientCompact" class="setting-label">Send test email to</label>
+                      <InputText
+                        id="smtpTestRecipientCompact"
+                        v-model="smtpTestRecipient"
+                        placeholder="you@example.com"
+                      />
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <Button
+                        label="Send test email"
+                        icon="pi pi-send"
+                        size="small"
+                        severity="secondary"
+                        outlined
+                        :loading="smtpTesting"
+                        @click="testSmtpSettings"
+                      />
+                    </div>
+                  </div>
+
+                  <div v-if="showSmtpConfigFields" class="smtp-fields-grid">
                     <div class="smtp-field smtp-field-span flex flex-column gap-2 setting-row">
                       <label for="smtpProvider" class="setting-label">Provider</label>
                       <Select
@@ -234,6 +311,16 @@
                         @click="saveSmtpSettings"
                       />
                       <Button
+                        v-if="isSmtpConfigured && smtpEditing"
+                        label="Cancel"
+                        icon="pi pi-times"
+                        size="small"
+                        severity="secondary"
+                        text
+                        :disabled="smtpSaving"
+                        @click="cancelSmtpEdit"
+                      />
+                      <Button
                         label="Send test email"
                         icon="pi pi-send"
                         size="small"
@@ -243,16 +330,16 @@
                         @click="testSmtpSettings"
                       />
                     </div>
-
-                    <Message
-                      v-if="smtpMessage"
-                      class="smtp-field-span"
-                      :severity="smtpMessageSeverity"
-                      :closable="false"
-                    >
-                      {{ smtpMessage }}
-                    </Message>
                   </div>
+
+                  <Message
+                    v-if="smtpMessage"
+                    class="mt-3"
+                    :severity="smtpMessageSeverity"
+                    :closable="false"
+                  >
+                    {{ smtpMessage }}
+                  </Message>
                 </div>
               </div>
               </div>
@@ -357,77 +444,7 @@
                 </div>
               </div>
 
-              <div class="content-panel content-panel-padded">
-                <h2 class="section-title">Agent orchestration</h2>
-                <p class="section-copy">
-                  Control how JPilot runs multi-step deployments: tool round limits, automatic continuation phases,
-                  and when to ask the user before long-running operator tasks.
-                </p>
-
-                <div class="flex flex-column gap-4 mt-4">
-                  <div class="flex align-items-center justify-content-between gap-3 setting-row">
-                    <div>
-                      <div class="setting-label">Prompt before long deployments</div>
-                      <div class="setting-hint">
-                        After several tool rounds, pause and ask the user to continue with a deployment checklist.
-                      </div>
-                    </div>
-                    <ToggleSwitch
-                      v-model="orchestrationSettings.promptBeforeLongTasks"
-                      :disabled="orchestrationSaving"
-                      @update:model-value="saveOrchestrationSettingsAction"
-                    />
-                  </div>
-
-                  <div class="flex flex-column gap-2 setting-row">
-                    <label for="longTaskToolThreshold" class="setting-label">Long-task threshold (tool rounds)</label>
-                    <InputNumber
-                      id="longTaskToolThreshold"
-                      v-model="orchestrationSettings.longTaskToolThreshold"
-                      :min="3"
-                      :max="40"
-                      :disabled="orchestrationSaving"
-                      class="max-select"
-                      @blur="saveOrchestrationSettingsAction"
-                    />
-                  </div>
-
-                  <div class="flex flex-column gap-2 setting-row">
-                    <label for="maxToolIterations" class="setting-label">Max tool rounds per phase</label>
-                    <InputNumber
-                      id="maxToolIterations"
-                      v-model="orchestrationSettings.maxToolIterations"
-                      :min="5"
-                      :max="60"
-                      :disabled="orchestrationSaving"
-                      class="max-select"
-                      @blur="saveOrchestrationSettingsAction"
-                    />
-                  </div>
-
-                  <div class="flex flex-column gap-2 setting-row">
-                    <label for="maxToolContinuationPhases" class="setting-label">Continuation phases</label>
-                    <InputNumber
-                      id="maxToolContinuationPhases"
-                      v-model="orchestrationSettings.maxToolContinuationPhases"
-                      :min="0"
-                      :max="8"
-                      :disabled="orchestrationSaving"
-                      class="max-select"
-                      @blur="saveOrchestrationSettingsAction"
-                    />
-                  </div>
-                </div>
-
-                <Message
-                  v-if="orchestrationMessage"
-                  class="mt-3"
-                  :severity="orchestrationMessageSeverity"
-                  :closable="false"
-                >
-                  {{ orchestrationMessage }}
-                </Message>
-              </div>
+              <OrchestrationSettingsPanel />
             </div>
   
             <div class="col-12 lg:col-4">
@@ -443,9 +460,11 @@
               <div class="content-panel content-panel-padded info-panel">
                 <h3 class="info-title">Agent orchestration</h3>
                 <ul class="info-list m-0 pl-3">
-                  <li>Each phase allows up to the configured tool rounds (model ↔ tool loops).</li>
-                  <li>Continuation phases resume incomplete operator deployments automatically after approval.</li>
-                  <li>Users can also type <code>continue</code> or click the in-chat button to resume.</li>
+                  <li><strong>Standard</strong> — up to 80 tool rounds (4 × 20).</li>
+                  <li><strong>Extended</strong> — up to 150 tool rounds (5 × 30).</li>
+                  <li><strong>Max</strong> — up to 240 tool rounds (6 × 40).</li>
+                  <li><strong>Custom</strong> — tune rounds, continuations, and pause thresholds yourself.</li>
+                  <li>Users can also type <code>continue</code> or use the in-chat button to resume.</li>
                 </ul>
               </div>
 
@@ -461,29 +480,27 @@
             </div>
           </section>
   
+          <!-- Appliances -->
+          <section v-if="activeSection === 'appliances'" class="settings-section-full">
+            <OtherAppliancesView />
+          </section>
+
           <!-- AI Providers -->
           <section v-if="activeSection === 'ai-providers'" class="flex flex-column gap-4">
             <AIProvidersPanel />
-            <div class="ai-providers-tools-row">
-              <div class="ai-providers-tools-col">
-                <BraveSearchPanel @usage-changed="refreshUsageDashboard" />
-              </div>
-              <div class="ai-providers-tools-col">
-                <div class="content-panel content-panel-padded usage-panel-wrap h-full">
-                  <ModelUsageDashboard ref="usageDashboardRef" />
-                </div>
-              </div>
+            <div class="content-panel content-panel-padded usage-panel-wrap">
+              <ModelUsageDashboard ref="usageDashboardRef" />
             </div>
           </section>
+
+          <!-- Web Search -->
+          <section v-if="activeSection === 'web-search'" class="settings-section-full">
+            <BraveSearchPanel />
+          </section>
   
-          <!-- Next-Gen API -->
+          <!-- MCP Tools -->
           <section v-if="activeSection === 'nextgen'">
             <NextGenApiPanel />
-          </section>
-
-          <!-- Beta features (SDX, Cisco, F5) -->
-          <section v-if="activeSection === 'beta-features'">
-            <BetaFeaturesPanel />
           </section>
 
           <!-- Slack notifications (Enterprise Pro) -->
@@ -672,6 +689,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
+import Menubar from 'primevue/menubar'
 import Message from 'primevue/message'
 import Password from 'primevue/password'
 import ProgressSpinner from 'primevue/progressspinner'
@@ -679,15 +697,16 @@ import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
+import OtherAppliancesView from '../views/OtherAppliancesView.vue'
 import ModelUsageDashboard from '../components/ModelUsageDashboard.vue'
 import NextGenApiPanel from '../components/NextGenApiPanel.vue'
-import BetaFeaturesPanel from '../components/BetaFeaturesPanel.vue'
 import AIProvidersPanel from '../components/AIProvidersPanel.vue'
 import BraveSearchPanel from '../components/BraveSearchPanel.vue'
 import UsersPanel from '../components/UsersPanel.vue'
 import UpdatesPanel from '../components/UpdatesPanel.vue'
 import JpilotTlsPanel from '../components/JpilotTlsPanel.vue'
 import LicensePanel from '../components/LicensePanel.vue'
+import OrchestrationSettingsPanel from '../components/OrchestrationSettingsPanel.vue'
 import SlackNotificationsPanel from '../components/SlackNotificationsPanel.vue'
 import { getCopilotSettings, saveCopilotSettings } from '../services/copilot'
 import { getMcpConfig, getMcpStatus, saveMcpConfig } from '../services/mcp'
@@ -700,7 +719,6 @@ import {
 } from '../services/security'
 import api from '../services/api'
 import { getJpilotSettings, saveJpilotSettings } from '../services/portal'
-import { getCopilotPlatformSettings, saveCopilotPlatformSettings } from '../services/copilotPlatform'
 import { getStoredUser } from '../services/auth'
 import { fetchPasskeyStatus, passkeyErrorMessage, registerPasskey } from '../services/webauthn'
 
@@ -718,11 +736,12 @@ const GROUP_LABELS = {
 }
 
 const allSections = [
+  { key: 'appliances', label: 'Appliances', icon: 'pi pi-server', group: 'platform' },
   { key: 'ai-providers', label: 'AI Providers', icon: 'pi pi-sparkles', adminOnly: true, group: 'platform' },
+  { key: 'web-search', label: 'Web Search', icon: 'pi pi-globe', adminOnly: true, group: 'platform' },
   { key: 'jpilot', label: 'JPilot', icon: 'pi pi-comments', adminOnly: true, group: 'platform' },
   { key: 'mcp', label: 'MCP Server', icon: 'pi pi-server', adminOnly: true, group: 'platform' },
-  { key: 'nextgen', label: 'Next-Gen API', icon: 'pi pi-code', adminOnly: true, group: 'platform' },
-  { key: 'beta-features', label: 'Beta features', icon: 'pi pi-flag', adminOnly: true, group: 'platform' },
+  { key: 'nextgen', label: 'MCP Tools', icon: 'pi pi-sliders-h', adminOnly: true, group: 'platform' },
   { key: 'slack', label: 'Slack', icon: 'pi pi-send', adminOnly: true, group: 'platform' },
   { key: 'users', label: 'Users', icon: 'pi pi-users', adminOnly: true, group: 'people' },
   { key: 'security', label: 'Security', icon: 'pi pi-shield', group: 'personal' },
@@ -785,6 +804,12 @@ function resolveSectionFromQuery() {
   if (section === 'usage') {
     return isAdmin.value ? 'ai-providers' : 'security'
   }
+  if (section === 'brave-search') {
+    return 'web-search'
+  }
+  if (section === 'beta-features') {
+    return 'nextgen'
+  }
   if (typeof section === 'string' && sectionKeys.value.has(section)) {
     return section
   }
@@ -797,7 +822,13 @@ function resolveSectionFromQuery() {
 function applySectionFromQuery() {
   let target = resolveSectionFromQuery()
 
-  if (route.query.section === 'usage' && !isAdmin.value) {
+  if (route.query.section === 'brave-search') {
+    router.replace({ query: { ...route.query, section: 'web-search' } })
+    target = 'web-search'
+  } else if (route.query.section === 'beta-features') {
+    router.replace({ query: { ...route.query, section: 'nextgen', tab: 'beta' } })
+    target = 'nextgen'
+  } else if (route.query.section === 'usage' && !isAdmin.value) {
     router.replace({ query: { section: 'security' } })
     target = 'security'
   } else if (
@@ -817,13 +848,29 @@ function selectSection(key) {
   router.replace({ query: { ...route.query, section: key } })
 }
 
+const menubarItems = computed(() =>
+  navGroups.value.map((group) => {
+    const hasActiveChild = group.sections.some((section) => section.key === activeSection.value)
+    return {
+      label: group.label,
+      class: hasActiveChild ? 'settings-menubar-group-active' : undefined,
+      items: group.sections.map((section) => ({
+        label: section.label,
+        icon: section.icon,
+        class: activeSection.value === section.key ? 'settings-menuitem-active' : undefined,
+        command: () => selectSection(section.key)
+      }))
+    }
+  })
+)
+
 watch(() => route.query.section, applySectionFromQuery)
 
 const loadedSections = ref(new Set())
 
 async function ensureSectionLoaded(section) {
   if (section === 'jpilot' && !loadedSections.value.has('jpilot')) {
-    await Promise.all([loadJpilotPortalSettings(), loadOrchestrationSettings()])
+    await loadJpilotPortalSettings()
     loadedSections.value.add('jpilot')
   }
   if (section === 'mcp' && !loadedSections.value.has('mcp')) {
@@ -862,16 +909,6 @@ const jpilotPortalSaving = ref(false)
 const jpilotPortalMessage = ref('')
 const jpilotPortalMessageSeverity = ref('info')
 
-const orchestrationSettings = reactive({
-  maxToolIterations: 20,
-  maxToolContinuationPhases: 3,
-  longTaskToolThreshold: 8,
-  promptBeforeLongTasks: true
-})
-const orchestrationSaving = ref(false)
-const orchestrationMessage = ref('')
-const orchestrationMessageSeverity = ref('info')
-
 async function loadJpilotPortalSettings() {
   if (!isAdmin.value) return
   try {
@@ -902,49 +939,6 @@ async function saveJpilotPortalSettingsAction() {
   }
 }
 
-async function loadOrchestrationSettings() {
-  if (!isAdmin.value) return
-  try {
-    const data = await getCopilotPlatformSettings()
-    orchestrationSettings.maxToolIterations = Number(data.maxToolIterations ?? 20)
-    orchestrationSettings.maxToolContinuationPhases = Number(data.maxToolContinuationPhases ?? 3)
-    orchestrationSettings.longTaskToolThreshold = Number(data.longTaskToolThreshold ?? 8)
-    orchestrationSettings.promptBeforeLongTasks = Boolean(data.promptBeforeLongTasks ?? true)
-  } catch {
-    orchestrationSettings.maxToolIterations = 20
-    orchestrationSettings.maxToolContinuationPhases = 3
-    orchestrationSettings.longTaskToolThreshold = 8
-    orchestrationSettings.promptBeforeLongTasks = true
-  }
-}
-
-async function saveOrchestrationSettingsAction() {
-  if (!isAdmin.value) return
-  orchestrationSaving.value = true
-  orchestrationMessage.value = ''
-  try {
-    const data = await saveCopilotPlatformSettings({
-      maxToolIterations: orchestrationSettings.maxToolIterations,
-      maxToolContinuationPhases: orchestrationSettings.maxToolContinuationPhases,
-      longTaskToolThreshold: orchestrationSettings.longTaskToolThreshold,
-      promptBeforeLongTasks: orchestrationSettings.promptBeforeLongTasks
-    })
-    orchestrationSettings.maxToolIterations = Number(data.maxToolIterations ?? 20)
-    orchestrationSettings.maxToolContinuationPhases = Number(data.maxToolContinuationPhases ?? 3)
-    orchestrationSettings.longTaskToolThreshold = Number(data.longTaskToolThreshold ?? 8)
-    orchestrationSettings.promptBeforeLongTasks = Boolean(data.promptBeforeLongTasks ?? true)
-    orchestrationMessage.value = 'Agent orchestration settings saved.'
-    orchestrationMessageSeverity.value = 'success'
-  } catch (error) {
-    orchestrationMessage.value =
-      error.response?.data?.detail || error.message || 'Failed to save agent orchestration settings.'
-    orchestrationMessageSeverity.value = 'error'
-    await loadOrchestrationSettings()
-  } finally {
-    orchestrationSaving.value = false
-  }
-}
-
 const mcpLoading = ref(true)
 const mcpSaving = ref(false)
 const mcpTesting = ref(false)
@@ -953,11 +947,14 @@ const mcpMessageSeverity = ref('info')
 
 const mcpSettings = reactive({
   serverUrl: '',
-  serverName: 'netscaler-copilot',
+  serverName: 'jpilot-mcp',
   nitroTimeoutSeconds: 30,
   verifySsl: false,
   enabledTools: [],
-  sseEnabled: true
+  sseEnabled: true,
+  sshFallbackEnabled: true,
+  sshPort: 22,
+  sshTimeoutSeconds: 30
 })
 
 const mcpStatus = reactive({
@@ -992,6 +989,7 @@ const smtpTesting = ref(false)
 const smtpMessage = ref('')
 const smtpMessageSeverity = ref('info')
 const smtpTestRecipient = ref('')
+const smtpEditing = ref(false)
 
 const smtpSettings = reactive({
   provider: 'custom',
@@ -1006,6 +1004,22 @@ const smtpSettings = reactive({
 })
 
 const isSmtpPreset = computed(() => smtpSettings.provider !== 'custom')
+
+const isSmtpConfigured = computed(
+  () => Boolean(smtpSettings.host?.trim() && smtpSettings.hasPassword)
+)
+
+const showSmtpConfigFields = computed(() => smtpEditing.value || !isSmtpConfigured.value)
+
+function startSmtpEdit() {
+  smtpEditing.value = true
+}
+
+async function cancelSmtpEdit() {
+  smtpEditing.value = false
+  smtpSettings.password = ''
+  await loadSmtpSettings()
+}
 
 const smtpEncryption = computed({
   get() {
@@ -1033,7 +1047,6 @@ const passkeyRegistering = ref(false)
 const passkeyMessage = ref('')
 const passkeyMessageSeverity = ref('info')
 const usageDashboardRef = ref(null)
-
 const passkeyPolicyOptions = PASSKEY_POLICY_OPTIONS
 const securitySettings = reactive({
   passkeyPolicy: 'enabled'
@@ -1151,7 +1164,10 @@ async function loadMcpConfig() {
       nitroTimeoutSeconds: config.nitroTimeoutSeconds,
       verifySsl: config.verifySsl,
       enabledTools: [...(config.enabledTools || [])],
-      sseEnabled: config.sseEnabled
+      sseEnabled: config.sseEnabled,
+      sshFallbackEnabled: config.sshFallbackEnabled ?? true,
+      sshPort: config.sshPort ?? 22,
+      sshTimeoutSeconds: config.sshTimeoutSeconds ?? 30
     })
     await refreshMcpStatus()
   } catch (error) {
@@ -1210,6 +1226,7 @@ async function loadSmtpSettings() {
       useTls: config.useTls,
       useSsl: config.useSsl
     })
+    smtpEditing.value = !(Boolean(config.host?.trim()) && config.hasPassword)
   } catch (error) {
     smtpMessage.value = error.response?.data?.detail || 'Failed to load SMTP settings'
     smtpMessageSeverity.value = 'error'
@@ -1249,6 +1266,7 @@ async function saveSmtpSettings() {
     })
     smtpMessage.value = 'SMTP settings saved.'
     smtpMessageSeverity.value = 'success'
+    smtpEditing.value = false
   } catch (error) {
     smtpMessage.value = error.response?.data?.detail || 'Failed to save SMTP settings'
     smtpMessageSeverity.value = 'error'
@@ -1316,31 +1334,8 @@ onMounted(async () => {
   width: 100%;
 }
 
-.ai-providers-tools-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: stretch;
-  width: 100%;
-}
-
-.ai-providers-tools-col {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.ai-providers-tools-col :deep(.brave-search-panel),
 .usage-panel-wrap {
-  flex: 1;
   width: 100%;
-  min-height: 100%;
-}
-
-@media (max-width: 991px) {
-  .ai-providers-tools-row {
-    grid-template-columns: 1fr;
-  }
 }
 
 .mcp-panels-row {
@@ -1366,6 +1361,45 @@ onMounted(async () => {
   margin-top: 0.25rem;
   padding-top: 1rem;
   border-top: 1px solid var(--p-content-border-color);
+}
+
+.mcp-subsection {
+  padding-top: 1rem;
+  border-top: 1px solid var(--p-content-border-color);
+}
+
+.subsection-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.subsection-copy {
+  margin: 0.35rem 0 0;
+  color: var(--p-text-muted-color);
+  font-size: 0.8125rem;
+}
+
+.compact-input-number {
+  flex-shrink: 0;
+  width: fit-content;
+}
+
+.compact-input-number :deep(.p-inputnumber) {
+  display: inline-flex;
+  width: auto;
+}
+
+.compact-input-number :deep(.p-inputnumber-input) {
+  width: 3.25rem;
+  min-width: 3.25rem;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.compact-input-number--port :deep(.p-inputnumber-input) {
+  width: 4.25rem;
+  min-width: 4.25rem;
 }
 
 .mcp-status-inline .info-title {
@@ -1406,84 +1440,20 @@ onMounted(async () => {
   }
 }
 
-.settings-nav-icon {
-  font-size: 1rem;
+.settings-menubar {
+  border: 1px solid var(--p-content-border-color);
+  border-radius: var(--p-content-border-radius);
+  background: var(--p-content-background);
 }
 
-/* Horizontal scrollable tab bar */
-.settings-nav {
-  border-bottom: 1px solid var(--p-content-border-color);
-  overflow-x: auto;
-}
-
-.settings-nav-list {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-end;
-  gap: 0;
-  min-width: min-content;
-  padding-bottom: 0.15rem;
-}
-
-.settings-nav-cluster {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-
-.settings-nav-cluster + .settings-nav-cluster {
-  margin-left: 0.75rem;
-  padding-left: 0.75rem;
-  border-left: 1px solid var(--p-content-border-color);
-}
-
-.settings-nav-cluster-label {
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--p-text-muted-color);
-  padding: 0 0.5rem;
-  line-height: 1;
-  opacity: 0.85;
-}
-
-.settings-nav-group-tabs {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: row;
-  white-space: nowrap;
-}
-
-.settings-nav-item {
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.settings-nav-item.is-active {
-  border-bottom-color: var(--p-primary-color);
-}
-
-.settings-nav-link {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  cursor: pointer;
-  font-weight: 500;
-  color: var(--p-text-muted-color);
-  transition: color 0.15s ease;
-}
-
-.settings-nav-item.is-active .settings-nav-link {
+.settings-menubar :deep(.settings-menubar-group-active > .p-menubar-item-content .p-menubar-item-link) {
   color: var(--p-primary-color);
+  font-weight: 600;
 }
 
-.settings-nav-link:hover {
-  color: var(--p-text-color);
+.settings-menubar :deep(.settings-menuitem-active > .p-menubar-item-content .p-menubar-item-link) {
+  color: var(--p-primary-color);
+  font-weight: 600;
 }
 
 .section-title {

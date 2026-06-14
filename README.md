@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.59` — Stack Calibration Studio sync, in-chat **Send to Calibration** feedback, and Architect skill injection with discovery-safe tool gating.
+**Current release:** `v0.60` — Settings hub refresh (MCP Tools, Web Search, orchestration presets), vendor platform toggles, and MCP server identity `jpilot-mcp`.
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -59,8 +59,8 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **User management** — admin CRUD for users (roles `admin` / `user`), email for resets, initial password on create, passkey count and removal.
 - **SSL certificate tools** — generate CSRs or self-signed certificates on the appliance (UI + API + MCP).
 - **NetScaler diagnostics** — ICMP ping/traceroute, TCP port reachability via telnet from the appliance shell, and read-only `nsconmsg` performance/event collection.
-- **Optional Brave Search** — vendor-isolated official-doc web search (Citrix/NetScaler, Cisco, or F5 domains only; Settings → AI Providers).
-- **Settings → Beta features** — enable MCP tools per beta platform (SDX, Cisco IOS/XE, F5 BIG-IP) next to Next-Gen API; shared SSH settings on the Next-Gen tab.
+- **Optional documentation web search** — vendor-isolated official-doc search (Settings → **Web Search**); configuration, usage, official domains, and custom domains in separate cards.
+- **Settings → MCP Tools** — NetScaler MCP tool toggles, **NetScaler API reference** tab, and **Beta features** (SDX, Cisco, F5) with collapsible per-platform panels; appliance connection timeouts/SSL/SSH live under **MCP Server**.
 - **Dashboard shortcuts** — recommended JPilot prompts and links (health summary, list IPs/vservers, diagnostics, guided LB).
 - **Model usage dashboard** — Settings → AI Providers shows monthly LLM token/request usage and Brave Search query usage with progress bars (tracked locally per calendar month).
 - **Cisco IOS/XE (SSH)** — Architect, Operator, and Analyst over SSH with `search_cisco_cli_reference` memory gate (beta).
@@ -68,6 +68,23 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **F5 BIG-IP (SSH / TMSH)** — Operator, Analyst, and Architect (official F5 docs only); `f5_*` MCP tools and `search_f5_tmsh_reference` / `search_f5_documentation` (beta).
 - **Nexxus licensing** — Settings → **License**: enter a license code, import an offline `.lic` file, or sync with the Nexxus licensing API; installation fingerprint binding; encrypted payload validation; daily background sync and expiry enforcement; **activation gate** redirects unlicensed or expired installs to Settings → License before using the app.
 - **Stack Calibration Studio** — sync skills from scstudio, view installed calibrations in-app, and send redacted session feedback when chat misses the user's goal; skills inject into Architect/Operator prompts at runtime.
+- **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
+- **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
+
+## What's new in v0.60
+
+| Area | Highlights |
+|------|------------|
+| **Settings hub** | **Next-Gen API** renamed to **MCP Tools** with tabs for NetScaler tools, **NetScaler API reference**, and **Beta features** (formerly a separate menu item). Appliance connection (timeouts, SSL, SSH fallback) moved to **MCP Server**. |
+| **MCP identity** | MCP server name defaults to **`jpilot-mcp`** (migrates stored `netscaler-copilot` on startup). |
+| **Web Search** | Settings menu renamed from Brave Search; split cards for configuration, usage, official domains (enabled vendors only), and custom domains. |
+| **JPilot orchestration** | Preset modes (**Standard** / **Extended** / **Max** / **Custom**) for tool rounds, continuation phases, and long-task thresholds; UI shows effective max tool rounds. |
+| **Appliances → Vendors** | Admin toggles for vendor/platform availability with group and product-level switches; persisted in MongoDB. |
+| **Beta features UX** | SDX, Cisco, and F5 sections collapsed by default; expand per platform to manage tool toggles. |
+| **SMTP settings** | When SMTP is configured, show compact “send test email” row with pencil to expand the full form. |
+| **Operator / deploy** | LB removal flow (`copilot_remove`), richer deploy parsing, and orchestrator continuation improvements; inspect inventory lists Next-Gen and classic virtual servers reliably. |
+| **Model usage** | Usage dashboard detail improvements for token/request breakdowns. |
+| **Redirects** | `/beta-features` and legacy section keys route to MCP Tools (beta tab). |
 
 ## What's new in v0.59
 

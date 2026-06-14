@@ -98,7 +98,7 @@ from app.services.copilot_orchestration import (
 )
 from app.services.copilot_progress import QueueChatProgressReporter
 
-MAX_TOOL_ITERATIONS = 20
+MAX_TOOL_ITERATIONS = 40
 MAX_TOOL_CONTINUATION_PHASES = 3
 
 TOOL_ITERATION_LIMIT_MESSAGE = "I reached the maximum number of tool calls. Please try a simpler request."
@@ -108,7 +108,10 @@ CONTINUATION_NUDGE = (
     "Do NOT ask the user to retry or confirm again. "
     "Review successful and failed tool results above, then finish remaining work. "
     "Prefer netscaler_run_cli_commands (one call with all remaining CLI + save ns config) "
-    "or the vendor batch write tool. Reply briefly when complete."
+    "or the vendor batch write tool. "
+    "For removals, batch every unbind/rm/uninstall in as few calls as possible (confirmed=true). "
+    "Before claiming success, run netscaler_list_virtual_servers and confirm the vserver is UP "
+    "with backends bound (serverCount > 0), or absent after a removal. Reply briefly when verified."
 )
 
 _USER_CONFIRM_WORDS = (
@@ -503,6 +506,63 @@ def _had_successful_action(tool_traces: list[ToolCallTrace]) -> bool:
     return had_successful_state_change(tool_traces)
 
 
+_LB_SUCCESS_CLAIM_RE = re.compile(
+    r"\b(fully configured|is fully|accepting traffic|both backend.*\bUP\b|vserver.*\bUP\b)\b",
+    re.IGNORECASE,
+)
+
+
+def guard_incomplete_lb_success(
+    content: str,
+    tool_traces: list[ToolCallTrace],
+    role: str | None = None,
+) -> str:
+    """Warn when the reply claims LB success but inventory shows DOWN or zero backends."""
+    if normalize_role(role) != JPilotRole.OPERATOR:
+        return content
+    if not content or not _LB_SUCCESS_CLAIM_RE.search(content):
+        return content
+
+    inventory: dict[str, Any] | None = None
+    for trace in reversed(tool_traces):
+        if trace.name != "netscaler_list_virtual_servers":
+            continue
+        try:
+            payload = json.loads(trace.result)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+            inventory = payload["data"]
+        elif isinstance(payload, dict):
+            inventory = payload
+        break
+
+    if not inventory:
+        return content
+
+    unhealthy = [
+        item
+        for item in inventory.get("virtualServers") or []
+        if str(item.get("state") or "").upper() == "DOWN"
+        or int(item.get("serverCount") or 0) == 0
+    ]
+    if not unhealthy:
+        return content
+
+    names = ", ".join(f"`{item.get('name')}`" for item in unhealthy[:3] if item.get("name"))
+    banner = (
+        "> ⚠️ **Deployment may be incomplete.** The reply claims success, but inventory shows "
+        f"{names or 'a vserver'} DOWN or with zero backends bound. "
+        "Finish binding backends and run `save ns config`, then verify with "
+        "`netscaler_list_virtual_servers`."
+    )
+    logger.warning(
+        "incomplete_lb_success_guard fired — claimed success but inventory unhealthy (vservers=%s)",
+        names,
+    )
+    return f"{banner}\n\n---\n\n{content}"
+
+
 def guard_fabricated_execution(
     content: str,
     tool_traces: list[ToolCallTrace],
@@ -872,7 +932,14 @@ async def run_copilot_chat(
     if progress is not None:
         await progress.status(phase="preparing", label="Preparing request…")
 
-    from app.services.copilot_deploy import try_auto_create_application
+    from app.services.copilot_deploy import (
+        detect_natural_language_lb_request,
+        parse_natural_language_lb_request,
+        try_auto_create_application,
+        try_auto_deploy_classic_lb,
+        try_auto_deploy_lb_from_message,
+    )
+    from app.services.copilot_remove import try_auto_remove_lb_targets
     from app.services.copilot_form import is_form_submission
     from app.services.copilot_port_check import try_auto_appliance_internet_check, try_auto_tcp_port_check
     from app.services.copilot_inventory import try_auto_ip_inventory
@@ -888,13 +955,47 @@ async def run_copilot_chat(
                 appliance_name=appliance_name,
                 enabled_tool_names=enabled_tool_names,
             )
+            if not auto_traces:
+                auto_traces, auto_response = await try_auto_deploy_classic_lb(
+                    db,
+                    user_message=user_message,
+                    appliance_name=appliance_name,
+                    enabled_tool_names=enabled_tool_names,
+                )
         else:
-            auto_traces, auto_response = await try_auto_service_status(
-                db,
-                user_message=user_message,
-                appliance_name=appliance_name,
-                enabled_tool_names=enabled_tool_names,
-            )
+            lb_fields = parse_natural_language_lb_request(user_message)
+            if detect_natural_language_lb_request(user_message, lb_fields):
+                auto_traces, auto_response = await try_auto_deploy_lb_from_message(
+                    db,
+                    user_message=user_message,
+                    appliance_name=appliance_name,
+                    enabled_tool_names=enabled_tool_names,
+                )
+                tool_traces.extend(auto_traces)
+                provider_name = provider["providerName"]
+                return _finalize_chat_response(
+                    auto_response
+                    or "**Classic LB deploy failed** — no response was produced. Check MCP tool enablement.",
+                    provider_name=provider_name,
+                    provider_type=provider_type,
+                    model=model,
+                    tool_traces=tool_traces,
+                    user_message=user_message,
+                    role=chat_role.value,
+                )
+            auto_traces, auto_response = await try_auto_remove_lb_targets(
+                    db,
+                    user_message=user_message,
+                    appliance_name=appliance_name,
+                    enabled_tool_names=enabled_tool_names,
+                )
+            if not auto_traces:
+                auto_traces, auto_response = await try_auto_service_status(
+                    db,
+                    user_message=user_message,
+                    appliance_name=appliance_name,
+                    enabled_tool_names=enabled_tool_names,
+                )
             if not auto_traces:
                 auto_traces, auto_response = await try_auto_ip_inventory(
                     db,
@@ -918,7 +1019,7 @@ async def run_copilot_chat(
                 )
     if auto_traces:
         tool_traces.extend(auto_traces)
-    if auto_response and (auto_traces or is_form_submission(user_message)):
+    if auto_response and auto_traces:
         provider_name = provider["providerName"]
         if auto_response.startswith("**") and (
             "Verdict:" in auto_response
@@ -927,6 +1028,11 @@ async def run_copilot_chat(
             or "DOWN backend" in auto_response
             or "no DOWN backend" in auto_response
             or "created via Next-Gen API" in auto_response
+            or "classic load balancer" in auto_response
+            or "Classic LB deploy failed" in auto_response
+            or "removed load balancer" in auto_response
+            or "LB removal failed" in auto_response
+            or "No matching load balancers found" in auto_response
             or "Application create failed" in auto_response
             or "Configuration form received" in auto_response
         ):
@@ -1049,6 +1155,7 @@ async def run_copilot_chat(
         )
 
     content = guard_fabricated_execution(content, tool_traces, role=chat_role.value)
+    content = guard_incomplete_lb_success(content, tool_traces, role=chat_role.value)
     content = guard_unverified_read(content, tool_traces, role=chat_role.value)
     if orchestration.pause is not None:
         content = orchestration.pause.message

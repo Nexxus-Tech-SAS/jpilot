@@ -2,8 +2,9 @@
   <div class="usage-dashboard">
     <div class="usage-header">
       <div>
-        <h3 class="info-title m-0">Model usage</h3>
+        <h3 class="info-title m-0">JPilot usage</h3>
         <p class="usage-period">{{ dashboard?.periodLabel || 'This month' }}</p>
+        <p class="usage-lead">Activity tracked inside JPilot this calendar month — not provider billing or account balance.</p>
       </div>
       <Button
         icon="pi pi-refresh"
@@ -21,39 +22,6 @@
     </div>
 
     <template v-else-if="dashboard">
-      <div class="usage-card usage-card-brave">
-        <div class="usage-card-top">
-          <div class="usage-icon brave">
-            <i class="pi pi-search" />
-          </div>
-          <div class="usage-meta">
-            <span class="usage-name">Brave Search API</span>
-            <span class="usage-sub">
-              {{ dashboard.braveSearch.configured ? 'Key configured' : 'No API key' }}
-              <span v-if="dashboard.braveSearch.enabled"> · Web search on</span>
-            </span>
-          </div>
-          <Tag
-            v-if="dashboard.braveSearch.configured"
-            :value="braveStatusLabel"
-            :severity="braveSeverity"
-          />
-        </div>
-
-        <div v-if="dashboard.braveSearch.configured" class="usage-bars">
-          <UsageMeter
-            label="Search queries"
-            :used="dashboard.braveSearch.queriesUsed"
-            :limit="dashboard.braveSearch.monthlyQueryLimit"
-            :percent="dashboard.braveSearch.percent"
-            :remaining="dashboard.braveSearch.remainingQueries"
-            :unlimited="dashboard.braveSearch.unlimited"
-            unit="queries"
-          />
-        </div>
-        <p v-else class="usage-empty">Add a Brave Search API key under Settings → AI Providers to track query usage.</p>
-      </div>
-
       <div v-if="!dashboard.providers.length" class="usage-empty-block">
         No AI providers configured. Add LLM providers under Settings → AI Providers.
       </div>
@@ -78,30 +46,58 @@
           </div>
         </div>
 
-        <div class="usage-bars">
+        <div class="usage-stats">
+          <div class="usage-stat">
+            <span class="usage-stat-value">{{ formatCount(provider.requestsUsed) }}</span>
+            <span class="usage-stat-label">Chat rounds</span>
+            <span class="usage-stat-hint">LLM API calls in JPilot</span>
+          </div>
+          <div v-if="hasTokenSplit(provider)" class="usage-stat">
+            <span class="usage-stat-value">{{ formatCount(provider.inputTokensUsed) }}</span>
+            <span class="usage-stat-label">Input tokens</span>
+          </div>
+          <div v-if="hasTokenSplit(provider)" class="usage-stat">
+            <span class="usage-stat-value">{{ formatCount(provider.outputTokensUsed) }}</span>
+            <span class="usage-stat-label">Output tokens</span>
+          </div>
+          <div class="usage-stat">
+            <span class="usage-stat-value">{{ formatCount(provider.tokensUsed) }}</span>
+            <span class="usage-stat-label">{{ hasTokenSplit(provider) ? 'Total tokens' : 'Tokens' }}</span>
+            <span v-if="!hasTokenSplit(provider)" class="usage-stat-hint">Reported by the provider API</span>
+          </div>
+          <div v-if="provider.avgTokensPerRequest != null" class="usage-stat">
+            <span class="usage-stat-value">{{ formatCount(provider.avgTokensPerRequest) }}</span>
+            <span class="usage-stat-label">Avg / chat round</span>
+          </div>
+        </div>
+
+        <div v-if="provider.limitsConfigured" class="usage-budget">
+          <span class="usage-budget-label">Local budget caps</span>
           <UsageMeter
-            label="API requests"
+            v-if="provider.monthlyRequestLimit != null"
+            label="Chat rounds"
             :used="provider.requestsUsed"
             :limit="provider.monthlyRequestLimit"
             :percent="provider.requestPercent"
             :remaining="provider.remainingRequests"
-            :unlimited="provider.unlimited && !provider.monthlyRequestLimit"
-            unit="requests"
+            :unlimited="false"
+            unit="rounds"
           />
           <UsageMeter
+            v-if="provider.monthlyTokenLimit != null"
             label="Tokens"
             :used="provider.tokensUsed"
             :limit="provider.monthlyTokenLimit"
             :percent="provider.tokenPercent"
             :remaining="provider.remainingTokens"
-            :unlimited="provider.unlimited && !provider.monthlyTokenLimit"
+            :unlimited="false"
             unit="tokens"
           />
         </div>
       </div>
 
       <p class="usage-footnote">
-        Counts update after each JPilot chat and Brave web search this calendar month. Past activity before tracking was enabled is not included. Limits are planning caps — verify billing in each provider’s console.
+        Totals include tool-loop rounds during a chat. Usage outside JPilot or before tracking was enabled is not included. Check each provider’s console for billing and remaining credits.
       </p>
     </template>
 
@@ -110,7 +106,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
@@ -122,21 +118,9 @@ const loading = ref(false)
 const error = ref('')
 const dashboard = ref(null)
 
-const braveSeverity = computed(() => {
-  const p = dashboard.value?.braveSearch?.percent
-  if (p == null) return 'secondary'
-  if (p >= 90) return 'danger'
-  if (p >= 75) return 'warn'
-  return 'success'
-})
-
-const braveStatusLabel = computed(() => {
-  const brave = dashboard.value?.braveSearch
-  if (!brave?.configured) return 'Not set'
-  if (brave.unlimited) return `${formatCount(brave.queriesUsed)} used`
-  const left = brave.remainingQueries ?? 0
-  return `${formatCount(left)} left`
-})
+function hasTokenSplit(provider) {
+  return (provider.inputTokensUsed ?? 0) > 0 || (provider.outputTokensUsed ?? 0) > 0
+}
 
 function providerIcon(type) {
   const map = {
@@ -196,6 +180,14 @@ defineExpose({ refresh: load })
   color: var(--p-text-muted-color);
 }
 
+.usage-lead {
+  margin: 0.35rem 0 0;
+  max-width: 36rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--p-text-muted-color);
+}
+
 .usage-loading {
   display: flex;
   justify-content: center;
@@ -210,14 +202,6 @@ defineExpose({ refresh: load })
   box-shadow: 0 1px 8px rgba(15, 23, 42, 0.04);
 }
 
-.usage-card-brave {
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, #3b82f6 12%, var(--app-nested-surface)),
-    var(--app-nested-surface-strong)
-  );
-}
-
 .usage-card-muted {
   opacity: 0.72;
 }
@@ -226,7 +210,7 @@ defineExpose({ refresh: load })
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.75rem;
 }
 
 .usage-icon {
@@ -240,11 +224,6 @@ defineExpose({ refresh: load })
   background: var(--p-primary-100);
   color: var(--p-primary-700);
   flex-shrink: 0;
-}
-
-.usage-icon.brave {
-  background: rgba(59, 130, 246, 0.15);
-  color: #2563eb;
 }
 
 .usage-icon.openai {
@@ -290,10 +269,62 @@ defineExpose({ refresh: load })
   gap: 0.25rem;
 }
 
-.usage-bars {
+.usage-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.55rem;
+}
+
+.usage-stat {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.1rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: var(--app-nested-surface-strong);
+  border: 1px solid color-mix(in srgb, var(--p-content-border-color) 70%, transparent);
+}
+
+.usage-stat-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-stat-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--p-text-color);
+}
+
+.usage-stat-hint {
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: var(--p-text-muted-color);
+}
+
+.usage-budget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--p-content-border-color);
+}
+
+.usage-budget-label,
+.usage-budget-meter {
+  margin-top: 0.75rem;
+}
+
+.usage-budget-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--p-text-muted-color);
 }
 
 .usage-empty,
@@ -318,10 +349,5 @@ defineExpose({ refresh: load })
 :global(html.app-dark) .usage-icon {
   background: color-mix(in srgb, var(--p-primary-400) 18%, var(--app-nested-surface-strong));
   color: var(--p-primary-200);
-}
-
-:global(html.app-dark) .usage-icon.brave {
-  background: color-mix(in srgb, #3b82f6 22%, var(--app-nested-surface-strong));
-  color: #93c5fd;
 }
 </style>

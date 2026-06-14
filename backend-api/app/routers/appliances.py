@@ -2,15 +2,22 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
 
-from app.dependencies import get_db
+from app.dependencies import get_db, require_admin
 from app.models.appliance import (
     build_appliance_document,
     is_copilot_eligible_appliance,
     normalize_tags,
     normalize_vendor,
     parse_object_id,
-    serialize_appliance,
     utc_now,
+)
+from app.schemas.vendor_catalog import VendorCatalogResponse, VendorCatalogUpdate
+from app.services.vendor_catalog_service import (
+    get_vendor_catalog,
+    is_appliance_platform_enabled,
+    serialize_appliance_with_platform,
+    update_vendor_catalog,
+    appliance_can_be_enabled,
 )
 from app.services.vendor_registry import is_vendor_copilot_supported
 from app.schemas.appliance import ApplianceCreate, ApplianceResponse, ApplianceUpdate
@@ -23,10 +30,29 @@ def _should_update_credential(value: str | None) -> bool:
     return value is not None and value != ""
 
 
+@router.get("/vendor-catalog", response_model=VendorCatalogResponse)
+async def read_vendor_catalog(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> VendorCatalogResponse:
+    return await get_vendor_catalog(db)
+
+
+@router.put("/vendor-catalog", response_model=VendorCatalogResponse)
+async def save_vendor_catalog(
+    payload: VendorCatalogUpdate,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> VendorCatalogResponse:
+    try:
+        return await update_vendor_catalog(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
 @router.get("", response_model=list[ApplianceResponse])
 async def list_appliances(db: AsyncIOMotorDatabase = Depends(get_db)) -> list[dict]:
     appliances = await db.appliances.find().sort("name", 1).to_list(length=None)
-    return [serialize_appliance(doc) for doc in appliances]
+    return [await serialize_appliance_with_platform(db, doc) for doc in appliances]
 
 
 @router.get("/{appliance_id}", response_model=ApplianceResponse)
@@ -43,7 +69,7 @@ async def get_appliance(
     if appliance is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appliance not found")
 
-    return serialize_appliance(appliance)
+    return await serialize_appliance_with_platform(db, appliance)
 
 
 @router.post("", response_model=ApplianceResponse, status_code=status.HTTP_201_CREATED)
@@ -57,9 +83,14 @@ async def create_appliance(
         "encryptedPassword": encrypt_value(payload.password),
     }
     document = build_appliance_document(payload.model_dump(), encrypted_fields)
+    platform_enabled = await is_appliance_platform_enabled(db, document)
+    if not platform_enabled:
+        document["enabled"] = False
+    elif document.get("enabled", True) and not appliance_can_be_enabled(document, platform_enabled=platform_enabled):
+        document["enabled"] = False
     result = await db.appliances.insert_one(document)
     created = await db.appliances.find_one({"_id": result.inserted_id})
-    return serialize_appliance(created)
+    return await serialize_appliance_with_platform(db, created)
 
 
 @router.put("/{appliance_id}", response_model=ApplianceResponse)
@@ -95,6 +126,12 @@ async def update_appliance(
 
     if payload.enabled is not None:
         merged = {**existing, **update_data}
+        platform_enabled = await is_appliance_platform_enabled(db, merged)
+        if payload.enabled and not appliance_can_be_enabled(merged, platform_enabled=platform_enabled):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This appliance cannot be enabled while its vendor product is disabled on the platform",
+            )
         update_data["enabled"] = payload.enabled if is_copilot_eligible_appliance(merged) else False
     elif payload.vendor is not None and not is_vendor_copilot_supported(update_data["vendor"]):
         update_data["enabled"] = False
@@ -108,7 +145,7 @@ async def update_appliance(
 
     await db.appliances.update_one({"_id": object_id}, {"$set": update_data})
     updated = await db.appliances.find_one({"_id": object_id})
-    return serialize_appliance(updated)
+    return await serialize_appliance_with_platform(db, updated)
 
 
 @router.delete("/{appliance_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -152,6 +189,18 @@ async def _set_enabled(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appliance not found") from exc
 
+    existing = await db.appliances.find_one({"_id": object_id})
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appliance not found")
+
+    if enabled:
+        platform_enabled = await is_appliance_platform_enabled(db, existing)
+        if not appliance_can_be_enabled(existing, platform_enabled=platform_enabled):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This appliance cannot be enabled while its vendor product is disabled on the platform",
+            )
+
     result = await db.appliances.find_one_and_update(
         {"_id": object_id},
         {"$set": {"enabled": enabled, "updatedAt": utc_now()}},
@@ -160,4 +209,4 @@ async def _set_enabled(
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appliance not found")
 
-    return serialize_appliance(result)
+    return await serialize_appliance_with_platform(db, result)

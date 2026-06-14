@@ -86,3 +86,53 @@ def redact_session_messages(
                 )
         cleaned.append(entry)
     return cleaned
+
+
+def build_session_excerpt(
+    messages: list[dict[str, Any]],
+    *,
+    max_chars: int = 12000,
+) -> str:
+    lines: list[str] = []
+    for item in messages:
+        role = str(item.get("role") or "user")
+        content = str(item.get("content") or "").strip()
+        if content:
+            lines.append(f"[{role}] {content}")
+        for trace in item.get("toolCalls") or []:
+            if not isinstance(trace, dict):
+                continue
+            name = str(trace.get("name") or "tool")
+            excerpt = str(trace.get("resultExcerpt") or "").strip()
+            if excerpt:
+                lines.append(f"[{role}:tool:{name}] {excerpt}")
+            else:
+                lines.append(f"[{role}:tool:{name}]")
+    return truncate_text("\n\n".join(lines), max_chars)
+
+
+def build_tool_trace_excerpt(
+    messages: list[dict[str, Any]],
+    *,
+    max_entries: int = 40,
+) -> list[dict[str, Any]]:
+    traces: list[dict[str, Any]] = []
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        for trace in item.get("toolCalls") or []:
+            if len(traces) >= max_entries:
+                return traces
+            if not isinstance(trace, dict):
+                continue
+            name = str(trace.get("name") or "").strip()
+            if not name:
+                continue
+            result = str(trace.get("resultExcerpt") or "")
+            lowered = result.lower()
+            ok = not item.get("isError") and "error" not in lowered[:200] and "blocked" not in lowered[:200]
+            entry: dict[str, Any] = {"name": name, "ok": ok}
+            if result:
+                entry["resultExcerpt"] = result
+            traces.append(entry)
+    return traces

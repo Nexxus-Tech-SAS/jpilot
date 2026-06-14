@@ -90,7 +90,7 @@ READONLY_CLI_COMMANDS: list[dict] = [
         "write": True,
     },
     {
-        "command": "bind lb vserver <name> -serviceGroupName <serviceGroupName>",
+        "command": "bind lb vserver <name> <serviceGroupName>",
         "topic": "attach a service group to a load balancing virtual server",
         "docPath": "lb/lb-vserver.html",
         "section": "bind lb vserver",

@@ -21,6 +21,9 @@ class ProviderUsageItem(BaseModel):
     isDefault: bool
     requestsUsed: int
     tokensUsed: int
+    inputTokensUsed: int = 0
+    outputTokensUsed: int = 0
+    avgTokensPerRequest: int | None = None
     monthlyRequestLimit: int | None = None
     monthlyTokenLimit: int | None = None
     requestPercent: float | None = None
@@ -29,6 +32,7 @@ class ProviderUsageItem(BaseModel):
     remainingRequests: int | None = None
     remainingTokens: int | None = None
     unlimited: bool = False
+    limitsConfigured: bool = False
 
 
 class BraveUsageItem(BaseModel):
@@ -39,6 +43,7 @@ class BraveUsageItem(BaseModel):
     percent: float | None = None
     remainingQueries: int | None = None
     unlimited: bool = False
+    limitConfigured: bool = False
 
 
 class ModelUsageDashboardResponse(BaseModel):

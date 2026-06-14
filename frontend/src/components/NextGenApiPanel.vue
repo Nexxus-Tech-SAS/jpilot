@@ -5,74 +5,79 @@
     </div>
 
     <div v-else class="flex flex-column gap-4">
-      <div class="grid">
+      <nav class="nextgen-nav">
+        <ul class="nextgen-nav-list">
+          <li
+            v-for="tab in tabs"
+            :key="tab.key"
+            class="nextgen-nav-item"
+            :class="{ 'is-active': activeTab === tab.key }"
+          >
+            <a class="nextgen-nav-link" @click="selectTab(tab.key)">
+              <i :class="[tab.icon, 'nextgen-nav-icon']" />
+              <span>{{ tab.label }}</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <div v-show="activeTab === 'tools'" class="grid">
         <div class="col-12 lg:col-8">
           <div class="content-panel content-panel-padded">
-            <h2 class="section-title">Connection</h2>
-            <p class="section-copy">Timeouts, SSL verification, and SSH fallback for MCP tools.</p>
-
-            <div class="flex flex-column gap-4 mt-4">
-              <div class="flex flex-column gap-2 setting-row">
-                <label for="nitroTimeout" class="setting-label">Next-Gen API timeout (seconds)</label>
-                <InputNumber
-                  id="nitroTimeout"
-                  v-model="mcpSettings.nitroTimeoutSeconds"
-                  :min="5"
-                  :max="120"
-                  show-buttons
-                  class="timeout-input"
-                />
+            <div class="flex align-items-start justify-content-between gap-3 flex-wrap mb-4">
+              <div>
+                <h2 class="section-title">Available options</h2>
+                <p class="section-copy">Enable or disable individual MCP tools exposed to JPilot.</p>
               </div>
-
-              <div class="flex align-items-center justify-content-between gap-3 setting-row">
-                <div>
-                  <div class="setting-label">Verify SSL certificates</div>
-                  <div class="setting-hint">Disable for appliances with self-signed certificates (default off).</div>
-                </div>
-                <ToggleSwitch v-model="mcpSettings.verifySsl" />
-              </div>
-
-              <div class="flex align-items-center justify-content-between gap-3 setting-row">
-                <div>
-                  <div class="setting-label">SSH fallback</div>
-                  <div class="setting-hint">
-                    When Next-Gen API cannot answer, JPilot may run read-only show/stat/get commands via SSH.
-                  </div>
-                </div>
-                <ToggleSwitch v-model="mcpSettings.sshFallbackEnabled" />
-              </div>
-
-              <div class="flex flex-column gap-2 setting-row">
-                <label for="sshPort" class="setting-label">SSH port</label>
-                <InputNumber id="sshPort" v-model="mcpSettings.sshPort" :min="1" :max="65535" show-buttons class="timeout-input" />
-              </div>
-
-              <div class="flex flex-column gap-2 setting-row">
-                <label for="sshTimeout" class="setting-label">SSH timeout (seconds)</label>
-                <InputNumber
-                  id="sshTimeout"
-                  v-model="mcpSettings.sshTimeoutSeconds"
-                  :min="5"
-                  :max="120"
-                  show-buttons
-                  class="timeout-input"
-                />
-              </div>
-
-              <div class="flex gap-2 pt-2">
-                <Button
-                  label="Save settings"
-                  icon="pi pi-save"
-                  size="small"
-                  :loading="saving"
-                  @click="saveSettings"
-                />
-              </div>
-
-              <Message v-if="message" :severity="messageSeverity" :closable="false">
-                {{ message }}
-              </Message>
+              <Button
+                label="Save tool settings"
+                icon="pi pi-save"
+                size="small"
+                :loading="saving"
+                @click="saveSettings"
+              />
             </div>
+
+            <Message v-if="message" class="mb-3" :severity="messageSeverity" :closable="false">
+              {{ message }}
+            </Message>
+
+            <DataTable :value="nextGenOptions" size="small" striped-rows class="options-table">
+              <Column field="label" header="Option">
+                <template #body="{ data }">
+                  <div class="option-label">{{ data.label }}</div>
+                  <div class="setting-hint">{{ data.description }}</div>
+                  <code class="tool-code">{{ data.name }}</code>
+                </template>
+              </Column>
+              <Column header="Next-Gen endpoints">
+                <template #body="{ data }">
+                  <ul v-if="data.nextGenEndpoints?.length" class="endpoint-list m-0 pl-3">
+                    <li v-for="endpoint in data.nextGenEndpoints" :key="endpoint">
+                      <code>{{ endpoint }}</code>
+                    </li>
+                  </ul>
+                  <span v-else class="setting-hint">Platform / docs</span>
+                </template>
+              </Column>
+              <Column header="Available in">
+                <template #body="{ data }">
+                  <div class="surface-tags">
+                    <Tag v-for="surface in data.surfaces" :key="surface" :value="surface" severity="secondary" />
+                  </div>
+                </template>
+              </Column>
+              <Column header="Enabled" style="width: 6rem">
+                <template #body="{ data }">
+                  <ToggleSwitch
+                    v-if="data.configurable"
+                    :model-value="isToolEnabled(data.name)"
+                    @update:model-value="toggleTool(data.name, $event)"
+                  />
+                  <Tag v-else value="Always on" severity="info" />
+                </template>
+              </Column>
+            </DataTable>
           </div>
         </div>
 
@@ -96,6 +101,9 @@
 
           <div class="content-panel content-panel-padded">
             <h3 class="info-title">Connection details</h3>
+            <p class="setting-hint mb-3">
+              Timeouts, SSL, and SSH fallback are configured under Settings → MCP Server.
+            </p>
             <div class="meta-details">
               <div class="meta-item">
                 <span class="meta-label">Transport</span>
@@ -130,14 +138,14 @@
                 <span v-else>—</span>
               </div>
               <div class="meta-item">
-                <span class="meta-label">API reference</span>
+                <span class="meta-label">OpenAPI catalog</span>
                 <a
                   v-if="nextGenApi.apiDocsUrl"
                   :href="nextGenApi.apiDocsUrl"
                   target="_blank"
                   rel="noopener"
                 >
-                  OpenAPI catalog
+                  External API docs
                 </a>
                 <span v-else>—</span>
               </div>
@@ -146,60 +154,27 @@
         </div>
       </div>
 
-      <div class="content-panel content-panel-padded">
-        <h2 class="section-title">Available options</h2>
-        <p class="section-copy">Enable or disable individual MCP tools exposed to JPilot.</p>
+      <div v-show="activeTab === 'reference'" class="content-panel content-panel-padded">
+        <div class="flex align-items-start justify-content-between gap-3 flex-wrap mb-4">
+          <div>
+            <h2 class="section-title">NetScaler API reference</h2>
+            <p class="section-copy">
+              Full endpoint catalog indexed for JPilot RAG ({{ apiOperations.length }} operations).
+            </p>
+          </div>
+          <div v-if="nextGenApi.apiBase" class="reference-meta">
+            <span class="meta-label">API base</span>
+            <code class="api-base-code">{{ nextGenApi.apiBase }}</code>
+          </div>
+        </div>
 
-        <DataTable :value="nextGenOptions" size="small" striped-rows class="options-table mt-4">
-          <Column field="label" header="Option">
-            <template #body="{ data }">
-              <div class="option-label">{{ data.label }}</div>
-              <div class="setting-hint">{{ data.description }}</div>
-              <code class="tool-code">{{ data.name }}</code>
-            </template>
-          </Column>
-          <Column header="Next-Gen endpoints">
-            <template #body="{ data }">
-              <ul v-if="data.nextGenEndpoints?.length" class="endpoint-list m-0 pl-3">
-                <li v-for="endpoint in data.nextGenEndpoints" :key="endpoint">
-                  <code>{{ endpoint }}</code>
-                </li>
-              </ul>
-              <span v-else class="setting-hint">Platform / docs</span>
-            </template>
-          </Column>
-          <Column header="Available in">
-            <template #body="{ data }">
-              <div class="surface-tags">
-                <Tag v-for="surface in data.surfaces" :key="surface" :value="surface" severity="secondary" />
-              </div>
-            </template>
-          </Column>
-          <Column header="Enabled" style="width: 6rem">
-            <template #body="{ data }">
-              <ToggleSwitch
-                v-if="data.configurable"
-                :model-value="isToolEnabled(data.name)"
-                @update:model-value="toggleTool(data.name, $event)"
-              />
-              <Tag v-else value="Always on" severity="info" />
-            </template>
-          </Column>
-        </DataTable>
-      </div>
-
-      <div class="content-panel content-panel-padded">
-        <h2 class="section-title">Next-Gen API reference</h2>
-        <p class="section-copy">
-          Full endpoint catalog indexed for JPilot RAG ({{ apiOperations.length }} operations).
-        </p>
         <DataTable
           :value="apiOperations"
           size="small"
           striped-rows
           paginator
           :rows="12"
-          class="options-table mt-4"
+          class="options-table"
         >
           <Column field="category" header="Category" sortable />
           <Column field="name" header="Operation" sortable />
@@ -215,24 +190,32 @@
           </Column>
         </DataTable>
       </div>
+
+      <BetaFeaturesPanel v-if="activeTab === 'beta'" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
-import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
+import BetaFeaturesPanel from './BetaFeaturesPanel.vue'
 import { getMcpConfig, getMcpStatus, saveMcpConfig } from '../services/mcp'
+
+const route = useRoute()
+const router = useRouter()
+const VALID_TABS = new Set(['tools', 'reference', 'beta'])
 
 const loading = ref(true)
 const saving = ref(false)
+const activeTab = ref('tools')
 const message = ref('')
 const messageSeverity = ref('info')
 const nextGenOptions = ref([])
@@ -245,6 +228,25 @@ const nextGenApi = reactive({
   transport: '',
   auth: ''
 })
+
+const tabs = [
+  { key: 'tools', label: 'NetScaler', icon: 'pi pi-cog' },
+  { key: 'reference', label: 'NetScaler API reference', icon: 'pi pi-book' },
+  { key: 'beta', label: 'Beta features', icon: 'pi pi-flag' }
+]
+
+function selectTab(key) {
+  if (!VALID_TABS.has(key)) return
+  activeTab.value = key
+  router.replace({ query: { ...route.query, section: 'nextgen', tab: key } })
+}
+
+function syncTabFromQuery() {
+  const tab = route.query.tab
+  if (typeof tab === 'string' && VALID_TABS.has(tab)) {
+    activeTab.value = tab
+  }
+}
 
 const apiOperations = computed(() =>
   apiCategories.value.flatMap((group) =>
@@ -259,7 +261,7 @@ const apiOperations = computed(() =>
 
 const mcpSettings = reactive({
   serverUrl: '',
-  serverName: 'netscaler-copilot',
+  serverName: 'jpilot-mcp',
   nitroTimeoutSeconds: 30,
   verifySsl: false,
   enabledTools: [],
@@ -327,7 +329,7 @@ async function loadConfig() {
     })
     await refreshMcpStatus()
   } catch (error) {
-    message.value = error.response?.data?.detail || 'Failed to load Next-Gen API settings'
+    message.value = error.response?.data?.detail || 'Failed to load MCP tool settings'
     messageSeverity.value = 'error'
   } finally {
     loading.value = false
@@ -339,7 +341,7 @@ async function saveSettings() {
   message.value = ''
   try {
     await saveMcpConfig({ ...mcpSettings })
-    message.value = 'Next-Gen API settings saved and synced to the MCP server.'
+    message.value = 'MCP tool settings saved and synced to the MCP server.'
     messageSeverity.value = 'success'
     await refreshMcpStatus()
   } catch (error) {
@@ -350,10 +352,69 @@ async function saveSettings() {
   }
 }
 
-onMounted(loadConfig)
+onMounted(() => {
+  syncTabFromQuery()
+  loadConfig()
+})
+
+watch(() => route.query.tab, syncTabFromQuery)
 </script>
 
 <style scoped>
+.nextgen-nav {
+  border-bottom: 1px solid var(--p-content-border-color);
+  overflow-x: auto;
+}
+
+.nextgen-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: row;
+  white-space: nowrap;
+}
+
+.nextgen-nav-item {
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.nextgen-nav-item.is-active {
+  border-bottom-color: var(--p-primary-color);
+}
+
+.nextgen-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--p-text-muted-color);
+  transition: color 0.15s ease;
+}
+
+.nextgen-nav-item.is-active .nextgen-nav-link {
+  color: var(--p-primary-color);
+}
+
+.nextgen-nav-link:hover {
+  color: var(--p-text-color);
+}
+
+.nextgen-nav-icon {
+  font-size: 1rem;
+}
+
+.reference-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 20rem;
+}
+
 .section-title {
   font-size: 1.125rem;
   font-weight: 600;
@@ -364,21 +425,6 @@ onMounted(loadConfig)
   margin: 0.35rem 0 0;
   color: var(--p-text-muted-color);
   font-size: 0.875rem;
-}
-
-.setting-row {
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--p-content-border-color);
-}
-
-.setting-row:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.setting-label {
-  font-size: 0.9375rem;
-  font-weight: 500;
 }
 
 .setting-hint {
@@ -420,7 +466,6 @@ onMounted(loadConfig)
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  margin-top: 0.75rem;
 }
 
 .meta-item {
@@ -460,10 +505,6 @@ onMounted(loadConfig)
 
 .options-table :deep(.p-datatable-tbody > tr > td) {
   vertical-align: top;
-}
-
-.timeout-input {
-  max-width: 10rem;
 }
 
 .info-title {

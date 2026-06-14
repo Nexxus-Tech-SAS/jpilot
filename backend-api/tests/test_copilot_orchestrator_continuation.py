@@ -14,7 +14,10 @@ from app.services.copilot_orchestration import (
     should_offer_long_task_consent,
     trace_is_state_changing,
 )
-from app.services.copilot_orchestrator import _deployment_may_be_incomplete
+from app.services.copilot_orchestrator import (
+    _deployment_may_be_incomplete,
+    guard_incomplete_lb_success,
+)
 
 
 def test_user_confirmed_execution_detects_spanish_and_english():
@@ -191,3 +194,49 @@ def test_nextgen_create_marks_all_deployment_steps_complete():
     )
     assert bundle.subtasks[1].status == "completed"
     assert bundle.subtasks[2].status == "completed"
+
+
+def test_guard_incomplete_lb_success_when_inventory_down():
+    traces = [
+        ToolCallTrace(
+            name="netscaler_list_virtual_servers",
+            arguments={},
+            result=json.dumps(
+                {
+                    "virtualServers": [
+                        {
+                            "name": "exchange_vs",
+                            "state": "DOWN",
+                            "serverCount": 0,
+                        }
+                    ]
+                }
+            ),
+        )
+    ]
+    content = "Exchange Load Balancer is fully configured and UP!"
+    guarded = guard_incomplete_lb_success(content, traces, role="operator")
+    assert "Deployment may be incomplete" in guarded
+    assert content in guarded
+
+
+def test_guard_incomplete_lb_success_skips_when_inventory_healthy():
+    traces = [
+        ToolCallTrace(
+            name="netscaler_list_virtual_servers",
+            arguments={},
+            result=json.dumps(
+                {
+                    "virtualServers": [
+                        {
+                            "name": "exchange_vs",
+                            "state": "UP",
+                            "serverCount": 2,
+                        }
+                    ]
+                }
+            ),
+        )
+    ]
+    content = "Exchange Load Balancer is fully configured and UP!"
+    assert guard_incomplete_lb_success(content, traces, role="operator") == content

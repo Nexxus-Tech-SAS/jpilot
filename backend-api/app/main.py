@@ -37,6 +37,9 @@ async def lifespan(app: FastAPI):
     await ensure_password_reset_indexes(db)
     await ensure_default_settings(db)
     await ensure_slack_settings(db)
+    from app.services.vendor_catalog_service import ensure_vendor_catalog_settings
+
+    await ensure_vendor_catalog_settings(db)
     await migrate_lm_studio_endpoints(db)
     try:
         mcp_settings = await get_mcp_settings(db)

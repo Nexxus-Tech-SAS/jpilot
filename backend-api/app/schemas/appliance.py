@@ -59,5 +59,7 @@ class ApplianceResponse(BaseModel):
     productId: str | None = None
     tags: list[str] = Field(default_factory=list)
     copilotEligible: bool = True
+    platformEnabled: bool = True
+    chatAvailable: bool = False
     createdAt: datetime = Field(alias="createdAt")
     updatedAt: datetime = Field(alias="updatedAt")

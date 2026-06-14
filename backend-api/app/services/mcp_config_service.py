@@ -60,7 +60,7 @@ def default_settings() -> dict:
     return {
         "_id": SETTINGS_ID,
         "serverUrl": app_settings.mcp_server_url,
-        "serverName": "netscaler-copilot",
+        "serverName": "jpilot-mcp",
         "nitroTimeoutSeconds": 30,
         "verifySsl": False,
         "enabledTools": list(ALL_TOOL_NAMES),
@@ -83,6 +83,12 @@ async def ensure_default_settings(db: AsyncIOMotorDatabase) -> None:
         await db.mcpSettings.update_one(
             {"_id": SETTINGS_ID},
             {"$set": {"serverUrl": app_settings.mcp_server_url, "updatedAt": utc_now()}},
+        )
+
+    if existing.get("serverName") == "netscaler-copilot":
+        await db.mcpSettings.update_one(
+            {"_id": SETTINGS_ID},
+            {"$set": {"serverName": "jpilot-mcp", "updatedAt": utc_now()}},
         )
 
     enabled_tools = existing.get("enabledTools", [])
@@ -152,7 +158,7 @@ def serialize_settings(document: dict) -> MCPSettingsResponse:
     return MCPSettingsResponse(
         id=str(document["_id"]),
         serverUrl=document["serverUrl"],
-        serverName=document.get("serverName", "netscaler-copilot"),
+        serverName=document.get("serverName", "jpilot-mcp"),
         nitroTimeoutSeconds=document.get("nitroTimeoutSeconds", 30),
         verifySsl=document.get("verifySsl", False),
         enabledTools=document.get("enabledTools", list(ALL_TOOL_NAMES)),

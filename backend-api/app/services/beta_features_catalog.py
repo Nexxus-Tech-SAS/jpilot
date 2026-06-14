@@ -192,9 +192,5 @@ def get_beta_features_info() -> dict:
         "productCount": len(BETA_PRODUCTS),
         "configurableToolCount": len(configurable),
         "transport": "SSH",
-        "sshSettingsNote": (
-            "SSH port, timeout, and fallback are configured on the Next-Gen API settings tab "
-            "(shared MCP runtime)."
-        ),
         "statusLabel": "Beta Available",
     }

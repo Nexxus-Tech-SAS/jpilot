@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class MCPSettingsUpdate(BaseModel):
     serverUrl: str
-    serverName: str = "netscaler-copilot"
+    serverName: str = "jpilot-mcp"
     nitroTimeoutSeconds: int = Field(default=30, ge=5, le=120)
     verifySsl: bool = False
     enabledTools: list[str] = Field(default_factory=list)

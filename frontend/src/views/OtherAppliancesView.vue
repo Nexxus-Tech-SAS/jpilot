@@ -99,7 +99,12 @@
         <Column header="JPilot">
           <template #body="{ data }">
             <Tag
-              v-if="data.copilotEligible"
+              v-if="!data.platformEnabled && data.copilotEligible"
+              value="Platform off"
+              severity="warn"
+            />
+            <Tag
+              v-else-if="data.copilotEligible"
               :value="data.enabled ? 'Enabled' : 'Disabled'"
               :severity="data.enabled ? 'success' : 'secondary'"
             />
@@ -148,7 +153,7 @@
                 @click="openEditDialog(data)"
               />
               <Button
-                v-if="data.copilotEligible"
+                v-if="data.copilotEligible && data.platformEnabled"
                 v-tooltip="adminTooltip(data.enabled ? 'Disable' : 'Enable')"
                 :icon="data.enabled ? 'pi pi-ban' : 'pi pi-check'"
                 text
@@ -174,33 +179,12 @@
       </DataTable>
     </div>
 
-    <div v-show="activeTab === 'inventory'" class="content-panel vendor-support-panel">
-      <h3 class="roadmap-title">Vendor support</h3>
-      <p class="roadmap-copy">
-        JPilot automation availability by platform. Register any product to prepare your inventory;
-        supported platforms can be enabled for chat.
-      </p>
-      <div class="vendor-grid">
-        <div
-          v-for="item in vendorSupport"
-          :key="item.id"
-          class="vendor-card"
-          :class="{ 'vendor-card--supported': item.status === 'supported' || item.status === 'beta' }"
-        >
-          <div class="vendor-card-head">
-            <div class="vendor-card-titles">
-              <span class="vendor-name">{{ item.label }}</span>
-              <span class="vendor-family">{{ item.vendorGroupLabel }}</span>
-            </div>
-            <Tag :value="item.statusLabel" :severity="item.tagSeverity" />
-          </div>
-          <p class="vendor-desc">{{ item.description }}</p>
-        </div>
-      </div>
-    </div>
-
     <div v-show="activeTab === 'ssl'">
       <SslCsrPanel />
+    </div>
+
+    <div v-show="activeTab === 'vendors'">
+      <VendorsPanel ref="vendorsPanelRef" @changed="onVendorCatalogChanged" />
     </div>
 
     <Dialog
@@ -233,7 +217,7 @@
           <p class="step-title">Select vendor</p>
           <div class="picker-list">
             <button
-              v-for="group in vendorGroups"
+              v-for="group in vendorGroupsForWizard"
               :key="group.id"
               type="button"
               class="picker-item"
@@ -278,7 +262,7 @@
             <p class="unsupported-title">Device not supported yet, coming soon</p>
             <p class="unsupported-copy">
               JPilot automation for {{ selectedProduct?.label }} is not available yet. Pick another device
-              or check Vendor support below the inventory for the roadmap.
+              or review the Vendors tab for supported platforms.
             </p>
           </div>
 
@@ -465,15 +449,24 @@
             </div>
           </div>
         </TabPanel>
-        <TabPanel header="Applications">
-          <DataTable :value="inspectData.applications" size="small" striped-rows>
+        <TabPanel header="Virtual servers">
+          <DataTable
+            v-if="inspectData.virtualServers.length"
+            :value="inspectData.virtualServers"
+            size="small"
+            striped-rows
+          >
             <Column field="name" header="Name" />
             <Column field="virtualIp" header="Virtual IP" />
             <Column field="protocol" header="Protocol" />
             <Column field="port" header="Port" />
             <Column field="serverCount" header="Servers" />
             <Column field="state" header="State" />
+            <Column field="type" header="Type" />
           </DataTable>
+          <p v-else class="empty-hint m-0">
+            No load-balancing virtual servers found (Next-Gen applications or classic lb vserver).
+          </p>
         </TabPanel>
       </TabView>
       <div v-else class="empty-hint">No inspection data available.</div>
@@ -500,6 +493,7 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 import SslCsrPanel from '../components/SslCsrPanel.vue'
+import VendorsPanel from '../components/VendorsPanel.vue'
 import ApplianceNameLabel from '../components/ApplianceNameLabel.vue'
 import {
   getProductById,
@@ -508,10 +502,10 @@ import {
   productSelectOptions,
   resolveApplianceProduct,
   VENDOR_GROUPS,
-  VENDOR_SUPPORT,
   vendorLabel
 } from '../config/applianceVendors'
 import api from '../services/api'
+import { getVendorCatalog } from '../services/vendorCatalog'
 import { getStoredUser } from '../services/auth'
 
 const route = useRoute()
@@ -519,14 +513,16 @@ const router = useRouter()
 const confirm = useConfirm()
 const toast = useToast()
 
-const vendorSupport = VENDOR_SUPPORT
 const vendorGroups = VENDOR_GROUPS
+const vendorsPanelRef = ref(null)
+const vendorCatalog = ref(null)
 
 const currentUser = ref(getStoredUser())
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 
 const tabs = [
   { key: 'inventory', label: 'Inventory', icon: 'pi pi-server' },
+  { key: 'vendors', label: 'Vendors', icon: 'pi pi-building' },
   { key: 'ssl', label: 'SSL Certificates', icon: 'pi pi-shield' }
 ]
 const tabKeys = new Set(tabs.map((tab) => tab.key))
@@ -607,7 +603,42 @@ const emptyForm = () => ({
 
 const form = reactive(emptyForm())
 
-const productOptions = computed(() => productSelectOptions(form.vendorGroupId))
+const enabledProductIds = computed(() => {
+  if (!vendorCatalog.value) return null
+  const ids = new Set()
+  for (const group of vendorCatalog.value.groups || []) {
+    for (const product of group.products || []) {
+      if (product.toggleable && product.platformEnabled) {
+        ids.add(product.id)
+      }
+    }
+  }
+  return ids
+})
+
+const vendorGroupsForWizard = computed(() =>
+  vendorGroups.filter((group) =>
+    productSelectOptions(group.id).some((option) => {
+      if (option.disabled) return false
+      if (!enabledProductIds.value) return true
+      return enabledProductIds.value.has(option.id)
+    })
+  )
+)
+
+const productOptions = computed(() =>
+  productSelectOptions(form.vendorGroupId).map((option) => {
+    const platformOff =
+      !option.disabled &&
+      enabledProductIds.value &&
+      !enabledProductIds.value.has(option.id)
+    return {
+      ...option,
+      disabled: option.disabled || platformOff,
+      statusLabel: platformOff ? 'Disabled on platform' : option.statusLabel
+    }
+  })
+)
 
 const selectedVendorGroup = computed(() => vendorGroups.find((g) => g.id === form.vendorGroupId) || null)
 
@@ -729,6 +760,18 @@ function environmentSeverity(environment) {
   return map[environment] || 'secondary'
 }
 
+async function loadVendorCatalog() {
+  try {
+    vendorCatalog.value = await getVendorCatalog()
+  } catch {
+    vendorCatalog.value = null
+  }
+}
+
+async function onVendorCatalogChanged() {
+  await Promise.all([loadAppliances(), loadVendorCatalog()])
+}
+
 async function loadAppliances() {
   loading.value = true
   try {
@@ -816,6 +859,20 @@ function formatLabel(key) {
   return key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase())
 }
 
+function normalizeInspectVirtualServers(payload) {
+  const rows = Array.isArray(payload) ? payload : payload?.virtualServers
+  if (!Array.isArray(rows)) return []
+  return rows.map((row) => ({
+    name: row.name || '—',
+    virtualIp: row.virtualIp || row.virtual_ip || '—',
+    protocol: row.protocol || '—',
+    port: row.port ?? '—',
+    serverCount: row.serverCount ?? (Array.isArray(row.servers) ? row.servers.length : '—'),
+    state: row.state || row.status || '—',
+    type: row.type === 'classic' ? 'Classic' : row.type === 'nextgen' ? 'Next-Gen' : row.source || '—'
+  }))
+}
+
 async function inspectAppliance(appliance) {
   inspectingId.value = appliance.id
   inspectData.value = null
@@ -833,7 +890,7 @@ async function inspectAppliance(appliance) {
     }
     inspectData.value = {
       systemInfo: systemRes.data.data,
-      applications: lbRes.data.data
+      virtualServers: normalizeInspectVirtualServers(lbRes.data.data)
     }
     inspectVisible.value = true
   } catch (error) {
@@ -901,8 +958,13 @@ async function toggleEnabled(appliance) {
     const endpoint = appliance.enabled ? 'disable' : 'enable'
     await api.patch(`/appliances/${appliance.id}/${endpoint}`)
     await loadAppliances()
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update status', life: 3000 })
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err.response?.data?.detail || 'Failed to update status',
+      life: 4000
+    })
   }
 }
 
@@ -927,6 +989,7 @@ function confirmDelete(appliance) {
 onMounted(() => {
   applyTabFromQuery()
   loadAppliances()
+  loadVendorCatalog()
   api
     .get('/auth/me')
     .then(({ data }) => {
@@ -965,72 +1028,6 @@ onMounted(() => {
   .appliances-toolbar .search-input {
     width: 14rem;
   }
-}
-
-.vendor-support-panel {
-  margin-top: 1.25rem;
-  padding: 1.25rem;
-}
-
-.roadmap-title {
-  margin: 0 0 0.35rem;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.roadmap-copy {
-  margin: 0 0 1rem;
-  color: var(--p-text-muted-color);
-  font-size: 0.875rem;
-}
-
-.vendor-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-  gap: 0.75rem;
-}
-
-.vendor-card {
-  border: 1px solid var(--p-content-border-color);
-  border-radius: 0.75rem;
-  padding: 0.875rem;
-  background: var(--app-nested-surface);
-}
-
-.vendor-card--supported {
-  border-color: color-mix(in srgb, var(--p-green-500) 55%, var(--p-content-border-color));
-  background: color-mix(in srgb, var(--p-green-50) 35%, var(--app-nested-surface));
-}
-
-.vendor-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.35rem;
-}
-
-.vendor-card-titles {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.vendor-name {
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.vendor-family {
-  font-size: 0.75rem;
-  color: var(--p-text-muted-color);
-}
-
-.vendor-desc {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: var(--p-text-muted-color);
 }
 
 .appliances-nav {

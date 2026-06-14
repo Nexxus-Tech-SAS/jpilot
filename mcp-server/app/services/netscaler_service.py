@@ -231,6 +231,34 @@ class NextGenClient:
             self.username,
             self.password,
         )
+        vserver_sg_bindings = await _fetch_nitro_bindings(
+            self._client,
+            self.host,
+            self.username,
+            self.password,
+            "lbvserver_servicegroup_binding",
+            "lbvserver_servicegroup_binding",
+        )
+        vserver_service_bindings = await _fetch_nitro_bindings(
+            self._client,
+            self.host,
+            self.username,
+            self.password,
+            "lbvserver_service_binding",
+            "lbvserver_service_binding",
+        )
+        sg_members = await _fetch_nitro_servicegroup_members(
+            self._client,
+            self.host,
+            self.username,
+            self.password,
+        )
+        nitro_vservers = _enrich_classic_lbvservers_with_bindings(
+            nitro_vservers,
+            vserver_sg_bindings=vserver_sg_bindings,
+            vserver_service_bindings=vserver_service_bindings,
+            sg_members=sg_members,
+        )
         classic_count = 0
         for item in nitro_vservers:
             name = str(item.get("name") or "")
@@ -1102,6 +1130,49 @@ async def _fetch_nitro_lbvservers(
     return rows
 
 
+def _enrich_classic_lbvservers_with_bindings(
+    vservers: list[dict[str, Any]],
+    *,
+    vserver_sg_bindings: list[dict[str, Any]],
+    vserver_service_bindings: list[dict[str, Any]],
+    sg_members: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    sg_member_counts: dict[str, int] = {}
+    for member in sg_members:
+        group_name = str(member.get("servicegroupname") or "")
+        if group_name:
+            sg_member_counts[group_name] = sg_member_counts.get(group_name, 0) + 1
+
+    vserver_to_sgs: dict[str, list[str]] = {}
+    for binding in vserver_sg_bindings:
+        vserver_name = str(binding.get("name") or binding.get("lbvserver") or "")
+        group_name = str(binding.get("servicegroupname") or "")
+        if vserver_name and group_name:
+            vserver_to_sgs.setdefault(vserver_name, []).append(group_name)
+
+    vserver_to_services: dict[str, int] = {}
+    for binding in vserver_service_bindings:
+        vserver_name = str(binding.get("name") or binding.get("lbvserver") or "")
+        service_name = str(binding.get("servicename") or binding.get("service") or "")
+        if vserver_name and service_name:
+            vserver_to_services[vserver_name] = vserver_to_services.get(vserver_name, 0) + 1
+
+    enriched: list[dict[str, Any]] = []
+    for item in vservers:
+        name = str(item.get("name") or "")
+        bound_groups = vserver_to_sgs.get(name, [])
+        server_count = sum(sg_member_counts.get(group, 0) for group in bound_groups)
+        server_count += vserver_to_services.get(name, 0)
+        enriched.append(
+            {
+                **item,
+                "serverCount": server_count,
+                "servers": bound_groups,
+            }
+        )
+    return enriched
+
+
 def _has_session_cookie(response: httpx.Response) -> bool:
     if response.cookies.get("sessionid"):
         return True
@@ -1857,9 +1928,11 @@ async def add_ip_address(
         return result
 
 
-# Backward-compatible alias used by existing REST routes.
+# Backward-compatible alias used by existing REST routes (inventory inspect).
 async def list_lb_vservers(host: str, username: str, password: str) -> list[dict[str, Any]]:
-    return await list_applications(host, username, password)
+    result = await list_virtual_servers(host, username, password)
+    virtual_servers = result.get("virtualServers")
+    return virtual_servers if isinstance(virtual_servers, list) else []
 
 
 async def generate_ssl_csr(

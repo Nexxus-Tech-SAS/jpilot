@@ -355,11 +355,6 @@ const mainNavGroups = [
       { label: 'Chat', path: '/jpilot', icon: 'pi pi-comments' },
       { label: 'Chat', path: '/jpilot/beta', icon: 'pi pi-sparkles', beta: true }
     ]
-  },
-  {
-    id: 'inventory',
-    label: '',
-    items: [{ label: 'Appliances', path: '/appliances', icon: 'pi pi-server' }]
   }
 ]
 

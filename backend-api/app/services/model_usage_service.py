@@ -145,7 +145,6 @@ async def ensure_usage_limits(db: AsyncIOMotorDatabase) -> dict[str, Any]:
     if existing is None:
         doc = {
             "_id": USAGE_LIMITS_ID,
-            "braveMonthlyQueryLimit": DEFAULT_BRAVE_MONTHLY_QUERIES,
             "providers": {},
             "updatedAt": utc_now(),
         }
@@ -184,12 +183,24 @@ async def _get_counter(
 ) -> dict[str, Any]:
     doc = await db.modelUsageCounters.find_one({"_id": _counter_document_id(counter_key, period_key)})
     if doc is None:
-        return {"requests": 0, "tokens": 0, "queries": 0}
+        return {"requests": 0, "tokens": 0, "inputTokens": 0, "outputTokens": 0, "queries": 0}
     return {
         "requests": int(doc.get("requests") or 0),
         "tokens": int(doc.get("tokens") or 0),
+        "inputTokens": int(doc.get("inputTokens") or 0),
+        "outputTokens": int(doc.get("outputTokens") or 0),
         "queries": int(doc.get("queries") or 0),
     }
+
+
+def _avg_tokens_per_request(tokens_used: int, requests_used: int) -> int | None:
+    if requests_used <= 0:
+        return None
+    return round(tokens_used / requests_used)
+
+
+def _provider_limits_configured(custom: dict[str, Any]) -> bool:
+    return "monthlyTokenLimit" in custom or "monthlyRequestLimit" in custom
 
 
 async def record_provider_usage(
@@ -197,15 +208,24 @@ async def record_provider_usage(
     *,
     provider_id: str,
     tokens: int = 0,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
     requests: int = 1,
 ) -> None:
     period_key = current_period_key()
     counter_key = _provider_counter_id(provider_id)
     doc_id = _counter_document_id(counter_key, period_key)
+    inc: dict[str, int] = {
+        "requests": requests,
+        "tokens": max(0, tokens),
+    }
+    if input_tokens or output_tokens:
+        inc["inputTokens"] = max(0, input_tokens)
+        inc["outputTokens"] = max(0, output_tokens)
     await db.modelUsageCounters.update_one(
         {"_id": doc_id},
         {
-            "$inc": {"requests": requests, "tokens": max(0, tokens)},
+            "$inc": inc,
             "$set": {"updatedAt": utc_now(), "period": period_key, "counterKey": counter_key},
             "$setOnInsert": {"_id": doc_id},
         },
@@ -234,8 +254,15 @@ async def record_llm_response_usage(
     provider_type: str,
     response_data: dict[str, Any],
 ) -> None:
-    tokens = extract_token_usage(provider_type, response_data)
-    await record_provider_usage(db, provider_id=provider_id, tokens=tokens, requests=1)
+    details = extract_llm_usage_details(provider_type, response_data)
+    await record_provider_usage(
+        db,
+        provider_id=provider_id,
+        tokens=details["total_tokens"],
+        input_tokens=details["input_tokens"],
+        output_tokens=details["output_tokens"],
+        requests=1,
+    )
 
 
 @dataclass
@@ -244,10 +271,15 @@ class UsageAccumulator:
 
     requests: int = 0
     tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
 
     def add_llm_response(self, provider_type: str, response_data: dict[str, Any]) -> None:
+        details = extract_llm_usage_details(provider_type, response_data)
         self.requests += 1
-        self.tokens += extract_token_usage(provider_type, response_data)
+        self.input_tokens += details["input_tokens"]
+        self.output_tokens += details["output_tokens"]
+        self.tokens += details["total_tokens"]
 
 
 async def flush_usage_accumulator(
@@ -263,13 +295,17 @@ async def flush_usage_accumulator(
                 db,
                 provider_id=provider_id,
                 tokens=accumulator.tokens,
+                input_tokens=accumulator.input_tokens,
+                output_tokens=accumulator.output_tokens,
                 requests=accumulator.requests,
             )
             logger.info(
-                "usage_recorded provider=%s requests=%s tokens=%s period=%s",
+                "usage_recorded provider=%s requests=%s tokens=%s input=%s output=%s period=%s",
                 provider_id,
                 accumulator.requests,
                 accumulator.tokens,
+                accumulator.input_tokens,
+                accumulator.output_tokens,
                 current_period_key(),
             )
     except Exception:
@@ -282,6 +318,7 @@ async def update_usage_limits(db: AsyncIOMotorDatabase, payload: UsageLimitsUpda
 
     if payload.braveMonthlyQueryLimit is not None:
         update["braveMonthlyQueryLimit"] = payload.braveMonthlyQueryLimit
+        update["braveLimitConfigured"] = True
 
     if payload.providers:
         doc = await db.usageLimits.find_one({"_id": USAGE_LIMITS_ID}) or {}
@@ -305,11 +342,12 @@ async def get_usage_dashboard(db: AsyncIOMotorDatabase) -> ModelUsageDashboardRe
     limits_doc = await ensure_usage_limits(db)
     platform = await get_platform_settings(db)
 
-    brave_limit = limits_doc.get("braveMonthlyQueryLimit", DEFAULT_BRAVE_MONTHLY_QUERIES)
+    brave_limit_configured = bool(limits_doc.get("braveLimitConfigured"))
+    brave_limit = limits_doc.get("braveMonthlyQueryLimit") if brave_limit_configured else None
     brave_counter = await _get_counter(db, BRAVE_COUNTER_ID, period_key)
     brave_used = brave_counter["queries"]
     brave_unlimited = brave_limit is None
-    brave_percent = _percent(brave_used, brave_limit)
+    brave_percent = _percent(brave_used, brave_limit) if brave_limit_configured else None
 
     brave_item = BraveUsageItem(
         configured=platform.hasBraveSearchApiKey,
@@ -317,8 +355,9 @@ async def get_usage_dashboard(db: AsyncIOMotorDatabase) -> ModelUsageDashboardRe
         queriesUsed=brave_used,
         monthlyQueryLimit=brave_limit,
         percent=brave_percent,
-        remainingQueries=_remaining(brave_used, brave_limit),
+        remainingQueries=_remaining(brave_used, brave_limit) if brave_limit_configured else None,
         unlimited=brave_unlimited,
+        limitConfigured=brave_limit_configured,
     )
 
     provider_items: list[ProviderUsageItem] = []
@@ -327,13 +366,21 @@ async def get_usage_dashboard(db: AsyncIOMotorDatabase) -> ModelUsageDashboardRe
         serialized = serialize_ai_provider(doc)
         provider_id = serialized["id"]
         custom = (limits_doc.get("providers") or {}).get(provider_id) or {}
-        token_limit, request_limit, unlimited = resolve_limits(serialized["providerType"], custom)
+        limits_configured = _provider_limits_configured(custom)
+        if limits_configured:
+            token_limit, request_limit, unlimited = resolve_limits(serialized["providerType"], custom)
+        else:
+            token_limit = None
+            request_limit = None
+            unlimited = True
         counter = await _get_counter(db, _provider_counter_id(provider_id), period_key)
         requests_used = counter["requests"]
         tokens_used = counter["tokens"]
-        request_percent = _percent(requests_used, request_limit)
-        token_percent = _percent(tokens_used, token_limit)
-        if unlimited:
+        input_tokens_used = counter["inputTokens"]
+        output_tokens_used = counter["outputTokens"]
+        request_percent = _percent(requests_used, request_limit) if limits_configured else None
+        token_percent = _percent(tokens_used, token_limit) if limits_configured else None
+        if not limits_configured or unlimited:
             primary_percent = None
         elif token_limit is not None and request_limit is not None:
             primary_percent = max(request_percent or 0.0, token_percent or 0.0)
@@ -352,14 +399,18 @@ async def get_usage_dashboard(db: AsyncIOMotorDatabase) -> ModelUsageDashboardRe
                 isDefault=serialized["isDefault"],
                 requestsUsed=requests_used,
                 tokensUsed=tokens_used,
-                monthlyRequestLimit=request_limit,
-                monthlyTokenLimit=token_limit,
+                inputTokensUsed=input_tokens_used,
+                outputTokensUsed=output_tokens_used,
+                avgTokensPerRequest=_avg_tokens_per_request(tokens_used, requests_used),
+                monthlyRequestLimit=request_limit if limits_configured else None,
+                monthlyTokenLimit=token_limit if limits_configured else None,
                 requestPercent=request_percent,
                 tokenPercent=token_percent,
                 primaryPercent=primary_percent,
-                remainingRequests=_remaining(requests_used, request_limit),
-                remainingTokens=_remaining(tokens_used, token_limit),
+                remainingRequests=_remaining(requests_used, request_limit) if limits_configured else None,
+                remainingTokens=_remaining(tokens_used, token_limit) if limits_configured else None,
                 unlimited=unlimited,
+                limitsConfigured=limits_configured,
             )
         )
 

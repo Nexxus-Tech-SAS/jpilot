@@ -37,7 +37,7 @@ ALL_TOOL_NAMES = [
 
 @dataclass
 class MCPRuntimeConfig:
-    server_name: str = "netscaler-copilot"
+    server_name: str = "jpilot-mcp"
     nitro_timeout_seconds: int = 30
     verify_ssl: bool = False
     enabled_tools: list[str] = field(default_factory=lambda: list(ALL_TOOL_NAMES))
@@ -58,7 +58,7 @@ def update_runtime_config(payload: dict) -> MCPRuntimeConfig:
     global _runtime_config
     enabled_tools = payload.get("enabledTools") or list(ALL_TOOL_NAMES)
     _runtime_config = MCPRuntimeConfig(
-        server_name=payload.get("serverName", "netscaler-copilot"),
+        server_name=payload.get("serverName", "jpilot-mcp"),
         nitro_timeout_seconds=int(payload.get("nitroTimeoutSeconds", 30)),
         verify_ssl=bool(payload.get("verifySsl", False)),
         enabled_tools=[name for name in enabled_tools if name in ALL_TOOL_NAMES],

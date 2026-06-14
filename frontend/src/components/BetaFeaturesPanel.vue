@@ -5,13 +5,6 @@
     </div>
 
     <div v-else class="flex flex-column gap-4">
-      <Message severity="info" :closable="false">
-        {{ betaFeatures.sshSettingsNote }}
-        <RouterLink class="beta-nextgen-link" :to="{ path: '/settings', query: { section: 'nextgen' } }">
-          Open Next-Gen API settings
-        </RouterLink>
-      </Message>
-
       <div class="grid">
         <div class="col-12 lg:col-8">
           <div class="content-panel content-panel-padded">
@@ -70,36 +63,45 @@
         </div>
       </div>
 
-      <div
+      <Panel
         v-for="product in betaProducts"
         :key="product.id"
-        class="content-panel content-panel-padded product-section"
+        toggleable
+        collapsed
+        class="product-section"
       >
-        <div class="product-head">
-          <div>
-            <h2 class="section-title">{{ product.label }}</h2>
-            <p class="section-copy">{{ product.description }}</p>
-            <div class="product-meta">
-              <Tag :value="product.vendorGroup" severity="secondary" />
-              <Tag :value="product.transport" severity="info" />
+        <template #header>
+          <div class="product-head">
+            <div class="product-head-main">
+              <h2 class="section-title">{{ product.label }}</h2>
+              <div class="product-meta">
+                <Tag :value="product.vendorGroup" severity="secondary" />
+                <Tag :value="product.transport" severity="info" />
+                <Tag
+                  :value="`${enabledProductToolCount(product)} / ${configurableProductToolCount(product)} enabled`"
+                  severity="secondary"
+                />
+              </div>
+            </div>
+            <div class="product-actions" @click.stop>
+              <Button
+                label="Enable all"
+                size="small"
+                text
+                @click="setProductTools(product.id, true)"
+              />
+              <Button
+                label="Disable all"
+                size="small"
+                text
+                severity="secondary"
+                @click="setProductTools(product.id, false)"
+              />
             </div>
           </div>
-          <div class="product-actions">
-            <Button
-              label="Enable all"
-              size="small"
-              text
-              @click="setProductTools(product.id, true)"
-            />
-            <Button
-              label="Disable all"
-              size="small"
-              text
-              severity="secondary"
-              @click="setProductTools(product.id, false)"
-            />
-          </div>
-        </div>
+        </template>
+
+        <p class="section-copy m-0">{{ product.description }}</p>
 
         <div v-if="product.docUrls?.length" class="doc-links mt-3">
           <span class="meta-label">Official documentation</span>
@@ -138,18 +140,18 @@
             </template>
           </Column>
         </DataTable>
-      </div>
+      </Panel>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Message from 'primevue/message'
+import Panel from 'primevue/panel'
 import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -164,13 +166,12 @@ const betaFeatures = reactive({
   productCount: 0,
   configurableToolCount: 0,
   transport: 'SSH',
-  sshSettingsNote: '',
   statusLabel: 'Beta Available'
 })
 
 const mcpSettings = reactive({
   serverUrl: '',
-  serverName: 'netscaler-copilot',
+  serverName: 'jpilot-mcp',
   nitroTimeoutSeconds: 30,
   verifySsl: false,
   enabledTools: [],
@@ -227,6 +228,16 @@ function setAllBetaTools(enabled) {
   for (const name of configurableBetaToolNames.value) {
     toggleTool(name, enabled)
   }
+}
+
+function configurableProductToolCount(product) {
+  return (product.options || []).filter((option) => option.configurable).length
+}
+
+function enabledProductToolCount(product) {
+  return (product.options || []).filter(
+    (option) => option.configurable && isToolEnabled(option.name)
+  ).length
 }
 
 async function refreshMcpStatus() {
@@ -331,17 +342,30 @@ onMounted(loadConfig)
 
 .product-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  width: 100%;
+}
+
+.product-head-main {
+  min-width: 0;
+}
+
+.product-section :deep(.p-panel-header) {
+  align-items: center;
+}
+
+.product-section :deep(.p-panel-content) {
+  padding-top: 0.25rem;
 }
 
 .product-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .product-actions {
@@ -374,10 +398,5 @@ onMounted(loadConfig)
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-}
-
-.beta-nextgen-link {
-  margin-left: 0.35rem;
-  font-weight: 500;
 }
 </style>
