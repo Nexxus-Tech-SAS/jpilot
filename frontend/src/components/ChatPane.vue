@@ -4,7 +4,9 @@
     :class="{
       'pane-empty': !session.messages.length,
       'pane-generating': isGenerating,
-      'chat-pane-beta': uiVariant === 'beta'
+      'chat-pane-beta': uiVariant === 'beta',
+      'chat-pane-architect': isArchitectPane(),
+      'chat-pane-design-panel-open': isArchitectPane() && designPanelVisible
     }"
     @mousedown="markPaneFocused"
     @focusin="markPaneFocused"
@@ -126,6 +128,17 @@
               severity="secondary"
               aria-label="Open chats"
               @click="$emit('open-conversations')"
+            />
+            <Button
+              v-if="isArchitectPane()"
+              v-tooltip.bottom="designPanelVisible ? 'Hide design panel' : 'Show design panel'"
+              :icon="designPanelVisible ? 'pi pi-eye-slash' : 'pi pi-file-edit'"
+              text
+              rounded
+              severity="secondary"
+              class="beta-header-design-toggle"
+              aria-label="Toggle design panel"
+              @click="toggleDesignPanel"
             />
             <Button
               v-if="showChatSidebarToggle"
@@ -332,29 +345,40 @@
                       <span>{{ a.name }}</span>
                     </div>
                   </div>
-                  <div v-if="assistantView(msg).content" :class="{ 'chat-error-block': msg.isError }">
-                    <span class="beta-bubble beta-bubble-assistant">
+                  <div v-if="assistantView(msg).content || msg.designDocRevision" :class="{ 'chat-error-block': msg.isError }">
+                    <ArchitectDeliverableCard
+                      v-if="msg.designDocRevision"
+                      :revision="msg.designDocRevision"
+                      :type="session.designDocument?.type"
+                      class="mb-2"
+                      @open-panel="openDesignPanel"
+                    />
+                    <span
+                      v-if="assistantView(msg).content"
+                      class="beta-bubble beta-bubble-assistant"
+                      :class="{ 'architect-summary-bubble': msg.designDocRevision }"
+                    >
                       <ChatMarkdown compact :content="assistantView(msg).content" />
                     </span>
                     <div
-                      v-if="session.role === 'architect' && canDownloadArchitectDeliverable(assistantView(msg).content)"
+                      v-if="isArchitectPane() && msg.designDocRevision && session.designDocument?.markdown"
                       class="design-doc-download"
                     >
                       <Button
-                        v-if="canSendDeliverableToOperator(assistantView(msg).content)"
+                        v-if="canSendDeliverableToOperator(designDocumentHandoffContent())"
                         label="Send to Operator"
                         icon="pi pi-arrow-right"
                         size="small"
                         :disabled="isGenerating"
-                        @click="sendDesignToOperator(assistantView(msg).content)"
+                        @click="sendDesignToOperator()"
                       />
                       <Button
-                        :label="architectDeliverableDownloadLabel(assistantView(msg).content)"
+                        :label="architectDeliverableDownloadLabel(designDocumentHandoffContent())"
                         icon="pi pi-download"
                         size="small"
                         outlined
                         :disabled="isGenerating"
-                        @click="downloadArchitectDeliverableMessage(assistantView(msg).content)"
+                        @click="downloadDesignDocumentFromPanel()"
                       />
                     </div>
                   </div>
@@ -544,12 +568,12 @@
           <div v-if="!showConversationSwitcher" class="beta-footer-actions">
             <Button
               v-if="showCalibrationOffer"
-              v-tooltip.top="'Send this session to Stack Calibration Studio'"
-              label="Send to Calibration"
+              v-tooltip.top="'Send to Calibration Studio'"
               icon="pi pi-sliders-h"
               severity="secondary"
-              text
-              class="beta-calibration-btn"
+              outlined
+              class="beta-footer-calibration"
+              aria-label="Send to Calibration Studio"
               :disabled="calibrationSubmitting"
               @click="openCalibrationDialog"
             />
@@ -693,6 +717,15 @@
         @click="session.webSearch = !session.webSearch"
       />
       <Button
+        v-if="isArchitectPane()"
+        v-tooltip.bottom="designPanelVisible ? 'Hide design panel' : 'Show design panel'"
+        :icon="designPanelVisible ? 'pi pi-eye-slash' : 'pi pi-file-edit'"
+        text
+        rounded
+        size="small"
+        @click="toggleDesignPanel"
+      />
+      <Button
         v-if="session.messages.length"
         v-tooltip.bottom="'Clear conversation'"
         icon="pi pi-eraser"
@@ -807,27 +840,34 @@
                 <span>{{ a.name }}</span>
               </div>
             </div>
-            <div v-if="assistantView(msg).content && msg.role === 'assistant'" :class="{ 'chat-error-block': msg.isError }">
-              <ChatMarkdown :content="assistantView(msg).content" />
+            <div v-if="assistantView(msg).content || msg.designDocRevision" :class="{ 'chat-error-block': msg.isError }">
+              <ArchitectDeliverableCard
+                v-if="msg.designDocRevision"
+                :revision="msg.designDocRevision"
+                :type="session.designDocument?.type"
+                class="mb-2"
+                @open-panel="openDesignPanel"
+              />
+              <ChatMarkdown v-if="assistantView(msg).content" :content="assistantView(msg).content" />
               <div
-                v-if="session.role === 'architect' && canDownloadArchitectDeliverable(assistantView(msg).content)"
+                v-if="isArchitectPane() && msg.designDocRevision && session.designDocument?.markdown"
                 class="design-doc-download"
               >
                 <Button
-                  v-if="canSendDeliverableToOperator(assistantView(msg).content)"
+                  v-if="canSendDeliverableToOperator(designDocumentHandoffContent())"
                   label="Send to Operator"
                   icon="pi pi-arrow-right"
                   size="small"
                   :disabled="isGenerating"
-                  @click="sendDesignToOperator(assistantView(msg).content)"
+                  @click="sendDesignToOperator()"
                 />
                 <Button
-                  :label="architectDeliverableDownloadLabel(assistantView(msg).content)"
+                  :label="architectDeliverableDownloadLabel(designDocumentHandoffContent())"
                   icon="pi pi-download"
                   size="small"
                   outlined
                   :disabled="isGenerating"
-                  @click="downloadArchitectDeliverableMessage(assistantView(msg).content)"
+                  @click="downloadDesignDocumentFromPanel()"
                 />
               </div>
             </div>
@@ -977,6 +1017,18 @@
     </template>
     </template>
 
+    <ArchitectDesignPanel
+      v-if="isArchitectPane() && designPanelVisible"
+      class="architect-design-rail"
+      :document="session.designDocument"
+      :disabled="isGenerating"
+      @close="designPanelVisible = false"
+      @update:markdown="onDesignDocumentEdit"
+      @send-revision="sendDesignDocumentRevision"
+      @send-to-operator="sendDesignToOperator()"
+      @download="downloadDesignDocumentFromPanel()"
+    />
+
     <Dialog
       v-model:visible="calibrationDialogVisible"
       header="Send to Calibration Studio"
@@ -1076,10 +1128,11 @@ import { estimateSessionContextUsage } from '../utils/contextUsage'
 import {
   downloadArchitectDeliverable,
   createArchitectDeliverableAttachment,
-  isArchitectDeliverableMessage,
   canSendDeliverableToOperator,
-  architectDeliverableDownloadLabel
+  architectDeliverableDownloadLabel,
+  JPILOT_CHANGE_CONTROL_MARKER
 } from '../utils/architectDeliverable'
+import { JPILOT_DESIGN_MARKER } from '../utils/designDocument'
 import { resolveBetaHandoffTargetSessionId } from '../stores/betaChatConversations'
 import {
   ARCHITECT_SESSION_ID,
@@ -1113,6 +1166,15 @@ import { isNetScalerVendor } from '../config/applianceVendors'
 import { resolveCommandFilterVendor } from '../config/jpilotRecommendedActions'
 import ChatRoleSwitchPrompt from './ChatRoleSwitchPrompt.vue'
 import BetaChatBackground from './BetaChatBackground.vue'
+import ArchitectDesignPanel from './ArchitectDesignPanel.vue'
+import ArchitectDeliverableCard from './ArchitectDeliverableCard.vue'
+import {
+  applyDeliverableToSession,
+  beginDesignDocumentStreaming,
+  loadDesignPanelVisible,
+  saveDesignPanelVisible,
+  seedDesignDocumentFromAttachment
+} from '../utils/architectDesignDocument'
 import { buildRoleSwitchNotice, getRoleSwitchPrompt } from '../config/jpilotRoleInference'
 import Tag from 'primevue/tag'
 import {
@@ -1173,6 +1235,7 @@ function markPaneFocused() {
 const submittingFormIndex = ref(null)
 const messagesEl = ref(null)
 const pendingAttachments = ref([])
+const designPanelVisible = ref(loadDesignPanelVisible())
 const imageInputRef = ref(null)
 const configInputRef = ref(null)
 const attachMenu = ref(null)
@@ -1587,8 +1650,56 @@ function clearBetaConversation() {
   clearConversation()
 }
 
-function canDownloadArchitectDeliverable(content) {
-  return isArchitectDeliverableMessage(content)
+function designDocumentHandoffContent() {
+  const doc = session.designDocument
+  if (!doc?.markdown) return ''
+  const marker = doc.type === 'change_control' ? JPILOT_CHANGE_CONTROL_MARKER : JPILOT_DESIGN_MARKER
+  return `${marker}\n${doc.markdown}`
+}
+
+function toggleDesignPanel() {
+  designPanelVisible.value = !designPanelVisible.value
+  saveDesignPanelVisible(designPanelVisible.value)
+}
+
+function openDesignPanel() {
+  designPanelVisible.value = true
+  saveDesignPanelVisible(true)
+}
+
+function onDesignDocumentEdit(markdown) {
+  if (!session.designDocument) return
+  session.designDocument.markdown = markdown
+  session.designDocument.dirty = true
+  session.designDocument.updatedAt = new Date().toISOString()
+}
+
+function downloadDesignDocumentFromPanel() {
+  const content = designDocumentHandoffContent()
+  if (!content) return
+  const filename = downloadArchitectDeliverable(content)
+  const isChangeControl = architectDeliverableDownloadLabel(content).includes('change control')
+  toast.add({
+    severity: 'success',
+    summary: isChangeControl ? 'Change control record downloaded' : 'Design document downloaded',
+    detail: filename,
+    life: 3000
+  })
+}
+
+async function sendDesignDocumentRevision() {
+  const doc = session.designDocument
+  if (!doc?.markdown?.trim() || isGenerating.value) return
+  const prompt =
+    session.input.trim() ||
+    'Revise the design document using my panel edits and your latest understanding from this conversation.'
+  session.input = ''
+  await sendMessage(prompt, null, {
+    skipRoleInference: true,
+    designDocumentContext: doc.markdown,
+    includeDesignRevision: true
+  })
+  doc.dirty = false
 }
 
 function downloadArchitectDeliverableMessage(content) {
@@ -1619,14 +1730,24 @@ function sendDesignToOperator(content) {
     })
     return
   }
+  const handoffContent = designDocumentHandoffContent() || content
+  if (!handoffContent) {
+    toast.add({
+      severity: 'warn',
+      summary: 'No design document',
+      detail: 'Generate or attach a design document first.',
+      life: 3500
+    })
+    return
+  }
   try {
-    const attachment = createArchitectDeliverableAttachment(content)
+    const attachment = createArchitectDeliverableAttachment(handoffContent)
     const targetSessionId =
       props.uiVariant === 'beta' || props.sessionId.startsWith('beta-')
         ? resolveBetaHandoffTargetSessionId()
         : props.sessionId.replace(/pane-1$/, 'pane-2')
     queueDesignHandoff({
-      content,
+      content: handoffContent,
       sourceLabel: attachment.name,
       targetSessionId
     })
@@ -1771,6 +1892,9 @@ async function addFiles(fileList) {
       if (attachment.kind === 'image' && !settings.allowImages) throw new Error('Image attachments are disabled in Settings')
       if (attachment.kind === 'config' && !settings.allowConfigFiles) throw new Error('Config file attachments are disabled in Settings')
       pendingAttachments.value.push(attachment)
+      if (isArchitectPane() && attachment.kind === 'config' && seedDesignDocumentFromAttachment(session, attachment)) {
+        openDesignPanel()
+      }
     } catch (error) {
       toast.add({ severity: 'error', summary: 'Attachment failed', detail: error.message, life: 4000 })
     }
@@ -1794,6 +1918,9 @@ function removeAttachment(index) {
 function clearConversation() {
   clearSession(props.sessionId)
   pendingAttachments.value = []
+  if (isArchitectPane()) {
+    designPanelVisible.value = loadDesignPanelVisible()
+  }
 }
 
 const WEB_SEARCH_TOOLS = ['search_netscaler_nextgen_api', 'search_netscaler_cli_reference']
@@ -1916,6 +2043,10 @@ async function runChat(content, attachments, runOptions = {}) {
   beginChatRun(props.sessionId, controller)
   resetGenerationStatus()
   startGenerationTimer()
+  if (isArchitectPane()) {
+    beginDesignDocumentStreaming(session)
+    openDesignPanel()
+  }
   let wasError = false
   let userStopped = false
   await scrollToBottom()
@@ -1942,7 +2073,9 @@ async function runChat(content, attachments, runOptions = {}) {
         providerId: session.providerId || undefined,
         webSearch: session.webSearch !== false,
         deploymentContinuation: Boolean(runOptions.deploymentContinuation),
-        longTaskApproved: Boolean(runOptions.longTaskApproved)
+        longTaskApproved: Boolean(runOptions.longTaskApproved),
+        designDocumentContext: runOptions.designDocumentContext || undefined,
+        includeDesignRevision: Boolean(runOptions.includeDesignRevision)
       },
       {
         signal: controller.signal,
@@ -1950,19 +2083,29 @@ async function runChat(content, attachments, runOptions = {}) {
       }
     )
     const parsed = parseInputFormFromContent(data.content || '')
+    const rawContent = data.content || ''
+    const deliverable = isArchitectPane()
+      ? applyDeliverableToSession(session, rawContent, 'assistant')
+      : { chatContent: parsed.content || rawContent, revision: null }
+    const chatContent =
+      deliverable.revision != null ? deliverable.chatContent : parsed.content || rawContent
     session.messages.push({
       role: 'assistant',
-      content: parsed.content,
+      content: chatContent,
       createdAt: Date.now(),
       toolCalls: data.toolCalls,
       webSources: extractWebSources(data.toolCalls),
       inputForm: data.inputForm || parsed.inputForm,
+      designDocRevision: deliverable.revision || undefined,
       generationStats: lastGenerationStats,
       deploymentContinuation: data.deploymentContinuation || null,
       deploymentSubtasks: data.deploymentContinuation?.subtasks || liveDeploymentSubtasks.value,
       progressTitle: liveProgressTitle.value
     })
   } catch (error) {
+    if (session.designDocument) {
+      session.designDocument.streaming = false
+    }
     if (isChatAbortError(error)) {
       userStopped = true
       session.messages.push({
@@ -2146,6 +2289,9 @@ onMounted(() => {
   markPaneFocused()
   scrollToBottom()
   tryConsumeDesignHandoff()
+  if (isArchitectPane() && session.designDocument?.markdown) {
+    openDesignPanel()
+  }
   getCalibrationFeedbackStatus()
     .then((data) => {
       calibrationFeedbackReady.value = data?.status !== 'disabled'
@@ -3725,7 +3871,63 @@ onUnmounted(() => {
   margin-top: 0.25rem;
 }
 
-.beta-calibration-btn {
-  margin-right: auto;
+.beta-footer-calibration {
+  flex-shrink: 0;
+}
+
+.chat-pane-architect.chat-pane-design-panel-open {
+  position: relative;
+}
+
+.architect-design-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(42%, 24rem);
+  z-index: 4;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.08);
+}
+
+.chat-pane-architect.chat-pane-design-panel-open .beta-shell,
+.chat-pane-architect.chat-pane-design-panel-open .pane-toolbar,
+.chat-pane-architect.chat-pane-design-panel-open .ask-hero,
+.chat-pane-architect.chat-pane-design-panel-open .messages-scroll,
+.chat-pane-architect.chat-pane-design-panel-open .chat-input-bar,
+.chat-pane-architect.chat-pane-design-panel-open .calibration-offer {
+  margin-right: min(42%, 24rem);
+}
+
+.architect-summary-bubble {
+  font-size: 0.875rem;
+}
+
+@media (max-width: 991px) {
+  .chat-pane-architect.chat-pane-design-panel-open .beta-shell,
+  .chat-pane-architect.chat-pane-design-panel-open .pane-toolbar,
+  .chat-pane-architect.chat-pane-design-panel-open .ask-hero,
+  .chat-pane-architect.chat-pane-design-panel-open .messages-scroll,
+  .chat-pane-architect.chat-pane-design-panel-open .chat-input-bar,
+  .chat-pane-architect.chat-pane-design-panel-open .calibration-offer {
+    margin-right: 0;
+  }
+
+  .architect-design-rail {
+    position: relative;
+    width: 100%;
+    height: min(48vh, 28rem);
+    box-shadow: none;
+    border-top: 1px solid var(--p-content-border-color);
+  }
+
+  .chat-pane-architect.chat-pane-design-panel-open {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chat-pane-architect.chat-pane-design-panel-open .beta-shell {
+    flex: 1 1 52%;
+    min-height: 0;
+  }
 }
 </style>

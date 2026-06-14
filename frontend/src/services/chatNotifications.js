@@ -20,7 +20,7 @@ export function shouldNotifyReplyReady(sessionId) {
   if (settings.notifyWhenReplyComplete === false) return false
   if (typeof document !== 'undefined' && document.hidden) return true
   const path = router.currentRoute.value.path
-  if (path !== '/jpilot' && path !== '/jpilot/beta') return true
+  if (path !== '/jpilot/beta' && path !== '/jpilot') return true
   if (getFocusedChatSession() !== sessionId) return true
   return false
 }

@@ -1,5 +1,6 @@
 import { reactive, watch } from 'vue'
 import { normalizeRoleId } from '../config/jpilotRoles'
+import { trimDesignDocumentForStorage } from '../utils/architectDesignDocument'
 import { migrateStorageJson, readStorageJson, writeStorageJson } from '../utils/chatStorage'
 
 // JPilot chat sessions keyed by pane / conversation id (e.g. pane-1, beta-chat-abc).
@@ -17,7 +18,8 @@ function blankSession() {
     webSearch: true,
     pendingMessage: null,
     pendingAttachmentsSnapshot: [],
-    pendingRoleSwitch: null
+    pendingRoleSwitch: null,
+    designDocument: null
   }
 }
 
@@ -46,6 +48,7 @@ function trimSessionsForStorage(sessions) {
       webSearch: session.webSearch !== false,
       pendingMessage: null,
       pendingAttachmentsSnapshot: [],
+      designDocument: trimDesignDocumentForStorage(session.designDocument),
       messages: (session.messages || []).map((m) => ({
         role: m.role,
         content: m.content,
@@ -55,6 +58,7 @@ function trimSessionsForStorage(sessions) {
         appliancePicker: m.appliancePicker || undefined,
         inputForm: m.inputForm || undefined,
         formSubmitted: m.formSubmitted || undefined,
+        designDocRevision: m.designDocRevision || undefined,
         attachments: (m.attachments || []).map((a) => ({
           name: a.name,
           kind: a.kind,
@@ -86,6 +90,7 @@ export function clearSession(id) {
   session.pendingMessage = null
   session.pendingAttachmentsSnapshot = []
   session.pendingRoleSwitch = null
+  session.designDocument = null
   // Intentionally keep connectedAppliance, applianceChoice, and providerId.
 }
 

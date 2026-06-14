@@ -182,6 +182,17 @@ def _conversation_started_with_rich_change_control(conversation_text: str) -> bo
     return False
 
 
+def _change_control_intent_declared_upfront(conversation_text: str) -> bool:
+    """True when the user asked for change control before any discovery form was submitted."""
+    for line in (conversation_text or "").splitlines():
+        if re.match(r"planning inputs for:", line, re.IGNORECASE):
+            return False
+        stripped = line.strip()
+        if stripped and _CHANGE_CONTROL_SIGNAL_RE.search(stripped):
+            return True
+    return False
+
+
 def _uses_bad_discovery_prose(content: str) -> bool:
     if not content or not content.strip():
         return False
@@ -277,6 +288,15 @@ def count_planning_form_submissions(text: str) -> int:
     return len(re.findall(r"planning inputs for:", text or "", re.IGNORECASE))
 
 
+def count_unique_planning_form_submissions(text: str) -> int:
+    titles = re.findall(
+        r"planning inputs for:\s*(.+?)(?:\n|$)",
+        text or "",
+        re.IGNORECASE,
+    )
+    return len({title.strip().lower() for title in titles if title.strip()})
+
+
 def architect_discovery_ready_for_deliverable(
     conversation_text: str,
     planning_intent: str | None,
@@ -288,6 +308,8 @@ def architect_discovery_ready_for_deliverable(
     if planning_intent == "change_control":
         if _conversation_started_with_rich_change_control(conversation_text):
             return count >= 1
+        if _change_control_intent_declared_upfront(conversation_text):
+            return count_unique_planning_form_submissions(conversation_text) >= 3
         return count >= 4
     if planning_intent == "new_deployment":
         return count >= 7
@@ -307,16 +329,25 @@ def architect_tools_enabled(
         return False
     planning_intent = extract_planning_intent(conversation_text, user_message)
     if architect_discovery_ready_for_deliverable(conversation_text, planning_intent):
+        if planning_intent == "change_control":
+            return True
         return False
     if user_wants_deliverable_now(user_message):
         return True
     return False
 
 
-def _deliverable_ready_nudge(*, planning_intent: str | None) -> str:
+def _deliverable_ready_nudge(*, planning_intent: str | None, vendor_id: str = "netscaler") -> str:
     if planning_intent == "change_control":
         marker = "<!-- jpilot-change-control-document -->"
         label = "Change control record"
+        outline_hint = (
+            "Call search_jpilot_architect_resources once with query 'change control outline' if you need section structure, "
+            if vendor_id == "netscaler"
+            else "Follow the change control outline from your Architect prompt, "
+        )
+        tool_hint = f"{outline_hint}then write the document. "
+        handoff_hint = "Include **Handoff for Operator** only if the user requested on-appliance execution."
     else:
         marker = "<!-- jpilot-design-document -->"
         label = (
@@ -324,13 +355,29 @@ def _deliverable_ready_nudge(*, planning_intent: str | None) -> str:
             if planning_intent == "new_functionality"
             else "Design document"
         )
+        tool_hint = "Do NOT call any tools — use conversation history only. "
+        handoff_hint = "End with **Handoff for Operator**."
+
     return (
         f"Discovery is sufficient for this request. {JPILOT_FORM_NOT_A_TOOL_HINT} "
-        "Do NOT call any tools — use conversation history only. "
+        f"{tool_hint}"
+        f"Do NOT output another ```jpilot-form``` or ask more discovery questions. "
         f"Output the complete {label} in one markdown reply. "
         f"First line: {marker}. Include configuration tables and phased implementation steps. "
-        "Mark unknowns **TBD**. End with **Handoff for Operator**. Do not ask more questions."
+        f"Mark unknowns **TBD**. {handoff_hint}"
     )
+
+
+def _should_force_deliverable_output(
+    content: str,
+    *,
+    conversation_text: str,
+    user_message: str,
+) -> bool:
+    if conversation_has_deliverable(conversation_text) or conversation_has_deliverable(content or ""):
+        return False
+    planning_intent = extract_planning_intent(conversation_text, user_message)
+    return architect_discovery_ready_for_deliverable(conversation_text, planning_intent)
 
 
 def _rich_change_control_initial_nudge() -> str:
@@ -427,6 +474,8 @@ def block_architect_tool_during_discovery(
         conversation_text,
         extract_planning_intent(conversation_text, user_message),
     ):
+        if tool_name in ARCHITECT_SEARCH_TOOL_NAMES and search_count < 1:
+            return None
         return (
             f"BLOCKED: Discovery is complete — do not call `{tool_name}` or any other tool. "
             "Write the full deliverable in markdown now (see system instructions)."
@@ -465,10 +514,6 @@ def build_architect_discovery_nudge(
     conversation_text: str = "",
 ) -> str | None:
     """System retry when Architect discovery violates jpilot-form workflow."""
-    _, form = parse_input_form(content or "")
-    if form is not None:
-        return None
-
     vendor_id = (vendor or "netscaler").strip().lower()
     doc_tool = "search_f5_documentation" if vendor_id == "f5" else "search_jpilot_architect_resources"
     if vendor_id == "cisco":
@@ -482,6 +527,20 @@ def build_architect_discovery_nudge(
 
     if has_deliverable and user_wants_deliverable_revision(user_message):
         return _revision_form_nudge()
+
+    if _should_force_deliverable_output(
+        content,
+        conversation_text=conversation_text,
+        user_message=user_message,
+    ):
+        return _deliverable_ready_nudge(
+            planning_intent=planning_intent,
+            vendor_id=vendor_id,
+        )
+
+    _, form = parse_input_form(content or "")
+    if form is not None:
+        return None
 
     form_submit_nudge = build_discovery_form_submit_nudge(
         user_message,
@@ -534,3 +593,29 @@ def architect_discovery_should_retry(
         vendor,
         conversation_text=conversation_text,
     )
+
+
+def append_design_document_revision_context(
+    user_message: str,
+    design_document_context: str,
+    *,
+    include_revision: bool = False,
+) -> str:
+    """Inject the panel document so Architect revises the user's current draft."""
+    doc = (design_document_context or "").strip()
+    if not doc:
+        return user_message
+    prefix = (user_message or "").strip()
+    lead = (
+        "The user clicked Include my edits in the JPilot design panel. "
+        if include_revision
+        else "The user is revising the design document shown in the JPilot design panel. "
+    )
+    nudge = (
+        f"{lead}"
+        "Apply their request to the FULL document below (they may have edited markdown in the panel). "
+        "Keep the correct deliverable HTML comment marker on the first line. "
+        "Output the complete revised document — not a partial diff."
+    )
+    block = f"\n\n--- Current design document ---\n{doc}\n--- end ---\n\n{nudge}"
+    return f"{prefix}{block}" if prefix else block.strip()

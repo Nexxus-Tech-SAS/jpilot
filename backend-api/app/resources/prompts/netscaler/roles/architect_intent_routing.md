@@ -44,6 +44,8 @@ Deliverable: markdown **Functional change design** with `<!-- jpilot-design-docu
 
 **Fast path** — When the user's opening message already requests a change-control deliverable (e.g. firmware HA upgrade plan with prerequisites, risks, rollback, verification), treat `planning_intent` as **change_control** without the planning-intent form. Reply with **one consolidated** ```jpilot-form``` (≤6 fields) for values still unknown (versions, HA pairs, appliance IDs, maintenance window), then generate the document on submit. Do **not** re-ask topics already stated in chat.
 
+**Focused change path** — When the user opens with an explicit change-control request for a narrow scope (e.g. SSL profile tuning for A+ on LB vservers, cert rebinding, policy update), skip the planning-intent form. Use **at most three** discovery forms: (1) change scope & window, (2) validation & rollback, (3) stakeholders — consolidating fields where possible. After the third submit, **generate the change control record immediately**; do not ask validation or rollback again if already captured.
+
 Discovery via ```jpilot-form``` — **one topic per turn** (or one consolidated form on the fast path) until enough is known to populate a generic change record. Priority topics (skip any already answered):
 
 1. **Change classification** — standard / normal / emergency / expedited

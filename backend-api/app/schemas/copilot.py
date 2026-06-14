@@ -58,6 +58,8 @@ class ChatRequest(BaseModel):
     webSearch: bool = True
     deploymentContinuation: bool = False
     longTaskApproved: bool = False
+    designDocumentContext: str | None = None
+    includeDesignRevision: bool = False
 
 
 class CopilotApplianceItem(BaseModel):

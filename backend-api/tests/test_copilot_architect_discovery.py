@@ -51,7 +51,7 @@ def test_rich_change_control_fast_path_nudge():
     )
     nudge = build_architect_session_nudge(msg, conversation_text=msg)
     assert nudge is not None
-    assert "What are you planning?" not in nudge
+    assert "What are you planning?" not in nudge or "do NOT show" in nudge
     assert "ONE ```jpilot-form```" in nudge
     assert "Do NOT call any MCP tools" in nudge
 
@@ -65,13 +65,113 @@ def test_architect_tools_disabled_during_discovery():
     )
 
 
-def test_architect_tools_disabled_when_deliverable_ready():
+def test_architect_tools_enabled_for_change_control_deliverable():
+    conversation = (
+        "let's plan the change control for SSL profile A+ on SSL LB vservers\n"
+        "Planning inputs for: SSL scope\n- vip: vip-production-ssl\n"
+        "Planning inputs for: Validation\n- method: ssllabs_scan\n"
+        "Planning inputs for: Stakeholders\n- owner: Juan\n"
+    )
+    assert architect_discovery_ready_for_deliverable(conversation, "change_control")
+    assert architect_tools_enabled(
+        "architect",
+        "Planning inputs for: Stakeholders\n- owner: Juan\n",
+        conversation_text=conversation,
+    )
+
+
+def test_change_control_ready_after_three_forms_when_intent_upfront():
+    conversation = (
+        "let's plan the change control for SSL profile A+ on SSL LB vservers\n"
+        "Planning inputs for: SSL scope\n- vip: vip-production-ssl\n"
+        "Planning inputs for: Validation\n- method: ssllabs_scan\n"
+        "Planning inputs for: Stakeholders\n- owner: Juan\n"
+    )
+    assert architect_discovery_ready_for_deliverable(conversation, "change_control")
+
+
+def test_change_control_not_ready_after_duplicate_validation_form():
+    conversation = (
+        "let's plan the change control for SSL profile A+ on SSL LB vservers\n"
+        "Planning inputs for: SSL scope\n- vip: vip-production-ssl\n"
+        "Planning inputs for: Validation & Rollback\n- method: ssllabs_scan\n"
+        "Planning inputs for: Validation & Rollback\n- rollback: unbind_profile\n"
+    )
+    assert not architect_discovery_ready_for_deliverable(conversation, "change_control")
+
+
+def test_change_control_ready_after_three_unique_forms_despite_duplicate():
+    conversation = (
+        "let's plan the change control for SSL profile A+ on SSL LB vservers\n"
+        "Planning inputs for: SSL scope\n- vip: vip-production-ssl\n"
+        "Planning inputs for: Validation & Rollback\n- method: ssllabs_scan\n"
+        "Planning inputs for: Validation & Rollback\n- rollback: unbind_profile\n"
+        "Planning inputs for: Change Stakeholders\n- owner: Juan\n"
+    )
+    assert architect_discovery_ready_for_deliverable(conversation, "change_control")
+
+
+def test_force_deliverable_when_ready_but_model_outputs_form():
+    conversation = (
+        "let's plan the change control for SSL profile A+ on SSL LB vservers\n"
+        "Planning inputs for: SSL scope\n- vip: vip-production-ssl\n"
+        "Planning inputs for: Validation\n- method: ssllabs_scan\n"
+        "Planning inputs for: Stakeholders\n- owner: Juan\n"
+    )
+    content = """Thanks.
+
+```jpilot-form
+{"inputForm": {"title": "More validation", "submitLabel": "Continue", "fields": []}}
+```
+"""
+    nudge = build_architect_discovery_nudge(
+        content,
+        "Planning inputs for: Stakeholders\n- owner: Juan\n",
+        "netscaler",
+        conversation_text=conversation,
+    )
+    assert nudge is not None
+    assert "jpilot-change-control-document" in nudge
+    assert "Do NOT output another" in nudge
+
+
+def test_block_allows_one_outline_search_when_deliverable_ready():
+    conversation = (
+        "let's plan the change control for SSL profile A+ on SSL LB vservers\n"
+        "Planning inputs for: SSL scope\n- vip: vip-production-ssl\n"
+        "Planning inputs for: Validation\n- method: ssllabs_scan\n"
+        "Planning inputs for: Stakeholders\n- owner: Juan\n"
+    )
+    blocked = block_architect_tool_during_discovery(
+        "search_jpilot_architect_resources",
+        role="architect",
+        user_message="Planning inputs for: Stakeholders\n- owner: Juan\n",
+        tool_traces=[],
+        conversation_text=conversation,
+    )
+    assert blocked is None
+
+    class Trace:
+        name = "search_jpilot_architect_resources"
+
+    blocked_again = block_architect_tool_during_discovery(
+        "search_jpilot_architect_resources",
+        role="architect",
+        user_message="Planning inputs for: Stakeholders\n- owner: Juan\n",
+        tool_traces=[Trace()],
+        conversation_text=conversation,
+    )
+    assert blocked_again is not None
+    assert "BLOCKED" in blocked_again
+
+
+def test_architect_tools_enabled_for_change_control_outline_search():
     conversation = (
         "Create a phased firmware upgrade plan for HA pairs: prerequisites, risks, rollback.\n"
         "Planning inputs for: Essentials\n- current: 13.1\n- target: 14.1\n"
     )
     assert architect_discovery_ready_for_deliverable(conversation, "change_control")
-    assert not architect_tools_enabled(
+    assert architect_tools_enabled(
         "architect",
         "Planning inputs for: Essentials\n- current: 13.1\n- target: 14.1\n",
         conversation_text=conversation,
@@ -234,7 +334,7 @@ def test_discovery_ready_nudge_after_enough_forms():
     )
     assert nudge is not None
     assert "jpilot-design-document" in nudge
-    assert "Do NOT call any tools" in nudge
+    assert "Do NOT output another" in nudge
 
 
 def test_architect_discovery_ready_for_deliverable():

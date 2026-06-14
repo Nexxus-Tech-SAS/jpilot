@@ -843,6 +843,8 @@ async def run_copilot_chat(
     progress: QueueChatProgressReporter | None = None,
     deployment_continuation: bool = False,
     long_task_approved: bool = False,
+    design_document_context: str | None = None,
+    include_design_revision: bool = False,
 ) -> ChatResponse:
     from app.services.copilot_service import set_web_search_allowed
 
@@ -865,6 +867,16 @@ async def run_copilot_chat(
     endpoint = provider.get("endpoint", "")
 
     chat_role = normalize_role(role)
+
+    if chat_role == JPilotRole.ARCHITECT and design_document_context:
+        from app.services.copilot_architect_discovery import append_design_document_revision_context
+
+        user_message = append_design_document_revision_context(
+            user_message,
+            design_document_context,
+            include_revision=include_design_revision,
+        )
+
     appliance_vendor = await resolve_appliance_vendor(db, appliance_name)
     chat_vendor = resolve_chat_vendor(
         appliance_vendor=appliance_vendor,

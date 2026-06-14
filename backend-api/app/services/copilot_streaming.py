@@ -58,6 +58,8 @@ async def stream_copilot_chat_events(
                 progress=reporter,
                 deployment_continuation=payload.deploymentContinuation,
                 long_task_approved=payload.longTaskApproved,
+                design_document_context=payload.designDocumentContext,
+                include_design_revision=payload.includeDesignRevision,
             )
         except Exception as exc:
             error_holder["error"] = exc

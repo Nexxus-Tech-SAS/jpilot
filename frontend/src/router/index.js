@@ -7,7 +7,7 @@ import {
   licenseActivationRequired
 } from '../services/licenseGate'
 import { getPortalConfig } from '../services/portal'
-import CopilotView from '../views/CopilotView.vue'
+import { isJpilotBetaReady, JPILOT_BETA_PATH } from '../services/postLoginRedirect'
 import CopilotBetaView from '../views/CopilotBetaView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import LoginView from '../views/LoginView.vue'
@@ -54,9 +54,9 @@ const router = createRouter({
       meta: { requiresAuth: true },
       children: [
         { path: '', name: 'dashboard', component: DashboardView },
-        { path: 'jpilot', name: 'jpilot', component: CopilotView },
+        { path: 'jpilot', redirect: '/jpilot/beta' },
         { path: 'jpilot/beta', name: 'jpilot-beta', component: CopilotBetaView },
-        { path: 'copilot', redirect: '/jpilot' },
+        { path: 'copilot', redirect: '/jpilot/beta' },
         { path: 'copilot/beta', redirect: '/jpilot/beta' },
         { path: 'appliances', redirect: (to) => ({ path: '/settings', query: { ...to.query, section: 'appliances' } }) },
         { path: 'netscalers', redirect: (to) => ({ path: '/settings', query: { ...to.query, section: 'appliances', tab: to.query.tab || 'inventory' } }) },
@@ -92,6 +92,9 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.public && authenticated && !to.meta.allowAuthenticated) {
+    if (await isJpilotBetaReady()) {
+      return { path: JPILOT_BETA_PATH }
+    }
     return { path: '/' }
   }
 

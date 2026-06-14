@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.60` — Settings hub refresh (MCP Tools, Web Search, orchestration presets), vendor platform toggles, and MCP server identity `jpilot-mcp`.
+**Current release:** `v0.61` — JPilot Chat Beta as default chat, Architect change-control calibration fixes, and login redirect when ready.
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -42,7 +42,7 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 
 - **Appliance inventory** — vendor → device → credentials wizard; **tags** for filtering; MPX, VPX, SDX, Cisco, and F5 product lines; **Beta Available** badges on SDX, Cisco, and F5; encrypted credentials (Fernet).
 - **AI provider management** — OpenAI, Anthropic, Gemini, Grok, DeepSeek, LM Studio, **OpenRouter**, **Azure OpenAI**, **AWS Bedrock**, and OpenAI-compatible endpoints; assign each model to **Architect**, **Operator**, and/or **Analyst** roles; role suggestions with indicative pricing when loading models.
-- **JPilot chat** — tool-calling agent bound to the selected appliance; credentials never sent to the LLM; classic UI at `/jpilot` and **Chat Beta** at `/jpilot/beta` (sidebar conversations, Diamond-style layout).
+- **JPilot chat** — tool-calling agent bound to the selected appliance; credentials never sent to the LLM; **Chat Beta** at `/jpilot/beta` (sidebar conversations, Diamond-style layout); classic `/jpilot` redirects to beta.
 - **JPilot roles** — **Architect** (structured discovery and formal design documents), **Operator** (configure the ADC, including from attached `.md` designs), **Analyst** (read-first troubleshooting); dual-pane defaults to Architect + Operator; **Send to Operator** handoff from design deliverables; per-pane **context usage** ring (model-aware), live **generation speed** while thinking, and **Stop** while generating.
 - **Architect design workflow** — choice/boolean `jpilot-form` discovery; deliverable outline with AWS/Azure, Gateway integrations, and AAA topics; downloadable design `.md` and one-click **Send to Operator** (opens pane 2 and starts implementation); official doc reference index (Citrix Gateway, authentication, Tech Zone).
 - **JPilot command menu** — searchable recommended actions by role with section grouping (~200 prompts); filters to the **selected appliance vendor** (NetScaler, SDX, Cisco, F5).
@@ -70,6 +70,16 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Stack Calibration Studio** — sync skills from scstudio, view installed calibrations in-app, and send redacted session feedback when chat misses the user's goal; skills inject into Architect/Operator prompts at runtime.
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
+
+## What's new in v0.61
+
+| Area | Highlights |
+|------|------------|
+| **JPilot Chat Beta** | Beta chat is now the only JPilot chat entry in the sidebar; `/jpilot` and `/copilot` redirect to `/jpilot/beta`. |
+| **Login redirect** | After sign-in, users with at least one enabled appliance and one enabled AI provider land directly in Chat Beta. |
+| **Calibration UI** | Send to Calibration is a compact icon button with tooltip in Chat Beta (no wide labeled footer control). |
+| **Architect change control** | Focused change-control requests (e.g. SSL profile A+ tuning) generate after three unique discovery forms; duplicate validation prompts no longer block delivery; one outline search allowed before writing the record. |
+| **Architect design panel** | In-chat design/change-control deliverables open in a side panel with download, Send to Operator, and revision handoff. |
 
 ## What's new in v0.60
 

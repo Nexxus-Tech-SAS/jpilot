@@ -352,7 +352,6 @@ const mainNavGroups = [
     id: 'jpilot-chat',
     label: 'JPilot Chat',
     items: [
-      { label: 'Chat', path: '/jpilot', icon: 'pi pi-comments' },
       { label: 'Chat', path: '/jpilot/beta', icon: 'pi pi-sparkles', beta: true }
     ]
   }
@@ -433,7 +432,7 @@ watch(
 )
 
 function isCopilotNavItem(item) {
-  return item.path === '/jpilot' || item.path === '/jpilot/beta'
+  return item.path === '/jpilot/beta'
 }
 
 function navTooltip(item) {
@@ -445,8 +444,8 @@ function isActive(item) {
   if (path === '/') {
     return route.path === '/'
   }
-  if (item.beta || path === '/jpilot') {
-    return route.path === path
+  if (path === '/jpilot/beta') {
+    return route.path === '/jpilot/beta' || route.path === '/jpilot'
   }
   return route.path.startsWith(path)
 }

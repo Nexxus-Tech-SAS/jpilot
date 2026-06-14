@@ -236,6 +236,7 @@ import {
   passkeyErrorMessage
 } from '../services/webauthn'
 import { WebAuthnAbortService } from '@simplewebauthn/browser'
+import { resolvePostLoginPath } from '../services/postLoginRedirect'
 
 const router = useRouter()
 const route = useRoute()
@@ -322,7 +323,8 @@ async function handlePasswordLogin() {
       password: password.value
     })
     setAuth(data.accessToken, data.user)
-    router.push(route.query.redirect || '/')
+    const destination = await resolvePostLoginPath(route.query.redirect)
+    router.push(destination)
   } catch (error) {
     const detail = error.response?.data?.detail
     errorMessage.value = typeof detail === 'string' ? detail : 'Invalid username or password'
@@ -344,7 +346,8 @@ async function handlePasskeyLogin(preferCrossDevice = false) {
       return
     }
     await loginWithPasskey(username.value, { preferCrossDevice })
-    router.push(route.query.redirect || '/')
+    const destination = await resolvePostLoginPath(route.query.redirect)
+    router.push(destination)
   } catch (error) {
     errorMessage.value = passkeyErrorMessage(error)
     crossDeviceActive.value = false

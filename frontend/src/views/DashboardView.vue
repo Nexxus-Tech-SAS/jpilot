@@ -61,8 +61,8 @@
               :label="action.label"
               :icon="action.icon"
               size="small"
-              :severity="action.to === '/jpilot' ? undefined : 'secondary'"
-              :outlined="action.to !== '/jpilot'"
+              :severity="action.to === '/jpilot/beta' ? undefined : 'secondary'"
+              :outlined="action.to !== '/jpilot/beta'"
               @click="router.push(action.to)"
             />
           </div>
