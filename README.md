@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.62` — Calibration Studio blueprint library, sync entitlement alignment, blueprint-first chat, and skill uninstall.
+**Current release:** `v0.63` — Settings Beta: a parallel, redesigned settings experience with a searchable grouped sidebar, mobile drill-in navigation, and consolidated information architecture (the current Settings is unchanged).
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -70,6 +70,17 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Stack Calibration Studio** — browse the full Nexxus blueprint library (vendor → product → domain), sync entitled skills, install or uninstall locally, check for catalog updates, and send redacted session feedback; skills inject into chat at runtime with blueprint-first matching.
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
+- **Settings Beta (preview)** — opt-in `/settings-beta` entry in the sidebar: a redesigned, mobile-first settings experience with a searchable grouped sidebar (Workspace / People & access / System) and master-detail navigation; coexists with the current Settings for side-by-side comparison.
+
+## What's new in v0.63
+
+| Area | Highlights |
+|------|------------|
+| **Settings Beta** | New **Settings Beta** entry in the sidebar (β badge) next to the existing Settings — a parallel master-detail redesign you can compare side-by-side. The current `/settings` and all its deep links are unchanged. |
+| **Information architecture** | Sections regrouped into **Workspace**, **People & access**, and **System**; SMTP merged with Slack under **Integrations**; the two MCP items consolidated into **Tools & MCP**; JPilot chat settings renamed **Assistant**. |
+| **Navigation** | Searchable, grouped left rail with a detail pane; legacy `?section=` deep links (`ai-providers`, `mcp`, `nextgen`, `slack`, …) map into the new structure. |
+| **Mobile** | Mobile-first drill-in: a flat full-width section list opens a detail view with a back arrow; sub-tabs scroll horizontally. |
+| **Reuse** | Built entirely from existing settings panels; the previously inline-only forms (MCP, SMTP, Assistant, Security, Legal) were extracted into reusable `components/settings-beta/` panels. |
 
 ## What's new in v0.62
 

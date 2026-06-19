@@ -14,6 +14,7 @@ import LoginView from '../views/LoginView.vue'
 import LegalView from '../views/LegalView.vue'
 import AccountRecoveryView from '../views/AccountRecoveryView.vue'
 import SettingsView from '../views/SettingsView.vue'
+import SettingsBetaView from '../views/SettingsBetaView.vue'
 import PricingView from '../views/PricingView.vue'
 import CalibrationStudioView from '../views/CalibrationStudioView.vue'
 import HomeView from '../views/HomeView.vue'
@@ -70,7 +71,8 @@ const router = createRouter({
         { path: 'users', redirect: { path: '/settings', query: { section: 'users' } } },
         { path: 'plans', name: 'plans', component: PricingView },
         { path: 'calibration-studio', name: 'calibration-studio', component: CalibrationStudioView },
-        { path: 'settings', name: 'settings', component: SettingsView }
+        { path: 'settings', name: 'settings', component: SettingsView },
+        { path: 'settings-beta', name: 'settings-beta', component: SettingsBetaView }
       ]
     }
   ]

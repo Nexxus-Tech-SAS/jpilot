@@ -56,12 +56,13 @@
         <RouterLink
           v-for="item in bottomNavItems"
           :key="item.path"
-          v-tooltip.right="item.label"
+          v-tooltip.right="navTooltip(item)"
           :to="item.path"
           class="nav-btn"
-          :class="{ 'nav-btn-active': isActive(item.path) }"
+          :class="{ 'nav-btn-active': isActive(item.path), 'nav-btn-beta': item.beta }"
         >
           <i :class="item.icon" />
+          <span v-if="item.beta" class="nav-beta-tag">β</span>
         </RouterLink>
 
         <button
@@ -163,6 +164,7 @@
           >
             <i :class="item.icon" />
             <span>{{ item.label }}</span>
+            <Tag v-if="item.beta" value="Beta" severity="warn" class="mobile-nav-beta-tag" />
           </RouterLink>
 
           <button type="button" class="mobile-nav-link mobile-nav-action" @click="onToggleTheme">
@@ -360,7 +362,8 @@ const mainNavGroups = [
 const bottomNavItems = [
   { label: 'Plans', path: '/plans', icon: 'pi pi-tags' },
   { label: 'Calibration Studio', path: '/calibration-studio', icon: 'pi pi-sliders-h' },
-  { label: 'Settings', path: '/settings', icon: 'pi pi-cog' }
+  { label: 'Settings', path: '/settings', icon: 'pi pi-cog' },
+  { label: 'Settings Beta', path: '/settings-beta', icon: 'pi pi-cog', beta: true }
 ]
 
 const userInitials = computed(() => {
@@ -440,12 +443,16 @@ function navTooltip(item) {
 }
 
 function isActive(item) {
-  const path = item.path
+  const path = typeof item === 'string' ? item : item.path
   if (path === '/') {
     return route.path === '/'
   }
   if (path === '/jpilot/beta') {
     return route.path === '/jpilot/beta' || route.path === '/jpilot'
+  }
+  // Exact match so /settings-beta does not also activate /settings.
+  if (path === '/settings') {
+    return route.path === '/settings'
   }
   return route.path.startsWith(path)
 }
