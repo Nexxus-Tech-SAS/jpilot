@@ -7,7 +7,6 @@
           <div class="settings-rail-title">
             <i class="pi pi-cog" />
             <span>Settings</span>
-            <Tag value="Beta" severity="warn" class="rail-beta-tag" />
           </div>
           <IconField class="settings-search">
             <InputIcon class="pi pi-search" />
@@ -96,7 +95,6 @@ import { useRoute, useRouter } from 'vue-router'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
-import Tag from 'primevue/tag'
 import OtherAppliancesView from './OtherAppliancesView.vue'
 import BraveSearchPanel from '../components/BraveSearchPanel.vue'
 import NextGenApiPanel from '../components/NextGenApiPanel.vue'
@@ -401,10 +399,6 @@ syncFromQuery()
   gap: 0.5rem;
   font-size: 1rem;
   font-weight: 600;
-}
-
-.rail-beta-tag {
-  margin-left: auto;
 }
 
 .settings-search :deep(input) {

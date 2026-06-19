@@ -166,7 +166,6 @@
         <Popover ref="betaOptionsOp" class="beta-options-popover">
           <div class="beta-options-panel">
             <div class="beta-options-meta">
-              <Tag value="Beta" severity="warn" icon="pi pi-sparkles" />
               <span class="beta-options-hint">Saved on this device until you delete them</span>
             </div>
 
@@ -1171,7 +1170,6 @@ import ArchitectDeliverableCard from './ArchitectDeliverableCard.vue'
 import {
   applyDeliverableToSession,
   beginDesignDocumentStreaming,
-  loadDesignPanelVisible,
   saveDesignPanelVisible,
   seedDesignDocumentFromAttachment
 } from '../utils/architectDesignDocument'
@@ -1235,7 +1233,10 @@ function markPaneFocused() {
 const submittingFormIndex = ref(null)
 const messagesEl = ref(null)
 const pendingAttachments = ref([])
-const designPanelVisible = ref(loadDesignPanelVisible())
+// The design panel stays closed until a design document actually exists — it
+// opens when the model produces a deliverable, or when restoring a session that
+// already has one (see onMounted). It is never auto-opened just by entering the role.
+const designPanelVisible = ref(false)
 const imageInputRef = ref(null)
 const configInputRef = ref(null)
 const attachMenu = ref(null)
@@ -1918,9 +1919,8 @@ function removeAttachment(index) {
 function clearConversation() {
   clearSession(props.sessionId)
   pendingAttachments.value = []
-  if (isArchitectPane()) {
-    designPanelVisible.value = loadDesignPanelVisible()
-  }
+  // No document after a clear, so keep the design panel closed.
+  designPanelVisible.value = false
 }
 
 const WEB_SEARCH_TOOLS = ['search_netscaler_nextgen_api', 'search_netscaler_cli_reference']
@@ -2045,7 +2045,6 @@ async function runChat(content, attachments, runOptions = {}) {
   startGenerationTimer()
   if (isArchitectPane()) {
     beginDesignDocumentStreaming(session)
-    openDesignPanel()
   }
   let wasError = false
   let userStopped = false
@@ -2089,6 +2088,10 @@ async function runChat(content, attachments, runOptions = {}) {
       : { chatContent: parsed.content || rawContent, revision: null }
     const chatContent =
       deliverable.revision != null ? deliverable.chatContent : parsed.content || rawContent
+    // Reveal the design panel only once the model has actually produced a document.
+    if (isArchitectPane() && deliverable.revision != null) {
+      openDesignPanel()
+    }
     session.messages.push({
       role: 'assistant',
       content: chatContent,

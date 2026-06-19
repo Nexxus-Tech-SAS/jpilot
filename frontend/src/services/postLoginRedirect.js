@@ -1,7 +1,7 @@
 import api from './api'
 import { listChatProviders } from './copilot'
 
-export const JPILOT_BETA_PATH = '/jpilot/beta'
+export const JPILOT_BETA_PATH = '/jpilot'
 
 /** True when at least one enabled appliance and one enabled AI provider exist. */
 export async function isJpilotBetaReady() {

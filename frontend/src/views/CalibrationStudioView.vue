@@ -1,41 +1,70 @@
 <template>
   <div class="page">
-    <PageHeader
-      title="Calibration Studio"
-      subtitle="Browse the full Nexxus blueprint library by vendor, product, and domain. Download is enabled only for skills your license entitles."
-    />
+    <ConfirmPopup />
 
-    <div class="content-panel content-panel-padded studio-panel">
-      <div class="studio-actions flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
-        <div>
-          <h2 class="m-0 text-lg font-semibold">Blueprint library</h2>
-          <p class="m-0 mt-1 text-sm text-color-secondary">
-            Catalog from
-            <a :href="catalogUrl || studioBaseUrl" target="_blank" rel="noopener noreferrer">{{ catalogUrl || studioBaseUrl }}</a>
-          </p>
+    <!-- Header card: title, license tier, entitlement counts, and actions -->
+    <div class="content-panel content-panel-padded summary-bar">
+      <div class="summary-heading">
+        <h1 class="summary-title m-0">Calibration Studio</h1>
+        <p class="summary-subtitle m-0">
+          Browse the full Nexxus blueprint library by vendor, product, and domain. Download is enabled
+          only for skills your license entitles.
+        </p>
+      </div>
+
+      <div class="summary-row">
+        <div class="summary-metrics">
+          <div class="summary-metric">
+            <span class="summary-metric-label">License tier</span>
+            <div class="summary-metric-tags">
+              <Tag :value="licenseType ? studioLicenseLabel : '—'" severity="secondary" />
+              <Tag
+                v-if="localLicenseType && localLicenseType !== licenseType"
+                :value="`JPilot: ${localLicenseLabel}`"
+                severity="warn"
+              />
+            </div>
+          </div>
+          <span class="summary-divider" aria-hidden="true" />
+          <div class="summary-metric">
+            <span class="summary-metric-label">Entitled</span>
+            <span class="summary-metric-number">{{ installableCount }}</span>
+          </div>
+          <div class="summary-metric">
+            <span class="summary-metric-label">Shown</span>
+            <span class="summary-metric-number">{{ filteredCount }}</span>
+          </div>
+          <div class="summary-metric">
+            <span class="summary-metric-label">Total</span>
+            <span class="summary-metric-number">{{ blueprints.length }}</span>
+          </div>
         </div>
-        <div class="studio-action-buttons flex flex-wrap gap-2">
+
+        <div class="summary-actions">
           <Button
-            label="Refresh entitlements"
+            :label="isMobile ? 'Refresh' : 'Refresh entitlements'"
             icon="pi pi-refresh"
             severity="secondary"
             outlined
+            size="small"
             :loading="refreshingEntitlements"
             v-tooltip="'Sync license with Nexxus, then reload the blueprint catalog (use after a license change in Nexxus Admin)'"
             @click="refreshEntitlements"
           />
           <Button
-            label="Check for updates"
+            :label="isMobile ? 'Updates' : 'Check for updates'"
             icon="pi pi-check-circle"
             severity="secondary"
             outlined
+            size="small"
             :loading="checking"
             v-tooltip="'Compare installed skills against the latest official catalog versions'"
             @click="checkForUpdates"
           />
           <Button
-            label="Sync all entitled"
+            :label="isMobile ? 'Sync' : 'Sync all entitled'"
             icon="pi pi-sync"
+            size="small"
             :loading="syncing"
             :disabled="!installableCount"
             v-tooltip="syncAllTooltip"
@@ -43,49 +72,50 @@
           />
         </div>
       </div>
+    </div>
 
-      <Message
-        v-if="tierOkBlockedMessage"
-        severity="info"
-        :closable="false"
-        class="mb-3"
-      >
+    <p
+      v-if="licenseType === 'free' || licenseType === 'early_access'"
+      class="summary-note m-0 mb-3"
+    >
+      Ent and Ent+ blueprints are listed but require a matching license to download.
+    </p>
+
+    <!-- Notifications: entitlement state, license mismatch, and sync/check results -->
+    <div class="studio-messages">
+      <Message v-if="tierOkBlockedMessage" severity="info" :closable="false">
         {{ tierOkBlockedMessage }}
       </Message>
 
-      <Message
-        v-if="licenseMismatchMessage"
-        severity="warn"
-        :closable="false"
-        class="mb-3"
-      >
+      <Message v-if="licenseMismatchMessage" severity="warn" :closable="false">
         {{ licenseMismatchMessage }}
       </Message>
 
-      <div v-if="licenseType" class="license-row flex flex-wrap align-items-center gap-2 mb-3">
-        <Tag :value="studioLicenseLabel" severity="secondary" />
-        <Tag
-          v-if="localLicenseType && localLicenseType !== licenseType"
-          :value="`JPilot: ${localLicenseLabel}`"
-          severity="warn"
-        />
-        <span class="license-hint text-sm text-color-secondary">
-          {{ installableCount }} entitled · {{ filteredCount }} shown · {{ blueprints.length }} total
-          <template v-if="licenseType === 'free' || licenseType === 'early_access'">
-            — Ent and Ent+ blueprints are listed but require a matching license to download.
-          </template>
-        </span>
-      </div>
+      <Message v-if="checkMessage" :severity="checkSeverity" :closable="true" @close="clearCheckMessage">
+        <div>{{ checkMessage }}</div>
+        <ul v-if="checkDetails.length" class="check-details m-0 mt-2 pl-3">
+          <li v-for="line in checkDetails" :key="line">{{ line }}</li>
+        </ul>
+        <div v-if="showUpdatesOnly" class="mt-2">
+          <Button label="Show all blueprints" size="small" text @click="showUpdatesOnly = false" />
+        </div>
+      </Message>
 
-      <div class="library-toolbar flex flex-column lg:flex-row gap-3 mb-3">
-        <span class="library-search p-input-icon-left flex-1">
-          <i class="pi pi-search" />
+      <Message v-if="syncMessage" severity="success" :closable="false">{{ syncMessage }}</Message>
+      <Message v-if="syncError" severity="warn" :closable="false">{{ syncError }}</Message>
+    </div>
+
+    <!-- Library: search, filters, and grouped blueprint tables -->
+    <div class="content-panel content-panel-padded library-panel">
+      <div class="library-toolbar flex flex-column lg:flex-row gap-3 mb-4">
+        <IconField class="library-search flex-1">
+          <InputIcon class="pi pi-search" />
           <InputText
             v-model="searchQuery"
             placeholder="Search blueprints by name, skill id, vendor, product, or domain…"
             class="w-full"
           />
-        </span>
+        </IconField>
         <div class="library-filters flex flex-wrap gap-2">
           <Select
             v-model="vendorFilter"
@@ -125,19 +155,7 @@
         </div>
       </div>
 
-      <Message v-if="checkMessage" :severity="checkSeverity" class="mb-3" :closable="true" @close="clearCheckMessage">
-        <div>{{ checkMessage }}</div>
-        <ul v-if="checkDetails.length" class="check-details m-0 mt-2 pl-3">
-          <li v-for="line in checkDetails" :key="line">{{ line }}</li>
-        </ul>
-        <div v-if="showUpdatesOnly" class="mt-2">
-          <Button label="Show all blueprints" size="small" text @click="showUpdatesOnly = false" />
-        </div>
-      </Message>
-
-      <Message v-if="syncMessage" severity="success" class="mb-3" :closable="false">{{ syncMessage }}</Message>
-      <Message v-if="syncError" severity="warn" class="mb-3" :closable="false">{{ syncError }}</Message>
-
+      <div class="library-scroll">
       <div v-if="loading" class="loading-copy text-color-secondary">Loading blueprint library…</div>
 
       <template v-else-if="groupedLibrary.length">
@@ -145,32 +163,74 @@
           v-for="vendorGroup in groupedLibrary"
           :key="vendorGroup.vendorKey"
           class="vendor-group"
+          :class="{ 'vendor-group-open': isVendorOpen(vendorGroup.vendorKey) }"
         >
-          <div class="group-header vendor-header">
-            <h3 class="group-title m-0">{{ vendorGroup.vendorLabel }}</h3>
+          <button
+            type="button"
+            class="group-header vendor-header"
+            :aria-expanded="isVendorOpen(vendorGroup.vendorKey)"
+            @click="toggleVendor(vendorGroup.vendorKey)"
+          >
+            <span class="vendor-header-title">
+              <i
+                class="pi pi-chevron-right vendor-chevron"
+                :class="{ 'vendor-chevron-open': isVendorOpen(vendorGroup.vendorKey) }"
+              />
+              <h3 class="group-title m-0">{{ vendorGroup.vendorLabel }}</h3>
+            </span>
             <Tag :value="`${vendorGroup.count} blueprint${vendorGroup.count === 1 ? '' : 's'}`" severity="secondary" />
-          </div>
+          </button>
 
+          <Transition name="expand" @enter="onExpandEnter" @after-enter="onExpandAfterEnter" @leave="onExpandLeave">
+          <div v-show="isVendorOpen(vendorGroup.vendorKey)" class="vendor-body">
           <section
             v-for="productGroup in vendorGroup.products"
             :key="`${vendorGroup.vendorKey}-${productGroup.product}`"
             class="product-group"
+            :class="{ 'product-group-open': isProductOpen(vendorGroup.vendorKey, productGroup.product) }"
           >
-            <div class="group-header product-header">
-              <h4 class="group-subtitle m-0">{{ productGroup.product }}</h4>
+            <button
+              type="button"
+              class="group-header product-header"
+              :aria-expanded="isProductOpen(vendorGroup.vendorKey, productGroup.product)"
+              @click="toggleProduct(vendorGroup.vendorKey, productGroup.product)"
+            >
+              <span class="vendor-header-title">
+                <i
+                  class="pi pi-chevron-right product-chevron"
+                  :class="{ 'vendor-chevron-open': isProductOpen(vendorGroup.vendorKey, productGroup.product) }"
+                />
+                <h4 class="group-subtitle m-0">{{ productGroup.product }}</h4>
+              </span>
               <span class="group-count text-sm text-color-secondary">{{ productGroup.count }} blueprint{{ productGroup.count === 1 ? '' : 's' }}</span>
-            </div>
+            </button>
 
+            <Transition name="expand" @enter="onExpandEnter" @after-enter="onExpandAfterEnter" @leave="onExpandLeave">
+            <div v-show="isProductOpen(vendorGroup.vendorKey, productGroup.product)" class="product-body">
             <section
               v-for="domainGroup in productGroup.domains"
               :key="`${vendorGroup.vendorKey}-${productGroup.product}-${domainGroup.domain}`"
               class="domain-group"
+              :class="{ 'domain-group-open': isDomainOpen(vendorGroup.vendorKey, productGroup.product, domainGroup.domain) }"
             >
-              <div class="group-header domain-header">
-                <span class="domain-label">{{ domainGroup.domainLabel }}</span>
+              <button
+                type="button"
+                class="group-header domain-header"
+                :aria-expanded="isDomainOpen(vendorGroup.vendorKey, productGroup.product, domainGroup.domain)"
+                @click="toggleDomain(vendorGroup.vendorKey, productGroup.product, domainGroup.domain)"
+              >
+                <span class="vendor-header-title">
+                  <i
+                    class="pi pi-chevron-right domain-chevron"
+                    :class="{ 'vendor-chevron-open': isDomainOpen(vendorGroup.vendorKey, productGroup.product, domainGroup.domain) }"
+                  />
+                  <span class="domain-label">{{ domainGroup.domainLabel }}</span>
+                </span>
                 <span class="group-count text-sm text-color-secondary">{{ domainGroup.items.length }} skill{{ domainGroup.items.length === 1 ? '' : 's' }}</span>
-              </div>
+              </button>
 
+              <Transition name="expand" @enter="onExpandEnter" @after-enter="onExpandAfterEnter" @leave="onExpandLeave">
+              <div v-show="isDomainOpen(vendorGroup.vendorKey, productGroup.product, domainGroup.domain)" class="domain-pane">
               <DataTable
                 :value="domainGroup.items"
                 striped-rows
@@ -195,6 +255,7 @@
                 </Column>
                 <Column header="Min tier" style="width: 7.5rem">
                   <template #body="{ data }">
+                    <span class="cell-label">Min tier</span>
                     <div class="tier-cell">
                       <Tag :value="blueprintTierLabel(data)" :severity="blueprintTierSeverity(data)" />
                       <span
@@ -216,6 +277,7 @@
                 </Column>
                 <Column header="Free global" style="width: 6rem">
                   <template #body="{ data }">
+                    <span class="cell-label">Free global</span>
                     <Tag
                       :value="data.globalFreeSkill ? 'Yes' : 'No'"
                       :severity="data.globalFreeSkill ? 'success' : 'secondary'"
@@ -224,6 +286,7 @@
                 </Column>
                 <Column header="Version" style="width: 9rem">
                   <template #body="{ data }">
+                    <span class="cell-label">Version</span>
                     <div class="version-cell">
                       <span v-if="data.catalogVersion">catalog {{ data.catalogVersion }}</span>
                       <span v-else class="text-color-secondary">—</span>
@@ -241,6 +304,7 @@
                 </Column>
                 <Column header="Status" style="width: 9rem">
                   <template #body="{ data }">
+                    <span class="cell-label">Status</span>
                     <Tag
                       v-tooltip="data.ineligibleReason || undefined"
                       :value="statusLabel(data)"
@@ -250,6 +314,7 @@
                 </Column>
                 <Column header="Actions" style="width: 9rem">
                   <template #body="{ data }">
+                    <span class="cell-label">Actions</span>
                     <div class="action-cell">
                       <Button
                         v-if="canDownload(data)"
@@ -292,14 +357,20 @@
                         class="action-uninstall"
                         :loading="uninstallingSkillId === data.skillId"
                         v-tooltip="'Remove the local copy of this skill from JPilot'"
-                        @click="uninstallSkill(data)"
+                        @click="confirmUninstall(data, $event)"
                       />
                     </div>
                   </template>
                 </Column>
               </DataTable>
+              </div>
+              </Transition>
             </section>
+            </div>
+            </Transition>
           </section>
+          </div>
+          </Transition>
         </section>
       </template>
 
@@ -311,20 +382,25 @@
         No blueprints returned from the official catalog. Check connectivity to
         <strong>{{ studioBaseUrl }}</strong>, then refresh the page.
       </p>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
+import ConfirmPopup from 'primevue/confirmpopup'
 import DataTable from 'primevue/datatable'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import PageHeader from '../components/PageHeader.vue'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
 import { CALIBRATION_STUDIO_BASE_URL } from '../config/calibrationStudio.js'
 import { getLicense } from '../services/system.js'
 import {
@@ -354,6 +430,9 @@ import {
   uninstallCalibrationSkill,
 } from '../services/calibrationSync.js'
 
+const confirm = useConfirm()
+const toast = useToast()
+
 const studioBaseUrl = CALIBRATION_STUDIO_BASE_URL
 const blueprints = ref([])
 const loading = ref(false)
@@ -378,6 +457,78 @@ const searchQuery = ref('')
 const vendorFilter = ref('')
 const productFilter = ref('')
 const domainFilter = ref('')
+const openVendors = ref(new Set())
+const openProducts = ref(new Set())
+const openDomains = ref(new Set())
+
+// Track narrow viewports so we can shorten labels and tighten layout on mobile.
+const isMobile = ref(false)
+let mobileMq = null
+function syncIsMobile(event) {
+  isMobile.value = event.matches
+}
+onMounted(() => {
+  mobileMq = window.matchMedia('(max-width: 640px)')
+  isMobile.value = mobileMq.matches
+  mobileMq.addEventListener('change', syncIsMobile)
+})
+onUnmounted(() => {
+  mobileMq?.removeEventListener('change', syncIsMobile)
+})
+
+function toggleInSet(setRef, key) {
+  const next = new Set(setRef.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  setRef.value = next
+}
+
+const productKey = (vendorKey, product) => `${vendorKey}::${product}`
+const domainKey = (vendorKey, product, domain) => `${vendorKey}::${product}::${domain}`
+
+// Animate height for expand/collapse (works for unknown content heights).
+function onExpandEnter(el) {
+  el.style.height = '0'
+  el.style.overflow = 'hidden'
+  void el.offsetHeight
+  el.style.transition = 'height 0.26s ease'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+function onExpandAfterEnter(el) {
+  el.style.height = ''
+  el.style.overflow = ''
+  el.style.transition = ''
+}
+
+function onExpandLeave(el) {
+  el.style.height = `${el.scrollHeight}px`
+  el.style.overflow = 'hidden'
+  void el.offsetHeight
+  el.style.transition = 'height 0.26s ease'
+  el.style.height = '0'
+}
+
+function isVendorOpen(vendorKey) {
+  return openVendors.value.has(vendorKey)
+}
+function toggleVendor(vendorKey) {
+  toggleInSet(openVendors, vendorKey)
+}
+
+function isProductOpen(vendorKey, product) {
+  return openProducts.value.has(productKey(vendorKey, product))
+}
+function toggleProduct(vendorKey, product) {
+  toggleInSet(openProducts, productKey(vendorKey, product))
+}
+
+function isDomainOpen(vendorKey, product, domain) {
+  return openDomains.value.has(domainKey(vendorKey, product, domain))
+}
+function toggleDomain(vendorKey, product, domain) {
+  toggleInSet(openDomains, domainKey(vendorKey, product, domain))
+}
 
 const studioLicenseLabel = computed(() => licenseTypeLabel(licenseType.value))
 const localLicenseLabel = computed(() => licenseTypeLabel(localLicenseType.value))
@@ -491,6 +642,26 @@ watch(productFilter, () => {
   }
 })
 
+// While searching or filtering, expand every matching group so results are visible.
+watch([hasActiveFilters, groupedLibrary], ([active, groups]) => {
+  if (!active) return
+  const vendors = new Set()
+  const products = new Set()
+  const domains = new Set()
+  for (const group of groups) {
+    vendors.add(group.vendorKey)
+    for (const product of group.products) {
+      products.add(productKey(group.vendorKey, product.product))
+      for (const domain of product.domains) {
+        domains.add(domainKey(group.vendorKey, product.product, domain.domain))
+      }
+    }
+  }
+  openVendors.value = vendors
+  openProducts.value = products
+  openDomains.value = domains
+})
+
 function statusLabel(row) {
   return blueprintStatusLabel(row, licenseType.value)
 }
@@ -577,38 +748,64 @@ async function checkForUpdates() {
 async function downloadSkill(row) {
   if (!canDownload(row)) return
   installingSkillId.value = row.skillId
-  syncMessage.value = ''
   syncError.value = ''
   try {
     const result = await installCalibrationSkill(row.skillId)
-    syncMessage.value = result.message || `Downloaded ${row.label}.`
+    toast.add({
+      severity: 'success',
+      summary: row.installed && row.updateAvailable ? 'Update complete' : 'Download complete',
+      detail: result.message || `Downloaded ${row.label}.`,
+      life: 4000,
+    })
     applyCatalog(await fetchCalibrationCatalog())
   } catch (error) {
-    syncError.value = error.response?.data?.detail || error.message || 'Download failed.'
+    toast.add({
+      severity: 'error',
+      summary: 'Download failed',
+      detail: error.response?.data?.detail || error.message || 'Download failed.',
+      life: 5000,
+    })
   } finally {
     installingSkillId.value = ''
   }
 }
 
-async function uninstallSkill(row) {
+function confirmUninstall(row, event) {
   if (!row.installed) return
   const versionHint = row.installedVersion ? ` (${row.installedVersion})` : ''
-  const confirmed = window.confirm(
-    `Uninstall "${row.label}"${versionHint} from this JPilot installation?\n\n` +
-      'The local skill files will be removed. You can download again when entitled.'
-  )
-  if (!confirmed) return
+  confirm.require({
+    target: event.currentTarget,
+    message: `Uninstall "${row.label}"${versionHint}? The local skill files will be removed.`,
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Uninstall',
+    rejectLabel: 'Cancel',
+    acceptClass: 'p-button-danger p-button-sm',
+    rejectClass: 'p-button-secondary p-button-text p-button-sm',
+    accept: () => uninstallSkill(row),
+  })
+}
 
+async function uninstallSkill(row) {
+  if (!row.installed) return
   uninstallingSkillId.value = row.skillId
-  syncMessage.value = ''
   syncError.value = ''
   clearCheckMessage()
   try {
     const result = await uninstallCalibrationSkill(row.skillId, row.installedVersion || undefined)
-    syncMessage.value = result.message || `Uninstalled ${row.label}.`
+    toast.add({
+      severity: 'success',
+      summary: 'Uninstalled',
+      detail: result.message || `Uninstalled ${row.label}.`,
+      life: 4000,
+    })
     applyCatalog(await fetchCalibrationCatalog())
   } catch (error) {
-    syncError.value = error.response?.data?.detail || error.message || 'Uninstall failed.'
+    toast.add({
+      severity: 'error',
+      summary: 'Uninstall failed',
+      detail: error.response?.data?.detail || error.message || 'Uninstall failed.',
+      life: 5000,
+    })
   } finally {
     uninstallingSkillId.value = ''
   }
@@ -646,15 +843,143 @@ onMounted(refreshEntitlements)
 <style scoped>
 .page {
   padding: 0 0.5rem 1rem;
-  max-width: 80rem;
+  width: 100%;
+  max-width: 100%;
+  /* MainLayout makes .route-page a full-height flex column (flex:1; min-height:0).
+     Keep the header + filters fixed and let only .library-scroll scroll. */
+  min-height: 0;
 }
 
-.studio-panel {
-  margin-top: 0.5rem;
+/* Fixed (non-scrolling) regions */
+.summary-bar,
+.summary-note,
+.studio-messages {
+  flex: 0 0 auto;
 }
 
-.license-hint {
-  max-width: 48rem;
+/* Blueprint panel fills remaining height; its list scrolls internally */
+.library-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.library-toolbar {
+  flex: 0 0 auto;
+}
+
+.library-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* room so the scrollbar doesn't sit on top of the cards */
+  margin-right: -0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Header card: title, license tier, entitlement counts, and actions */
+.summary-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.summary-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.summary-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--p-text-color);
+}
+
+.summary-subtitle {
+  font-size: 0.875rem;
+  color: var(--p-text-muted-color);
+  max-width: 60rem;
+}
+
+.summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--p-content-border-color);
+}
+
+.summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.summary-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem 1.75rem;
+}
+
+.summary-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.summary-metric-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--p-text-muted-color);
+}
+
+.summary-metric-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.summary-metric-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--p-text-color);
+}
+
+.summary-divider {
+  align-self: stretch;
+  width: 1px;
+  min-height: 2.25rem;
+  background: var(--p-content-border-color);
+}
+
+.summary-note {
+  font-size: 0.8125rem;
+  color: var(--p-text-muted-color);
+  padding-left: 0.25rem;
+}
+
+/* Notifications block */
+.studio-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.studio-messages:not(:empty) {
+  margin-bottom: 1rem;
 }
 
 .library-search {
@@ -674,19 +999,79 @@ onMounted(refreshEntitlements)
   padding: 1rem 0;
 }
 
+/* Collapsible vendor group */
+.vendor-group {
+  border: 1px solid var(--p-content-border-color);
+  border-radius: var(--content-radius);
+}
+
 .vendor-group + .vendor-group {
-  margin-top: 2rem;
+  margin-top: 0.75rem;
+}
+
+.vendor-header {
+  width: 100%;
+  margin: 0;
+  padding: 0.875rem 1.25rem;
+  background: var(--p-content-background);
+  border: 0;
+  border-radius: var(--content-radius) var(--content-radius) 0 0;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.vendor-header:hover {
+  background: var(--p-content-hover-background, var(--p-highlight-background));
+}
+
+.vendor-group-open .vendor-header {
+  border-bottom: 1px solid var(--p-content-border-color);
+}
+
+.vendor-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.vendor-chevron {
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color);
+  transition: transform 0.2s ease;
+}
+
+.vendor-chevron-open {
+  transform: rotate(90deg);
+}
+
+/* Animated collapse panes: border-box keeps padding from leaving a gap at height 0 */
+.vendor-body,
+.product-body,
+.domain-pane {
+  box-sizing: border-box;
+}
+
+.vendor-body {
+  padding: 0.75rem 1.25rem 1.25rem;
 }
 
 .product-group {
-  margin-top: 1.25rem;
+  margin-top: 0.75rem;
   margin-left: 0.5rem;
   padding-left: 0.75rem;
   border-left: 2px solid var(--p-content-border-color);
 }
 
+.product-group:first-child {
+  margin-top: 0;
+}
+
+.product-body {
+  padding: 0.25rem 0 0.5rem;
+}
+
 .domain-group {
-  margin-top: 1rem;
+  margin-top: 0.5rem;
 }
 
 .group-header {
@@ -697,8 +1082,31 @@ onMounted(refreshEntitlements)
   margin-bottom: 0.5rem;
 }
 
+/* Product & domain headers act as collapse toggles */
+.product-header,
+.domain-header {
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0.35rem 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.product-header:hover .group-subtitle,
+.domain-header:hover .domain-label {
+  color: var(--p-primary-color);
+}
+
+.product-chevron,
+.domain-chevron {
+  font-size: 0.6875rem;
+  color: var(--p-text-muted-color);
+  transition: transform 0.2s ease;
+}
+
 .group-title {
-  font-size: 1.125rem;
+  font-size: 1.0625rem;
   font-weight: 600;
 }
 
@@ -722,6 +1130,11 @@ onMounted(refreshEntitlements)
 .skill-id {
   font-size: 0.75rem;
   color: var(--p-text-muted-color);
+}
+
+/* Per-cell labels: only shown in the mobile stacked-card layout */
+.cell-label {
+  display: none;
 }
 
 .skill-desc {
@@ -801,5 +1214,150 @@ onMounted(refreshEntitlements)
 
 .check-details li + li {
   margin-top: 0.25rem;
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 640px) {
+  .page {
+    padding: 0 0.25rem 0.75rem;
+  }
+
+  /* Tighter cards, hide low-value chrome */
+  .summary-bar,
+  .library-panel {
+    padding: 0.85rem 0.9rem;
+  }
+
+  .summary-bar {
+    gap: 0.75rem;
+  }
+
+  .summary-subtitle {
+    display: none;
+  }
+
+  .summary-row {
+    gap: 0.75rem;
+  }
+
+  .summary-divider {
+    display: none;
+  }
+
+  .summary-metrics {
+    gap: 0.6rem 1.25rem;
+  }
+
+  .summary-metric-number {
+    font-size: 1.25rem;
+  }
+
+  /* Action buttons: all three in one row, shortened labels, evenly split */
+  .summary-actions {
+    width: 100%;
+    flex-wrap: nowrap;
+    gap: 0.4rem;
+  }
+
+  .summary-actions :deep(.p-button) {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .summary-actions :deep(.p-button-label) {
+    white-space: nowrap;
+  }
+
+  /* Filters share a single row; search stays on its own full-width line above */
+  .library-toolbar {
+    margin-bottom: 1rem !important;
+  }
+
+  .library-filters {
+    flex-wrap: nowrap;
+  }
+
+  .filter-select {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .library-search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Group headers: a little tighter */
+  .vendor-header {
+    padding: 0.75rem 0.9rem;
+  }
+
+  .vendor-body {
+    padding: 0.6rem 0.9rem 0.9rem;
+  }
+
+  /* Blueprint rows become stacked, labeled cards instead of a squished table */
+  .blueprint-table :deep(.p-datatable-thead) {
+    display: none;
+  }
+
+  .blueprint-table :deep(.p-datatable-tbody) > tr {
+    display: block;
+    background: var(--p-content-background) !important;
+    border: 1px solid var(--p-content-border-color);
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .blueprint-table :deep(.p-datatable-tbody) > tr > td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    width: auto !important;
+    border: 0 !important;
+    padding: 0.3rem 0 !important;
+    text-align: right;
+  }
+
+  .cell-label {
+    display: inline-block;
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--p-text-muted-color);
+    text-align: left;
+    padding-top: 0.15rem;
+  }
+
+  /* Skill cell (first column) spans the full card width with no inline label */
+  .blueprint-table :deep(.p-datatable-tbody) > tr > td:first-child {
+    display: block;
+    text-align: left;
+    padding-bottom: 0.5rem !important;
+    margin-bottom: 0.35rem;
+    border-bottom: 1px solid var(--p-content-border-color) !important;
+  }
+
+  /* Tier / action sub-layouts read better right-aligned in card rows */
+  .tier-cell,
+  .action-cell {
+    align-items: flex-end;
+  }
+
+  .action-cell {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .version-cell {
+    align-items: flex-end;
+    text-align: right;
+  }
 }
 </style>

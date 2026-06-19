@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.63` — Settings Beta: a parallel, redesigned settings experience with a searchable grouped sidebar, mobile drill-in navigation, and consolidated information architecture (the current Settings is unchanged).
+**Current release:** `v0.64` — Settings and JPilot Chat are now the sole sidebar entries (no duplicate legacy items or β badges); chat lives at `/jpilot`; Calibration Studio gets a summary header with license and entitlement metrics.
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -42,7 +42,7 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 
 - **Appliance inventory** — vendor → device → credentials wizard; **tags** for filtering; MPX, VPX, SDX, Cisco, and F5 product lines; **Beta Available** badges on SDX, Cisco, and F5; encrypted credentials (Fernet).
 - **AI provider management** — OpenAI, Anthropic, Gemini, Grok, DeepSeek, LM Studio, **OpenRouter**, **Azure OpenAI**, **AWS Bedrock**, and OpenAI-compatible endpoints; assign each model to **Architect**, **Operator**, and/or **Analyst** roles; role suggestions with indicative pricing when loading models.
-- **JPilot chat** — tool-calling agent bound to the selected appliance; credentials never sent to the LLM; **Chat Beta** at `/jpilot/beta` (sidebar conversations, Diamond-style layout); classic `/jpilot` redirects to beta.
+- **JPilot chat** — tool-calling agent bound to the selected appliance; credentials never sent to the LLM; multi-conversation sidebar at `/jpilot` with Diamond-style layout; legacy `/jpilot/beta` and `/copilot` redirect to `/jpilot`.
 - **JPilot roles** — **Architect** (structured discovery and formal design documents), **Operator** (configure the ADC, including from attached `.md` designs), **Analyst** (read-first troubleshooting); dual-pane defaults to Architect + Operator; **Send to Operator** handoff from design deliverables; per-pane **context usage** ring (model-aware), live **generation speed** while thinking, and **Stop** while generating.
 - **Architect design workflow** — choice/boolean `jpilot-form` discovery; deliverable outline with AWS/Azure, Gateway integrations, and AAA topics; downloadable design `.md` and one-click **Send to Operator** (opens pane 2 and starts implementation); official doc reference index (Citrix Gateway, authentication, Tech Zone).
 - **JPilot command menu** — searchable recommended actions by role with section grouping (~200 prompts); filters to the **selected appliance vendor** (NetScaler, SDX, Cisco, F5).
@@ -70,7 +70,16 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Stack Calibration Studio** — browse the full Nexxus blueprint library (vendor → product → domain), sync entitled skills, install or uninstall locally, check for catalog updates, and send redacted session feedback; skills inject into chat at runtime with blueprint-first matching.
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
-- **Settings Beta (preview)** — opt-in `/settings-beta` entry in the sidebar: a redesigned, mobile-first settings experience with a searchable grouped sidebar (Workspace / People & access / System) and master-detail navigation; coexists with the current Settings for side-by-side comparison.
+- **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.64
+
+| Area | Highlights |
+|------|------------|
+| **Settings** | Single **Settings** entry in the sidebar (no β badge); points to the redesigned `/settings-beta` experience. The legacy Settings menu item is removed. |
+| **JPilot Chat** | Single **Chat** entry at `/jpilot` (no β badge); `/jpilot/beta` and `/copilot` redirect for old bookmarks. Beta tag removed from the in-chat options menu. |
+| **Calibration Studio** | Summary header with license tier, entitled/installed counts, catalog link, and action buttons; confirm dialogs for uninstall; clearer license mismatch messaging. |
+| **Architect design panel** | Opens only when a design document is produced or restored — not automatically on every Architect message. |
 
 ## What's new in v0.63
 
