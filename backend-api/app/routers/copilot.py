@@ -25,7 +25,15 @@ from app.services.ai_provider_errors import (
     enrich_ai_provider_error,
     maybe_parse_ai_provider_error,
 )
-from app.schemas.calibration import CalibrationSkillSummary, CalibrationSyncResponse
+from app.schemas.calibration import (
+    CalibrationCatalogResponse,
+    CalibrationCatalogSkill,
+    CalibrationInstallResponse,
+    CalibrationInstalledBlueprint,
+    CalibrationSkillSummary,
+    CalibrationSyncResponse,
+    CalibrationUninstallResponse,
+)
 from app.schemas.calibration_feedback import CalibrationFeedbackRequest, CalibrationFeedbackResponse
 from app.schemas.copilot import (
     ChatRequest,
@@ -40,8 +48,11 @@ from app.schemas.copilot import (
 from app.config import settings
 from app.services.calibration_sync_service import (
     CalibrationSyncError,
+    fetch_calibration_catalog,
+    install_calibration_skill,
     list_installed_skills,
     sync_calibrations_from_studio,
+    uninstall_calibration_skill,
 )
 from app.services.skill_feedback_service import CalibrationFeedbackError, submit_calibration_feedback
 from app.services.copilot_roles import get_role_catalog, normalize_role, role_requires_appliance
@@ -280,6 +291,29 @@ async def list_calibrations() -> list[CalibrationSkillSummary]:
     return [CalibrationSkillSummary(**row) for row in list_installed_skills()]
 
 
+@router.get("/calibrations/catalog", response_model=CalibrationCatalogResponse)
+async def get_calibration_catalog(
+    vendor: str | None = None,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> CalibrationCatalogResponse:
+    try:
+        result = await fetch_calibration_catalog(db, vendor=vendor)
+    except CalibrationSyncError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    return CalibrationCatalogResponse(
+        catalogUrl=result.catalog_url,
+        licenseType=result.license_type,
+        localLicenseType=result.local_license_type,
+        licenseEntitlementMismatch=result.license_entitlement_mismatch,
+        studioAuthMissing=result.studio_auth_missing,
+        clientId=result.client_id,
+        entitlements=result.entitlements,
+        skills=[CalibrationCatalogSkill(**skill) for skill in result.skills],
+        installedBlueprints=[CalibrationInstalledBlueprint(**row) for row in result.installed_blueprints],
+    )
+
+
 @router.post("/calibrations/sync", response_model=CalibrationSyncResponse)
 async def sync_calibrations(
     db: AsyncIOMotorDatabase = Depends(get_db),
@@ -294,7 +328,49 @@ async def sync_calibrations(
         updated=result.updated,
         removed=result.removed,
         skills=result.skills,
-        message=f"Synced {result.updated} updated and {result.installed} unchanged skill(s) from Calibration Studio.",
+        message=f"Synced {result.updated} updated and {result.installed} unchanged entitled skill(s) from Calibration Studio.",
+    )
+
+
+@router.post("/calibrations/{skill_id}/install", response_model=CalibrationInstallResponse)
+async def install_calibration(
+    skill_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> CalibrationInstallResponse:
+    try:
+        result = await install_calibration_skill(db, skill_id)
+    except CalibrationSyncError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    action = "updated" if result.updated else "installed"
+    return CalibrationInstallResponse(
+        skillId=result.skill_id,
+        version=result.version,
+        label=result.label,
+        vendor=result.vendor,
+        path=result.path,
+        updated=result.updated,
+        message=f"Skill {result.label} ({result.version}) {action}.",
+    )
+
+
+@router.delete("/calibrations/{skill_id}", response_model=CalibrationUninstallResponse)
+async def uninstall_calibration(
+    skill_id: str,
+    version: str | None = None,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> CalibrationUninstallResponse:
+    try:
+        result = await uninstall_calibration_skill(db, skill_id, version=version)
+    except CalibrationSyncError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    removed = ", ".join(result.removed_versions) if result.removed_versions else "none"
+    return CalibrationUninstallResponse(
+        skillId=result.skill_id,
+        label=result.label,
+        removedVersions=result.removed_versions,
+        message=f"Removed {result.label} ({removed}) from this installation.",
     )
 
 

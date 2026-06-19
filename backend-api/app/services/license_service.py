@@ -29,6 +29,47 @@ LEGACY_LICENSES_COLLECTION = "licenses"
 LEGACY_LICENSE_DOCUMENT_ID = "default"
 
 
+def normalize_license_type(value: str | None) -> str:
+    normalized = str(value or "free").strip().lower().replace("-", "_")
+    if normalized in {"enterprise_pro", "enterprisepro"}:
+        return "enterprise_pro"
+    if normalized == "enterprise":
+        return "enterprise"
+    if normalized in {"early_access", "earlyaccess"}:
+        return "early_access"
+    return normalized or "free"
+
+
+def license_tier_rank(value: str | None) -> int:
+    normalized = normalize_license_type(value)
+    if normalized == "enterprise_pro":
+        return 3
+    if normalized == "enterprise":
+        return 2
+    return 1
+
+
+def resolve_license_type_from_document(document: dict[str, Any] | None) -> str | None:
+    if not document:
+        return None
+    cached = document.get("cachedLicense") if isinstance(document.get("cachedLicense"), dict) else {}
+    raw = document.get("licenseType") or cached.get("licenseType")
+    if not raw or not str(raw).strip():
+        return None
+    return normalize_license_type(str(raw))
+
+
+async def get_license_context_for_studio(db: AsyncIOMotorDatabase) -> dict[str, Any]:
+    document = await _find_license_document(db)
+    license_code = _decrypt_license_code(document) if document else None
+    return {
+        "localLicenseType": resolve_license_type_from_document(document),
+        "licenseCode": license_code,
+        "hasLicenseCode": bool(license_code),
+        "status": str(document.get("status") or "") if document else None,
+    }
+
+
 def license_document_id(app_fingerprint: str | None = None) -> str:
     """MongoDB ``_id`` for this installation (stable app fingerprint)."""
     if app_fingerprint and str(app_fingerprint).strip():
@@ -675,6 +716,17 @@ async def sync_license(
     await db[LICENSE_COLLECTION].update_one({"_id": doc_id}, {"$set": updates})
     refreshed = await db[LICENSE_COLLECTION].find_one({"_id": doc_id})
     return refreshed or {**document, **updates}
+
+
+async def ensure_license_synced_for_studio(db: AsyncIOMotorDatabase) -> None:
+    """Best-effort Nexxus license sync before scstudio catalog/sync calls."""
+    document = await _find_license_document(db)
+    if document is None or not _should_sync_with_server(document):
+        return
+    try:
+        await sync_license(db, document=document)
+    except LicenseSyncError as exc:
+        logger.info("studio_license_sync_skipped: %s", exc)
 
 
 def _should_sync_with_server(document: dict[str, Any]) -> bool:

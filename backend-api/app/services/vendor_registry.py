@@ -16,6 +16,8 @@ GLOBAL_TOOL_NAMES = frozenset(
     {
         "netscaler_list_inventory",
         "jpilot_check_doc_connectivity",
+        "list_official_blueprint_catalog",
+        "search_stack_calibration_memory",
     }
 )
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.copilot_architect_discovery import user_wants_deliverable_now
+from app.services.calibration_matcher import has_installed_skills_for_chat
 from app.services.copilot_form import is_form_submission, user_requests_design_implementation
 from app.services.copilot_inventory import detect_ip_inventory_request
 from app.services.copilot_service_status import detect_service_status_request
@@ -55,6 +56,12 @@ PACK_TOOLS: dict[str, frozenset[str]] = {
     "nextgen_search": frozenset({"search_netscaler_nextgen_api"}),
     "doc_connectivity": frozenset({"jpilot_check_doc_connectivity"}),
     "architect_search": frozenset({"search_jpilot_architect_resources"}),
+    "stack_calibration": frozenset(
+        {
+            "search_stack_calibration_memory",
+            "list_official_blueprint_catalog",
+        }
+    ),
 }
 
 ROLE_BASE_PACKS: dict[str, frozenset[str]] = {
@@ -70,6 +77,12 @@ CISCO_PACK_TOOLS: dict[str, frozenset[str]] = {
     "cli_search": frozenset({"search_cisco_cli_reference"}),
     "doc_connectivity": frozenset({"jpilot_check_doc_connectivity"}),
     "inventory": frozenset({"netscaler_list_inventory"}),
+    "stack_calibration": frozenset(
+        {
+            "search_stack_calibration_memory",
+            "list_official_blueprint_catalog",
+        }
+    ),
 }
 
 CISCO_ROLE_BASE_PACKS: dict[str, frozenset[str]] = {
@@ -84,6 +97,12 @@ SDX_PACK_TOOLS: dict[str, frozenset[str]] = {
     "cli_search": frozenset({"search_sdx_cli_reference"}),
     "doc_connectivity": frozenset({"jpilot_check_doc_connectivity"}),
     "inventory": frozenset({"netscaler_list_inventory"}),
+    "stack_calibration": frozenset(
+        {
+            "search_stack_calibration_memory",
+            "list_official_blueprint_catalog",
+        }
+    ),
 }
 
 SDX_ROLE_BASE_PACKS: dict[str, frozenset[str]] = {
@@ -99,6 +118,12 @@ F5_PACK_TOOLS: dict[str, frozenset[str]] = {
     "architect_search": frozenset({"search_f5_documentation"}),
     "doc_connectivity": frozenset({"jpilot_check_doc_connectivity"}),
     "inventory": frozenset({"netscaler_list_inventory"}),
+    "stack_calibration": frozenset(
+        {
+            "search_stack_calibration_memory",
+            "list_official_blueprint_catalog",
+        }
+    ),
 }
 
 F5_ROLE_BASE_PACKS: dict[str, frozenset[str]] = {
@@ -132,6 +157,9 @@ def classify_tool_packs(
     else:
         packs = set(ROLE_BASE_PACKS.get(role, ROLE_BASE_PACKS["operator"]))
 
+    if has_installed_skills_for_chat(role=role, vendor=vendor):
+        packs.add("stack_calibration")
+
     if vendor == "netscaler" and role != "architect" and detect_service_status_request(user_message):
         return packs | {"service_status"}
     if vendor == "netscaler" and role != "architect" and detect_ip_inventory_request(user_message):
@@ -141,6 +169,8 @@ def classify_tool_packs(
         architect_packs: set[str] = set()
         if user_wants_deliverable_now(user_message):
             architect_packs.update({"architect_search", "cli_search", "nextgen_search"})
+        if has_installed_skills_for_chat(role=role, vendor=vendor):
+            architect_packs.add("stack_calibration")
         return architect_packs
 
     if _contains_any(

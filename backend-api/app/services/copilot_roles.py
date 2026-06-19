@@ -64,6 +64,8 @@ _PLANNING_TOOLS = frozenset(
         "search_jpilot_architect_resources",
         "jpilot_check_doc_connectivity",
         "netscaler_list_inventory",
+        "list_official_blueprint_catalog",
+        "search_stack_calibration_memory",
     }
 )
 

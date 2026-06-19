@@ -10,11 +10,24 @@ JPilot syncs **skills** from [Stack Calibration Studio](https://scstudio.nexxus-
 
 | Direction | Endpoint (scstudio) | JPilot client |
 |-----------|-------------------|---------------|
+| Blueprint catalog (read-only) | `POST /calibrations/catalog` | `fetch_calibration_catalog` + `GET /copilot/calibrations/catalog` |
+| Uninstall local skill | — | `DELETE /copilot/calibrations/{skillId}?version=` |
 | Pull skills | `POST /calibrations/sync` | `calibration_sync_service.py` + `POST /copilot/calibrations/sync` |
 | Push feedback | `POST /skill-feedback` | `skill_feedback_service.py` |
 | In-app export | — | `POST /copilot/calibration-feedback` (local API → forwards to scstudio) |
 
 Custom org calibrations **persist across JPilot upgrades**: synced skills are cached under `data/calibrations/` with version pins; customer overlays take precedence until the org opts into a Nexxus base update.
+
+### Chat agent tools
+
+| Tool | Purpose |
+|------|---------|
+| `list_official_blueprint_catalog` | Official Nexxus blueprint library for this license; includes `installedBlueprints` |
+| `search_stack_calibration_memory` | Search memory playbooks from **installed** skills only |
+
+Install path: **Calibration Studio → Sync from Studio**, or manual `.calpkg` upload via **Settings → Stack Calibrations** (Phase 0 dogfood).
+
+After a **license change in Nexxus Admin**, open Calibration Studio and click **Refresh entitlements** (JPilot re-syncs with Nexxus licensing, then reloads the catalog). Tier alone does not enable every blueprint — Nexxus must assign each Ent/Ent+ skill to your installation/client in scstudio.
 
 ---
 

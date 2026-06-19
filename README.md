@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.61` — JPilot Chat Beta as default chat, Architect change-control calibration fixes, and login redirect when ready.
+**Current release:** `v0.62` — Calibration Studio blueprint library, sync entitlement alignment, blueprint-first chat, and skill uninstall.
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -67,9 +67,20 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **NetScaler SDX (SSH)** — Operator and Analyst for SVM platform and VPX lifecycle with `search_sdx_cli_reference` memory gate (beta).
 - **F5 BIG-IP (SSH / TMSH)** — Operator, Analyst, and Architect (official F5 docs only); `f5_*` MCP tools and `search_f5_tmsh_reference` / `search_f5_documentation` (beta).
 - **Nexxus licensing** — Settings → **License**: enter a license code, import an offline `.lic` file, or sync with the Nexxus licensing API; installation fingerprint binding; encrypted payload validation; daily background sync and expiry enforcement; **activation gate** redirects unlicensed or expired installs to Settings → License before using the app.
-- **Stack Calibration Studio** — sync skills from scstudio, view installed calibrations in-app, and send redacted session feedback when chat misses the user's goal; skills inject into Architect/Operator prompts at runtime.
+- **Stack Calibration Studio** — browse the full Nexxus blueprint library (vendor → product → domain), sync entitled skills, install or uninstall locally, check for catalog updates, and send redacted session feedback; skills inject into chat at runtime with blueprint-first matching.
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
+
+## What's new in v0.62
+
+| Area | Highlights |
+|------|------------|
+| **Calibration Studio** | Full blueprint library from scstudio with search, vendor/product/domain filters, min-tier vs your tier, **Refresh entitlements**, **Check for updates**, per-skill **Download/Update**, and **Uninstall**. |
+| **Sync vs catalog** | Entitled skills from `POST /calibrations/sync` merge into the catalog so downloads work when catalog `installable` is false; shows catalog vs sync download versions and **Latest entitled** when already on the sync version. |
+| **Licensing** | License code sent to scstudio on catalog/sync; Nexxus license sync runs before studio calls; mismatch banner when JPilot and Studio tiers differ. |
+| **Blueprint-first chat** | Installed calibration skills matched by triggers + memory search before generic CLI/API tools; calibration gate blocks vendor tools until blueprint context is loaded. |
+| **Agent tools** | `list_official_blueprint_catalog` and `search_stack_calibration_memory` for official library browse and installed-skill memory search. |
+| **Docs** | Updated `JPILOT_SCSTUDIO_INTEGRATION.md` and `CALIBRATION_SYNC.md` for catalog contract, sync enrichment, and uninstall API. |
 
 ## What's new in v0.61
 

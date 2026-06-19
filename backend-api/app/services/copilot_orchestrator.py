@@ -55,7 +55,6 @@ from app.services.copilot_memory_gate import (
     F5_CLI_MEMORY_SEARCH_TOOL,
     MEMORY_SEARCH_TOOL,
     SDX_CLI_MEMORY_SEARCH_TOOL,
-    apply_memory_review_gates,
     block_result_for_unconfirmed_destructive,
     destructive_confirmation_required,
 )
@@ -78,8 +77,15 @@ from app.services.copilot_vendors import copilot_vendor_is_supported
 from app.services.vendor_registry import resolve_chat_vendor
 from app.services.encryption_service import decrypt_value
 
-from app.services.calibration_matcher import build_skill_injection_block
+from app.services.calibration_matcher import (
+    BLUEPRINT_FIRST_NUDGE,
+    resolve_blueprint_turn_context,
+)
 from app.services.calibration_sync_service import list_installed_skills
+from app.services.copilot_calibration_gate import (
+    STACK_CALIBRATION_MEMORY_TOOL,
+    apply_tool_review_gates,
+)
 from app.services.context_limits import ContextLimits, resolve_context_limits
 from app.services.copilot_orchestration import (
     OrchestrationRuntime,
@@ -294,6 +300,29 @@ def _response_has_input_form(content: str) -> bool:
     return form is not None
 
 
+def _apply_blueprint_context(
+    system_prompt: str,
+    *,
+    user_message: str,
+    role: str,
+    vendor: str | None,
+) -> tuple[str, bool, bool]:
+    ctx = resolve_blueprint_turn_context(
+        user_message=user_message,
+        role=role,
+        vendor=vendor or "netscaler",
+        installed=list_installed_skills(),
+    )
+    if ctx.injection_block:
+        system_prompt = f"{system_prompt}\n\n{ctx.injection_block}"
+    if ctx.relevant:
+        system_prompt = f"{system_prompt}\n\n{BLUEPRINT_FIRST_NUDGE}"
+    reviewed = ctx.stack_calibration_reviewed
+    if ctx.relevant and ctx.injection_block:
+        reviewed = True
+    return system_prompt, ctx.relevant, reviewed
+
+
 def _append_skill_calibration(
     system_prompt: str,
     *,
@@ -301,15 +330,13 @@ def _append_skill_calibration(
     role: str,
     vendor: str | None,
 ) -> str:
-    block = build_skill_injection_block(
+    prompt, _, _ = _apply_blueprint_context(
+        system_prompt,
         user_message=user_message,
         role=role,
-        vendor=vendor or "netscaler",
-        installed=list_installed_skills(),
+        vendor=vendor,
     )
-    if not block:
-        return system_prompt
-    return f"{system_prompt}\n\n{block}"
+    return prompt
 
 
 def _architect_effective_system_prompt(
@@ -349,13 +376,15 @@ async def _execute_chat_tool(
     appliance_name: str,
     nextgen_memory_reviewed: bool,
     cli_memory_reviewed: bool,
+    stack_calibration_reviewed: bool,
+    blueprint_relevant: bool,
     *,
     role: str | None,
     vendor: str | None,
     user_message: str,
     history: list[dict],
     tool_traces: list[ToolCallTrace],
-) -> tuple[str, bool, bool]:
+) -> tuple[str, bool, bool, bool]:
     blocked = block_architect_tool_during_discovery(
         name,
         role=role,
@@ -365,7 +394,7 @@ async def _execute_chat_tool(
     )
     if blocked:
         logger.info("tool_call name=%s BLOCKED (architect discovery guard)", name)
-        return blocked, nextgen_memory_reviewed, cli_memory_reviewed
+        return blocked, nextgen_memory_reviewed, cli_memory_reviewed, stack_calibration_reviewed
 
     return await _execute_tool_with_memory_gate(
         db,
@@ -374,6 +403,8 @@ async def _execute_chat_tool(
         appliance_name,
         nextgen_memory_reviewed,
         cli_memory_reviewed,
+        stack_calibration_reviewed,
+        blueprint_relevant,
         role=role,
         vendor=vendor,
     )
@@ -751,15 +782,23 @@ async def _execute_tool_with_memory_gate(
     appliance_name: str,
     nextgen_memory_reviewed: bool,
     cli_memory_reviewed: bool,
+    stack_calibration_reviewed: bool,
+    blueprint_relevant: bool,
     role: str | None = None,
     vendor: str | None = None,
-) -> tuple[str, bool, bool]:
+) -> tuple[str, bool, bool, bool]:
     logger.info("tool_call name=%s args=%s", name, json.dumps(arguments, default=str)[:500])
 
-    allowed, blocked = apply_memory_review_gates(name, nextgen_memory_reviewed, cli_memory_reviewed)
+    allowed, blocked = apply_tool_review_gates(
+        name,
+        blueprint_relevant=blueprint_relevant,
+        stack_calibration_reviewed=stack_calibration_reviewed,
+        nextgen_memory_reviewed=nextgen_memory_reviewed,
+        cli_memory_reviewed=cli_memory_reviewed,
+    )
     if not allowed and blocked:
-        logger.info("tool_call name=%s BLOCKED (memory review not satisfied)", name)
-        return blocked, nextgen_memory_reviewed, cli_memory_reviewed
+        logger.info("tool_call name=%s BLOCKED (memory/blueprint review not satisfied)", name)
+        return blocked, nextgen_memory_reviewed, cli_memory_reviewed, stack_calibration_reviewed
 
     if destructive_confirmation_required(name, arguments):
         logger.info("tool_call name=%s BLOCKED (awaiting destructive-op confirmation)", name)
@@ -767,6 +806,7 @@ async def _execute_tool_with_memory_gate(
             block_result_for_unconfirmed_destructive(name, arguments),
             nextgen_memory_reviewed,
             cli_memory_reviewed,
+            stack_calibration_reviewed,
         )
 
     result = await execute_copilot_tool(
@@ -782,7 +822,9 @@ async def _execute_tool_with_memory_gate(
         F5_CLI_MEMORY_SEARCH_TOOL,
     }:
         cli_memory_reviewed = True
-    return result, nextgen_memory_reviewed, cli_memory_reviewed
+    if name == STACK_CALIBRATION_MEMORY_TOOL:
+        stack_calibration_reviewed = True
+    return result, nextgen_memory_reviewed, cli_memory_reviewed, stack_calibration_reviewed
 
 
 async def resolve_appliance_vendor(db: AsyncIOMotorDatabase, appliance_name: str) -> str:
@@ -911,7 +953,7 @@ async def run_copilot_chat(
             "Connect a supported appliance or use Architect role for planning."
         )
     system_prompt = build_system_prompt(chat_role, appliance_name, vendor=chat_vendor)
-    system_prompt = _append_skill_calibration(
+    system_prompt, blueprint_relevant, stack_calibration_reviewed = _apply_blueprint_context(
         system_prompt,
         user_message=user_message,
         role=chat_role.value,
@@ -1083,6 +1125,8 @@ async def run_copilot_chat(
             context_limits=ctx_limits,
             progress=progress,
             orchestration=orchestration,
+            blueprint_relevant=blueprint_relevant,
+            stack_calibration_reviewed=stack_calibration_reviewed,
         )
     elif provider_type == "Gemini":
         content = await _run_gemini_loop(
@@ -1105,6 +1149,8 @@ async def run_copilot_chat(
             context_limits=ctx_limits,
             progress=progress,
             orchestration=orchestration,
+            blueprint_relevant=blueprint_relevant,
+            stack_calibration_reviewed=stack_calibration_reviewed,
         )
     elif provider_type in OPENAI_COMPAT_CHAT_PROVIDER_TYPES:
         if provider_type == "LM Studio":
@@ -1143,6 +1189,8 @@ async def run_copilot_chat(
             context_limits=ctx_limits,
             progress=progress,
             orchestration=orchestration,
+            blueprint_relevant=blueprint_relevant,
+            stack_calibration_reviewed=stack_calibration_reviewed,
         )
     else:
         raise ValueError(f"Unsupported provider type: {provider_type}")
@@ -1216,6 +1264,8 @@ async def _run_openai_loop(
     context_limits: ContextLimits | None = None,
     progress: QueueChatProgressReporter | None = None,
     orchestration: OrchestrationRuntime | None = None,
+    blueprint_relevant: bool = False,
+    stack_calibration_reviewed: bool = True,
 ) -> str:
     limits = context_limits or resolve_context_limits(model, provider_type)
     runtime = orchestration or OrchestrationRuntime(
@@ -1240,6 +1290,7 @@ async def _run_openai_loop(
 
     nextgen_memory_reviewed = detect_nextgen_application_form_submission(user_message)
     cli_memory_reviewed = False
+    blueprint_reviewed = stack_calibration_reviewed
     progress_ctx = _progress_context(history, user_message, attachments)
 
     for continuation_phase in range(runtime.max_continuation_phases + 1):
@@ -1325,13 +1376,15 @@ async def _run_openai_loop(
                 try:
                     if progress is not None:
                         await progress.tool_started(name)
-                    result, nextgen_memory_reviewed, cli_memory_reviewed = await _execute_chat_tool(
+                    result, nextgen_memory_reviewed, cli_memory_reviewed, blueprint_reviewed = await _execute_chat_tool(
                         db,
                         name,
                         arguments,
                         appliance_name,
                         nextgen_memory_reviewed,
                         cli_memory_reviewed,
+                        blueprint_reviewed,
+                        blueprint_relevant,
                         role=jpilot_role,
                         vendor=chat_vendor,
                         user_message=user_message,
@@ -1416,6 +1469,8 @@ async def _run_gemini_loop(
     context_limits: ContextLimits | None = None,
     progress: QueueChatProgressReporter | None = None,
     orchestration: OrchestrationRuntime | None = None,
+    blueprint_relevant: bool = False,
+    stack_calibration_reviewed: bool = True,
 ) -> str:
     limits = context_limits or resolve_context_limits(model, provider_type)
     runtime = orchestration or OrchestrationRuntime(
@@ -1437,6 +1492,7 @@ async def _run_gemini_loop(
 
     nextgen_memory_reviewed = detect_nextgen_application_form_submission(user_message)
     cli_memory_reviewed = False
+    blueprint_reviewed = stack_calibration_reviewed
     progress_ctx = _progress_context(history, user_message, attachments)
 
     for continuation_phase in range(runtime.max_continuation_phases + 1):
@@ -1517,13 +1573,15 @@ async def _run_gemini_loop(
                 arguments = function_call.get("args", {})
                 if progress is not None:
                     await progress.tool_started(name)
-                result, nextgen_memory_reviewed, cli_memory_reviewed = await _execute_chat_tool(
+                result, nextgen_memory_reviewed, cli_memory_reviewed, blueprint_reviewed = await _execute_chat_tool(
                     db,
                     name,
                     arguments,
                     appliance_name,
                     nextgen_memory_reviewed,
                     cli_memory_reviewed,
+                    blueprint_reviewed,
+                    blueprint_relevant,
                     role=jpilot_role,
                     vendor=chat_vendor,
                     user_message=user_message,
@@ -1604,6 +1662,8 @@ async def _run_anthropic_loop(
     context_limits: ContextLimits | None = None,
     progress: QueueChatProgressReporter | None = None,
     orchestration: OrchestrationRuntime | None = None,
+    blueprint_relevant: bool = False,
+    stack_calibration_reviewed: bool = True,
 ) -> str:
     limits = context_limits or resolve_context_limits(model, provider_type)
     runtime = orchestration or OrchestrationRuntime(
@@ -1624,6 +1684,7 @@ async def _run_anthropic_loop(
 
     nextgen_memory_reviewed = detect_nextgen_application_form_submission(user_message)
     cli_memory_reviewed = False
+    blueprint_reviewed = stack_calibration_reviewed
     progress_ctx = _progress_context(history, user_message, attachments)
 
     for continuation_phase in range(runtime.max_continuation_phases + 1):
@@ -1702,13 +1763,15 @@ async def _run_anthropic_loop(
                 arguments = tool_use.get("input", {})
                 if progress is not None:
                     await progress.tool_started(name)
-                result, nextgen_memory_reviewed, cli_memory_reviewed = await _execute_chat_tool(
+                result, nextgen_memory_reviewed, cli_memory_reviewed, blueprint_reviewed = await _execute_chat_tool(
                     db,
                     name,
                     arguments,
                     appliance_name,
                     nextgen_memory_reviewed,
                     cli_memory_reviewed,
+                    blueprint_reviewed,
+                    blueprint_relevant,
                     role=jpilot_role,
                     vendor=chat_vendor,
                     user_message=user_message,

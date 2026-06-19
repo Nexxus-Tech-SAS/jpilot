@@ -1,14 +1,18 @@
 # JPilot ↔ scstudio integration contract
 
-Normative contract between **JPilot** (`backend-api`) and **Stack Calibration Studio** (`scstudio.nexxus-tech.com`). Copy or symlink this file into `scstudio/docs/JPILOT_INTEGRATION.md` when the scstudio repo is scaffolded.
+Normative contract between **JPilot** (`backend-api`) and **Stack Calibration Studio** (`scstudio.nexxus-tech.com`).
 
-**Last updated:** 2026-06-13
+**Canonical copy (scstudio repo):** [Nexxus-Tech-SAS/scstudio `docs/JPILOT_INTEGRATION.md`](https://github.com/Nexxus-Tech-SAS/scstudio/blob/main/docs/JPILOT_INTEGRATION.md)
+
+**Customer-side implementation:** [CALIBRATION_SYNC.md](./CALIBRATION_SYNC.md)
+
+**Last updated:** 2026-06-19
 
 ---
 
 ## Base URL
 
-Production: `https://scstudio.nexxus-tech.com`
+Production default: `https://scstudio.nexxus-tech.com` (`NEXXUS_CALIBRATION_BASE_URL`).
 
 nginx (nexxus-web):
 
@@ -27,174 +31,144 @@ location /calibrations/ {
 
 | Caller | Required fields |
 |--------|-----------------|
-| Licensed JPilot (Enterprise / Enterprise Pro) | `appFingerprint`, `installSignature` (future), `licenseOrgId` when available |
+| Licensed JPilot (Enterprise / Enterprise Pro) | `appFingerprint`, `installSignature` (future) |
 | Free / Early Access | `appFingerprint` only |
 
-JPilot derives `appFingerprint` from installation binding (see `license_service.licensefingerprint()`).
+JPilot derives `appFingerprint` from installation binding (`license_service.licensefingerprint()`).
 
-`installSignature` — reserved; HKDF over fingerprint + license code. Optional until licensing binding ships.
+Studio **human** sessions are separate — machine endpoints never use browser cookies.
 
 ---
 
-## POST /skill-feedback
+## POST /calibrations/sync
 
-Ingest a failed or unsatisfactory JPilot session for SME calibration.
+Returns signed skill bundles and stack profile metadata for this install.
 
 ### Request
 
 ```json
 {
-  "appFingerprint": "sha256-install-id",
-  "installSignature": null,
-  "clientId": "acme-corp",
-  "jpilotVersion": "0.59",
-  "feedback": {
-    "skillId": "nexxus-netscaler-firmware-ha-upgrade",
-    "skillVersion": "1.0.0",
-    "objectiveMet": false,
-    "userGoal": "Phased firmware upgrade plan for HA pairs",
-    "vendor": "netscaler",
-    "role": "architect",
-    "category": "too_slow",
-    "rating": "negative",
-    "userMessage": "Hit tool call limit before document was generated",
-    "userComment": "Hit tool call limit before document was generated",
-    "sessionExcerpt": "[user] Create a phased firmware upgrade plan…\n\n[assistant] …",
-    "toolTraceExcerpt": [
-      { "name": "netscaler_list_inventory", "ok": false, "resultExcerpt": "BLOCKED: …" }
-    ],
-    "matchedSkills": [],
-    "suggestedSkillId": "nexxus-netscaler-firmware-ha-upgrade",
-    "includeApplianceName": false,
-    "applianceName": null,
-    "session": {
-      "sessionId": "uuid-or-local-id",
-      "startedAt": "2026-06-13T12:03:00Z",
-      "messages": [
-        { "role": "user", "content": "Create a phased firmware upgrade plan…", "createdAt": "2026-06-13T12:03:00Z" },
-        { "role": "assistant", "content": "…", "toolCalls": [{ "name": "netscaler_list_inventory", "arguments": {}, "resultExcerpt": "BLOCKED: …" }] }
-      ]
-    },
-    "diagnostics": {
-      "lastErrorType": "tool_limit",
-      "formSubmissionCount": 8,
-      "planningIntent": "change_control"
-    },
-    "source": "jpilot_in_app"
+  "appFingerprint": "<installation fingerprint>",
+  "appName": "JPilot",
+  "installSignature": "<optional base64url HMAC>",
+  "timestamp": "2026-06-12T10:00:00Z",
+  "nonce": "<random uuid>",
+  "installedVersions": {
+    "nexxus-netscaler-waf-tuning": "2.1.0"
   }
 }
 ```
 
-### Field notes
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `feedback.skillId` | yes | Suggested or matched skill; `unknown` when none |
-| `feedback.skillVersion` | yes | Installed skill version from local cache, else `0.0.0` |
-| `feedback.objectiveMet` | yes | `false` when user sends feedback / didn't achieve goal |
-| `feedback.userGoal` | recommended | First user message or edited summary |
-| `feedback.category` | yes | See categories below |
-| `feedback.rating` | yes | `positive` \| `negative` \| `neutral` |
-| `feedback.userMessage` | recommended | User comment (same as `userComment`) |
-| `feedback.sessionExcerpt` | recommended | Redacted transcript string shown in Studio inbox |
-| `feedback.toolTraceExcerpt` | no | Tool call summary for SME triage |
-| `feedback.session.messages` | optional | Structured messages (Studio inbox uses `sessionExcerpt`) |
-| `feedback.matchedSkills` | no | Skill IDs active during session (future matcher) |
-| `feedback.suggestedSkillId` | no | Heuristic skill to attach (e.g. firmware upgrade) |
-| `feedback.diagnostics` | no | Structured hints for calibration chat |
-| `feedback.source` | yes | `jpilot_in_app` \| `jpilot_thumbs` \| `studio_paste` |
-
-### Categories
-
-`wrong_tool`, `missing_step`, `wrong_answer`, `skill_not_triggered`, `too_slow`, `tool_limit`, `other`
-
-### Response
-
-HTTP **202 Accepted**
+### Response (200)
 
 ```json
 {
-  "status": "accepted",
-  "feedbackId": "fb-uuid",
-  "message": "Feedback queued for calibration",
-  "calibrationUrl": "https://scstudio.nexxus-tech.com/feedback/fb-uuid"
+  "status": "active",
+  "licenseType": "enterprise-pro",
+  "clientId": "client-acme",
+  "entitlements": ["blueprint_library", "calibration_studio"],
+  "stackProfile": { "id": "acme-netscaler-2026", "version": "1.0.0" },
+  "skills": [
+    {
+      "id": "nexxus-netscaler-waf-tuning",
+      "version": "2.1.0",
+      "packageSignature": "<Ed25519>",
+      "bundleUrl": "/calibrations/bundles/nexxus-netscaler-waf-tuning/2.1.0"
+    }
+  ],
+  "removed": ["deprecated-skill-id"]
 }
 ```
 
-### Storage (scstudio MongoDB `skill_feedback`)
+### Tier gating (sync)
 
-```json
-{
-  "_id": "fb-uuid",
-  "status": "new",
-  "linkedCalibrationSessionId": null,
-  "createdAt": "2026-06-13T12:15:00Z"
-}
-```
+| JPilot license | Skills returned |
+|----------------|-----------------|
+| None / Early Access | `minTier: free` + `globalFreeSkill: true` only |
+| Enterprise | free + enterprise assignments for client |
+| Enterprise Pro | free + enterprise + enterprise_pro assignments |
 
-Status workflow: `new` → `triaged` → `in_calibration` → `resolved` | `wont_fix`
-
-### Redaction (JPilot responsibility)
-
-Before send, JPilot MUST strip or mask:
-
-- Passwords, license codes, API keys, JWTs
-- `nsagent_encryption_key` patterns
-- PEM / private key blocks
-- Optional: appliance hostnames unless `includeApplianceName: true`
+**JPilot client:** `calibration_sync_service.sync_calibrations_from_studio` · local proxy `POST /copilot/calibrations/sync`
 
 ---
 
-## POST /calibrations/sync (pull — Phase 2)
+## POST /calibrations/catalog
 
-JPilot pulls signed `.calpkg` bundles. Request/response defined in Stack Calibration Studio plan; not implemented in JPilot yet.
+Read-only blueprint library metadata for agent discovery (no package download). Returns **all** published skills; each item includes `installable` and `ineligibleReason`. Sync still returns installable bundles only.
 
----
+### Request
 
-## JPilot proxy: POST /copilot/calibration-feedback
-
-Authenticated JPilot users call the local API; JPilot forwards to scstudio after redaction.
-
-### Request body
-
-Same as `/skill-feedback` except install identity is added server-side (`appFingerprint`, `jpilotVersion`).
-
-### Response
-
-Pass-through of scstudio 202 body, or:
+Same fields as sync (including `licenseCode` when the install has an activated license), plus optional vendor filter:
 
 ```json
 {
-  "status": "disabled",
-  "message": "Calibration feedback is disabled on this installation."
+  "appFingerprint": "<installation fingerprint>",
+  "appName": "JPilot",
+  "licenseCode": "<optional when licensed>",
+  "vendor": "netscaler",
+  "installedVersions": {}
 }
 ```
 
-When scstudio is unreachable:
+### Response (200)
 
 ```json
 {
-  "status": "queued",
-  "message": "Feedback saved locally; will retry when Studio is reachable."
+  "catalogUrl": "https://scstudio.nexxus-tech.com/calibrations/catalog",
+  "licenseType": "free",
+  "clientId": null,
+  "entitlements": [],
+  "skills": [
+    {
+      "id": "nexxus-free-skill",
+      "version": "1.0.0",
+      "label": "Architect discovery",
+      "vendor": "netscaler",
+      "domains": ["architect", "discovery"],
+      "minTier": "free",
+      "globalFreeSkill": true,
+      "installable": true,
+      "ineligibleReason": null,
+      "bundleUrl": "https://scstudio.nexxus-tech.com/calibrations/bundles/nexxus-free-skill/1.0.0"
+    }
+  ]
 }
 ```
 
-(Future: local Mongo queue — v1 returns 502 with detail.)
+**JPilot enrichment:** local proxy `GET /copilot/calibrations/catalog` adds `installedBlueprints[]` by comparing the catalog with `data/calibrations/` (installed version, catalog version, `updateAvailable`).
+
+**Chat agent tools:**
+
+| Tool | Backing |
+|------|---------|
+| `list_official_blueprint_catalog` | `fetch_calibration_catalog` (+ `installedBlueprints`) |
+| `search_stack_calibration_memory` | Installed skill memory modules only |
+
+Agent rule: show all catalog skills; only recommend install when `installable` is true. Direct users to **Calibration Studio → Sync from Studio** or **Settings → Stack Calibrations** (`.calpkg` upload).
 
 ---
 
-## Calibration apply model
+## POST /skill-feedback
 
-| Tier | What changes | Who approves | Ships via |
-|------|--------------|--------------|-----------|
-| **Skill** | prompts, memory, triggers, scenarios, tool pack | SME or Enterprise Pro author | `.calpkg` publish → sync |
-| **Platform proposal** | orchestrator, MCP, tool schemas | Nexxus only | jpilot release |
-| **Full repo (Cursor power mode)** | multi-file patch | Nexxus + PR review | git tag |
+JPilot sends end-user feedback about skill behavior. HTTP **202 Accepted**.
 
-Studio NEVER auto-publishes without human **Apply → lint → scenario pass**.
+See [CALIBRATION_SYNC.md](./CALIBRATION_SYNC.md) for redaction rules and local proxy `POST /copilot/calibration-feedback`.
+
+Categories: `wrong_tool`, `missing_step`, `wrong_answer`, `skill_not_triggered`, `too_slow`, `tool_limit`, `other`
+
+---
+
+## JPilot runtime (summary)
+
+1. Sync or manual upload → extract to `data/calibrations/{skillId}/{version}/`
+2. MongoDB `stack_calibrations` index row per installed version
+3. Matcher: filter `skill.vendor == chat_vendor`, role, triggers + memory search; cap 2 skills/turn
+4. **Blueprint-first:** server-side memory search + prompt injection before the LLM loop; gate blocks generic CLI/API tools when a blueprint matches until context is loaded (`copilot_calibration_gate`)
+5. Inject `prompts/{role}.md` + matched memory excerpts; expose `search_stack_calibration_memory` in routed tool packs when skills are installed
+6. Platform gates (`copilot_memory_gate`, role tool allowlists) unchanged
 
 ---
 
 ## Sample skill
 
-See [calibrations/samples/netscaler-firmware-ha-upgrade/](./calibrations/samples/netscaler-firmware-ha-upgrade/).
+[calibrations/samples/netscaler-firmware-ha-upgrade/](./calibrations/samples/netscaler-firmware-ha-upgrade/)

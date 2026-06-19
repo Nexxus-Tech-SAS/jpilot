@@ -505,6 +505,51 @@ SELF_CONNECTIVITY_TOOL = {
     "parameters": {"type": "object", "properties": {}},
 }
 
+BLUEPRINT_CATALOG_TOOL = {
+    "name": "list_official_blueprint_catalog",
+    "description": (
+        "List the official Nexxus Stack Calibration Studio blueprint library for this install. "
+        "Returns all published skills with minTier, globalFreeSkill, installable, and "
+        "installedBlueprints (local cache vs catalog). Use with no vendor filter to see every "
+        "vendor. Only recommend installing skills where installable is true. Does not download "
+        "packages — direct the user to Calibration Studio sync or Settings → Stack Calibrations "
+        "for .calpkg upload."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "vendor": {
+                "type": "string",
+                "description": "Optional vendor filter: netscaler, f5, cisco, sdx, etc.",
+            }
+        },
+    },
+}
+
+STACK_CALIBRATION_MEMORY_TOOL = {
+    "name": "search_stack_calibration_memory",
+    "description": (
+        "Search memory modules from installed stack calibration skills only. "
+        "REQUIRED before generic CLI/API reference search or appliance tools when the user's "
+        "request may match an installed blueprint. Optionally scope to one skillId and the "
+        "active chat vendor/role."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Topic or phrase to find in installed skill memory playbooks",
+            },
+            "skillId": {
+                "type": "string",
+                "description": "Optional installed skill id to search",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
 SEARCH_TOOL = {
     "name": "search_netscaler_nextgen_api",
     "description": (
@@ -964,6 +1009,40 @@ async def execute_copilot_tool(
 
         return json.dumps(await check_doc_connectivity(db), indent=2)
 
+    if name == "list_official_blueprint_catalog":
+        from app.services.calibration_sync_service import fetch_calibration_catalog
+
+        vendor_filter = (arguments.get("vendor") or "").strip() or None
+        result = await fetch_calibration_catalog(db, vendor=vendor_filter)
+        payload = {
+            "catalogUrl": result.catalog_url,
+            "licenseType": result.license_type,
+            "clientId": result.client_id,
+            "entitlements": result.entitlements,
+            "skills": result.skills,
+            "installedBlueprints": result.installed_blueprints,
+        }
+        return json.dumps(payload, indent=2)
+
+    if name == "search_stack_calibration_memory":
+        from app.services.calibration_memory_service import search_stack_calibration_memory
+
+        query = arguments.get("query", "").strip()
+        if not query:
+            raise ValueError("query is required")
+        skill_id = (arguments.get("skillId") or arguments.get("skill_id") or "").strip() or None
+        chat_vendor = (vendor or "netscaler").strip().lower()
+        parsed_role = (role or "").strip().lower() or None
+        return json.dumps(
+            search_stack_calibration_memory(
+                query,
+                skill_id=skill_id,
+                vendor=chat_vendor,
+                role=parsed_role,
+            ),
+            indent=2,
+        )
+
     if name == "search_netscaler_nextgen_api":
         from app.services.nextgen_docs_service import search_nextgen_guide
         from app.services.copilot_platform_service import get_allowed_domains
@@ -1318,6 +1397,8 @@ async def get_enabled_copilot_tools(
         if tool["name"] == "netscaler_list_inventory" or tool["name"] in enabled
     ]
     tools.append(SELF_CONNECTIVITY_TOOL)
+    tools.append(BLUEPRINT_CATALOG_TOOL)
+    tools.append(STACK_CALIBRATION_MEMORY_TOOL)
     if manifest:
         search_tool_map = {
             "search_netscaler_nextgen_api": SEARCH_TOOL,
