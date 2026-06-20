@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     nsagent_encryption_key: str
     nginx_hostname: str = ""
     mongo_uri: str = "mongodb://mongodb:27017"
-    mongo_db: str = "netscaler_copilot"
+    mongo_db: str = "jpilot"
     mcp_server_url: str = "http://mcp-server:8001"
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"

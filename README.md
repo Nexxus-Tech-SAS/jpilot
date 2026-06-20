@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.65` — Calibration Studio entitlement refresh syncs on installation fingerprint (no local license code required); HTTP Load Balancer blueprint forms auto-deploy with `IP:PORT` backends; clearer blueprint status when tier is OK but a skill is not assigned.
+**Current release:** `v0.66` — MongoDB database name defaults to `jpilot` across compose, installer, and API config (replacing legacy `nsagent` / `netscaler_copilot` defaults for fresh installs).
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -71,6 +71,12 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.66
+
+| Area | Highlights |
+|------|------------|
+| **MongoDB naming** | Fresh installs use database **`jpilot`** by default (`MONGO_DB` in `.env`, compose, installer, and API config). Legacy names `nsagent` and `netscaler_copilot` are retired for new deployments; existing data in older DB names is unchanged until you migrate. |
 
 ## What's new in v0.65
 
@@ -698,6 +704,8 @@ Prefer to configure things by hand instead of the wizard? You can:
    | `ADMIN_PASSWORD`         | Bootstrap password (installer sets; leave blank after) |
    | `ADMIN_EMAIL`            | Bootstrap admin email for password recovery (installer sets; leave blank after) |
    | `NSAGENT_DEPLOY_MODE`    | `prod` (compiled, default) or `dev` (hot reload) |
+   | `MONGO_URI`              | MongoDB connection string (default `mongodb://mongodb:27017`) |
+   | `MONGO_DB`               | JPilot database name (default `jpilot`) |
    | `NGINX_HOSTNAME`         | Public hostname for nginx TLS        |
    | `NEXXUS_LICENSING_BASE_URL` | Nexxus licensing API base (optional; default in config) |
    | `LICENSE_SYNC_INTERVAL_SECONDS` | Background license sync interval (default `86400`) |

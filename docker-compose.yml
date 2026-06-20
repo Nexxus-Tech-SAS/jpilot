@@ -58,8 +58,8 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-      - MONGO_URI=mongodb://mongodb:27017
-      - MONGO_DB=nsagent
+      - MONGO_URI=${MONGO_URI:-mongodb://mongodb:27017}
+      - MONGO_DB=${MONGO_DB:-jpilot}
       - MCP_SERVER_URL=http://mcp-server:8001
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-jpilot.nexxus-tech.com}
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-JPilot}
