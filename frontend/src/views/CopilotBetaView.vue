@@ -7,7 +7,13 @@
 
     <div class="stage flex-1" :class="{ 'stage-plain': background === 'none' }">
       <BetaChatBackground v-if="background !== 'none'" :background-id="background" />
-      <div class="beta-chat-layout" :class="{ 'beta-chat-layout-sidebar-hidden': !chatSidebarVisible }">
+      <div
+        class="beta-chat-layout"
+        :class="{
+          'beta-chat-layout-sidebar-hidden': !chatSidebarVisible,
+          'beta-chat-layout-lab': showBetaLabel
+        }"
+      >
         <div
           v-show="!isMobileLayout"
           class="beta-sidebar-card content-panel"
@@ -20,33 +26,51 @@
               :can-add="canAddConversation"
               :conversation-count="betaChatState.conversations.length"
               :max-conversations="MAX_BETA_CONVERSATIONS"
+              :show-beta-label="showBetaLabel"
               @select="setActiveBetaConversation"
               @new-chat="onNewChat"
               @delete="onDeleteChat"
             />
           </div>
         </div>
-        <div class="beta-chat-card content-panel">
-          <ChatPane
-            v-if="activeConversation"
-            :key="activeSessionId"
-            class="beta-chat-pane"
-            :session-id="activeSessionId"
-            :initial-role="activeConversation.initialRole"
-            ui-variant="beta"
-            :providers="providers"
-            :appliances="appliances"
-            :default-provider-id="defaultProviderId"
-            :web-search-available="webSearchAvailable"
-            :can-close="false"
-            :show-conversation-switcher="isMobileLayout"
-            :show-chat-sidebar-toggle="!isMobileLayout"
-            :chat-sidebar-visible="chatSidebarVisible"
-            :beta-background="background"
-            :beta-backgrounds="backgrounds"
-            @update:beta-background="onBetaBackgroundChange"
-            @open-conversations="mobileChatsOpen = true"
-            @toggle-chat-sidebar="toggleChatSidebar"
+        <div
+          class="beta-chat-workspace"
+          :class="{
+            'beta-chat-workspace-split': designPanelOpen && !isMobileLayout,
+            'beta-chat-workspace-lab': showBetaLabel
+          }"
+        >
+          <div class="beta-chat-card content-panel">
+            <ChatPane
+              v-if="activeConversation"
+              :key="`${chatNamespace}-${activeSessionId}`"
+              class="beta-chat-pane"
+              :session-id="activeSessionId"
+              :initial-role="activeConversation.initialRole"
+              ui-variant="beta"
+              :providers="providers"
+              :appliances="appliances"
+              :default-provider-id="defaultProviderId"
+              :web-search-available="webSearchAvailable"
+              :can-close="false"
+              :show-conversation-switcher="isMobileLayout"
+              :show-chat-sidebar-toggle="!isMobileLayout"
+              :chat-sidebar-visible="chatSidebarVisible"
+              :beta-background="background"
+              :beta-backgrounds="backgrounds"
+              :chat-namespace="chatNamespace"
+              :show-beta-label="showBetaLabel"
+              @update:beta-background="onBetaBackgroundChange"
+              @open-conversations="mobileChatsOpen = true"
+              @toggle-chat-sidebar="toggleChatSidebar"
+              @design-panel-visible-change="onDesignPanelVisibleChange"
+            />
+          </div>
+          <div
+            v-if="!isMobileLayout"
+            id="beta-architect-design-slot"
+            class="beta-design-card content-panel"
+            aria-label="Document Editor"
           />
         </div>
       </div>
@@ -73,6 +97,7 @@
         :can-add="canAddConversation"
         :conversation-count="betaChatState.conversations.length"
         :max-conversations="MAX_BETA_CONVERSATIONS"
+        :show-beta-label="showBetaLabel"
         @select="onMobileSelectChat"
         @new-chat="onMobileNewChat"
         @delete="onDeleteChat"
@@ -83,6 +108,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import Drawer from 'primevue/drawer'
@@ -93,12 +119,7 @@ import ChatPane from '../components/ChatPane.vue'
 import { getRoleById } from '../config/jpilotRoles'
 import {
   MAX_BETA_CONVERSATIONS,
-  betaChatState,
-  canAddBetaConversation,
-  conversationDisplayTitle,
-  createBetaConversation,
-  removeBetaConversation,
-  setActiveBetaConversation
+  getBetaChatStore
 } from '../stores/betaChatConversations'
 import { handoffState } from '../stores/copilotHandoff'
 import { isSessionLoading } from '../stores/copilotChatRuns'
@@ -114,12 +135,22 @@ import { getCopilotPlatformSettings } from '../services/copilotPlatform'
 
 const toast = useToast()
 const confirm = useConfirm()
+const route = useRoute()
 
-const CHAT_SIDEBAR_STORAGE_KEY = 'jpilot_beta_chat_sidebar_v1'
+const chatNamespace = computed(() => route.meta.chatNamespace || 'main')
+const showBetaLabel = computed(() => chatNamespace.value === 'lab')
+const chatStore = computed(() => getBetaChatStore(chatNamespace.value))
+const betaChatState = computed(() => chatStore.value.state)
+
+const CHAT_SIDEBAR_STORAGE_KEYS = {
+  main: 'jpilot_beta_chat_sidebar_v1',
+  lab: 'jpilot_beta_lab_chat_sidebar_v1'
+}
 
 function loadChatSidebarVisible() {
+  const storageKey = CHAT_SIDEBAR_STORAGE_KEYS[chatNamespace.value] || CHAT_SIDEBAR_STORAGE_KEYS.main
   try {
-    const raw = localStorage.getItem(CHAT_SIDEBAR_STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey)
     if (raw === '0') return false
     if (raw === '1') return true
   } catch {
@@ -131,17 +162,35 @@ function loadChatSidebarVisible() {
 const providers = ref([])
 const appliances = ref([])
 const backgrounds = BETA_CHAT_BACKGROUNDS
-const background = ref(getBetaChatBackground())
+const background = ref(getBetaChatBackground(chatNamespace.value))
 const webSearchAvailable = ref(false)
 const mobileChatsOpen = ref(false)
 const chatSidebarVisible = ref(loadChatSidebarVisible())
+const chatSidebarBeforeDesignPanel = ref(null)
+const designPanelOpen = ref(false)
 
 function toggleChatSidebar() {
   chatSidebarVisible.value = !chatSidebarVisible.value
+  const storageKey = CHAT_SIDEBAR_STORAGE_KEYS[chatNamespace.value] || CHAT_SIDEBAR_STORAGE_KEYS.main
   try {
-    localStorage.setItem(CHAT_SIDEBAR_STORAGE_KEY, chatSidebarVisible.value ? '1' : '0')
+    localStorage.setItem(storageKey, chatSidebarVisible.value ? '1' : '0')
   } catch {
     /* ignore */
+  }
+}
+
+function onDesignPanelVisibleChange(visible) {
+  designPanelOpen.value = visible
+  if (visible) {
+    if (chatSidebarBeforeDesignPanel.value === null) {
+      chatSidebarBeforeDesignPanel.value = chatSidebarVisible.value
+    }
+    chatSidebarVisible.value = false
+    return
+  }
+  if (chatSidebarBeforeDesignPanel.value !== null) {
+    chatSidebarVisible.value = chatSidebarBeforeDesignPanel.value
+    chatSidebarBeforeDesignPanel.value = null
   }
 }
 
@@ -156,12 +205,12 @@ function syncMobileLayout() {
 }
 
 const ready = computed(() => providers.value.length > 0)
-const canAddConversation = computed(() => canAddBetaConversation())
-const activeSessionId = computed(() => betaChatState.activeId)
+const canAddConversation = computed(() => chatStore.value.canAddBetaConversation())
+const activeSessionId = computed(() => betaChatState.value.activeId)
 
 const activeConversation = computed(() =>
-  betaChatState.conversations.find((c) => c.sessionId === activeSessionId.value) ||
-  betaChatState.conversations[0] ||
+  betaChatState.value.conversations.find((c) => c.sessionId === activeSessionId.value) ||
+  betaChatState.value.conversations[0] ||
   null
 )
 
@@ -188,12 +237,12 @@ function paneStatus(session, sessionId) {
 }
 
 const paneSummaries = computed(() =>
-  betaChatState.conversations.map((conversation) => {
+  betaChatState.value.conversations.map((conversation) => {
     const session = getSession(conversation.sessionId, conversation.initialRole)
     const role = getRoleById(session.role)
     return {
       sessionId: conversation.sessionId,
-      title: conversationDisplayTitle(conversation),
+      title: chatStore.value.conversationDisplayTitle(conversation),
       preview: lastMessagePreview(session),
       role,
       busy: isSessionLoading(conversation.sessionId),
@@ -203,7 +252,7 @@ const paneSummaries = computed(() =>
 )
 
 function onNewChat() {
-  if (!canAddBetaConversation()) {
+  if (!chatStore.value.canAddBetaConversation()) {
     toast.add({
       severity: 'warn',
       summary: 'Conversation limit',
@@ -213,6 +262,14 @@ function onNewChat() {
     return
   }
   createBetaConversation('operator', 'New chat')
+}
+
+function createBetaConversation(initialRole, label) {
+  chatStore.value.createBetaConversation(initialRole, label)
+}
+
+function setActiveBetaConversation(sessionId) {
+  chatStore.value.setActiveBetaConversation(sessionId)
 }
 
 function onMobileSelectChat(sessionId) {
@@ -235,7 +292,7 @@ function onDeleteChat(sessionId) {
     acceptLabel: 'Delete',
     acceptClass: 'p-button-danger',
     accept: () => {
-      const result = removeBetaConversation(sessionId)
+      const result = chatStore.value.removeBetaConversation(sessionId)
       if (!result.ok) {
         toast.add({
           severity: 'warn',
@@ -250,7 +307,7 @@ function onDeleteChat(sessionId) {
 
 function onBetaBackgroundChange(id) {
   background.value = id
-  setBetaChatBackground(id)
+  setBetaChatBackground(id, chatNamespace.value)
 }
 
 async function loadProviders() {
@@ -281,8 +338,10 @@ async function loadWebSearchAvailability() {
 onMounted(() => {
   syncMobileLayout()
   MOBILE_LAYOUT_MQL?.addEventListener('change', syncMobileLayout)
-  if (!betaChatState.conversations.length) {
-    createBetaConversation('architect', 'Architect')
+  chatSidebarVisible.value = loadChatSidebarVisible()
+  background.value = getBetaChatBackground(chatNamespace.value)
+  if (!betaChatState.value.conversations.length) {
+    chatStore.value.createBetaConversation('architect', 'Architect')
   }
   loadProviders()
   loadAppliances()
@@ -297,10 +356,18 @@ watch(
   () => handoffState.pending,
   (pending) => {
     if (pending?.targetSessionId?.startsWith('beta-')) {
-      setActiveBetaConversation(pending.targetSessionId)
+      chatStore.value.setActiveBetaConversation(pending.targetSessionId)
     }
   }
 )
+
+watch(chatNamespace, () => {
+  chatSidebarVisible.value = loadChatSidebarVisible()
+  background.value = getBetaChatBackground(chatNamespace.value)
+  if (!betaChatState.value.conversations.length) {
+    chatStore.value.createBetaConversation('architect', 'Architect')
+  }
+})
 </script>
 
 <style scoped>
@@ -308,6 +375,7 @@ watch(
   height: calc(100vh - 5rem);
   min-height: 32rem;
   overflow: hidden;
+  background: transparent;
 }
 
 @media (max-width: 991px) {
@@ -376,7 +444,7 @@ watch(
   background-color: #ffffff;
 }
 
-:global(.app-dark) .stage-plain {
+:global(html.app-dark) .stage-plain {
   background-color: #000000;
 }
 
@@ -389,8 +457,15 @@ watch(
   height: 100%;
   min-height: 0;
   padding: 0.75rem;
+  background: transparent;
 }
 
+.beta-chat-layout-lab {
+  --beta-glass-panel-bg: transparent;
+  --beta-glass-panel-bg-dark: rgba(8, 12, 22, 0.04);
+  --beta-glass-sidebar-bg: rgba(255, 255, 255, 0.01);
+  --beta-glass-sidebar-bg-dark: rgba(8, 12, 22, 0.01);
+}
 .beta-sidebar-card.content-panel,
 .beta-chat-card.content-panel {
   min-height: 0;
@@ -412,13 +487,119 @@ watch(
   :global(.app-dark) .beta-chat-card.content-panel {
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
   }
+
+  /* Lab: glass sidebar + conversation window */
+  .beta-chat-layout-lab .beta-sidebar-card.content-panel {
+    background: var(--beta-glass-sidebar-bg);
+    border-color: color-mix(in srgb, var(--p-content-border-color) 14%, transparent);
+    backdrop-filter: blur(6px) saturate(120%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 12px 40px rgba(2, 6, 23, 0.04);
+  }
+
+  :global(.app-dark) .beta-chat-layout-lab .beta-sidebar-card.content-panel {
+    background: var(--beta-glass-sidebar-bg-dark);
+    border-color: rgba(255, 255, 255, 0.04);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.03),
+      0 12px 40px rgba(0, 0, 0, 0.18);
+  }
+
+  .beta-chat-layout-lab .beta-chat-card.content-panel {
+    background: var(--beta-glass-panel-bg);
+    border-color: color-mix(in srgb, var(--p-content-border-color) 18%, transparent);
+    backdrop-filter: blur(6px) saturate(120%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 12px 40px rgba(2, 6, 23, 0.05);
+  }
+
+  :global(.app-dark) .beta-chat-layout-lab .beta-chat-card.content-panel {
+    background: var(--beta-glass-panel-bg-dark);
+    border-color: rgba(255, 255, 255, 0.05);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.03),
+      0 12px 40px rgba(0, 0, 0, 0.22);
+  }
 }
 
 .beta-sidebar-card,
-.beta-chat-card {
+.beta-chat-card,
+.beta-chat-workspace {
   min-height: 0;
   overflow: hidden;
   padding: 0;
+}
+
+.beta-chat-workspace {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  gap: 0.75rem;
+}
+
+.beta-chat-workspace-split {
+  --beta-split-chat: 72%;
+  --beta-split-editor: 23%;
+}
+
+.beta-design-card {
+  display: none;
+  flex: 0 0 var(--beta-split-editor, 23%);
+  width: var(--beta-split-editor, 23%);
+  max-width: var(--beta-split-editor, 23%);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--p-content-border-radius, var(--content-radius));
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+}
+
+.beta-chat-workspace-split .beta-chat-card {
+  flex: 0 0 var(--beta-split-chat, 72%);
+  width: var(--beta-split-chat, 72%);
+  max-width: var(--beta-split-chat, 72%);
+  min-width: 0;
+  border-radius: var(--p-content-border-radius, var(--content-radius));
+  overflow: hidden;
+  position: relative;
+  z-index: 2;
+}
+
+.beta-chat-workspace-split .beta-design-card {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 992px) {
+  .beta-chat-workspace-split .beta-design-card.content-panel {
+    background: var(--p-content-background);
+    border-color: var(--p-content-border-color);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: 0 10px 32px rgba(2, 6, 23, 0.1);
+  }
+
+  :global(.app-dark) .beta-chat-workspace-split .beta-design-card.content-panel {
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.32);
+  }
+
+  .beta-chat-workspace-lab.beta-chat-workspace-split .beta-design-card.content-panel {
+    background: var(--p-content-background);
+    border-color: var(--p-content-border-color);
+  }
+
+  .beta-chat-workspace:not(.beta-chat-workspace-split) .beta-chat-card {
+    flex: 1;
+    width: 100%;
+    max-width: none;
+  }
 }
 
 .beta-chat-pane {
@@ -440,8 +621,13 @@ watch(
     gap: 0;
   }
 
+  .beta-chat-workspace {
+    flex: 1;
+    min-width: 0;
+  }
+
   .beta-sidebar-card {
-    width: 25rem;
+    width: 20rem;
     flex-shrink: 0;
     overflow: hidden;
     transition:
@@ -460,7 +646,7 @@ watch(
   }
 
   .beta-sidebar-card-inner {
-    width: 25rem;
+    width: 20rem;
     height: 100%;
     min-height: 0;
     transition: opacity 0.22s ease;

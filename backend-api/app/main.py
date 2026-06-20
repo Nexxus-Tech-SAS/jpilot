@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -7,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import close_mongo_connection, connect_to_mongo, get_database
 from app.dependencies import get_current_user
+from app.logging_config import configure_app_logging
 from app.routers import ai_providers, appliance_ops, appliances, auth, copilot, health, integrations, mcp, security, ssl_csr, system, users, webauthn
 from app.services.mcp_client import push_config_to_mcp_server
 from app.services.mcp_config_service import ensure_default_settings, get_mcp_settings
@@ -14,17 +16,30 @@ from app.services.ai_provider_service import migrate_lm_studio_endpoints
 from app.services.auth_lockout_service import ensure_auth_lockout_indexes
 from app.services.password_reset_service import ensure_password_reset_indexes
 from app.services.calibration_sync_service import ensure_calibration_indexes
+from app.services.knowledge_pack_service import ensure_knowledge_pack_indexes
 from app.services.license_service import ensure_license_collection
 from app.services.license_scheduler import periodic_license_sync, run_startup_license_sync
+from app.services.knowledge_pack_scheduler import periodic_knowledge_pack_sync, run_startup_knowledge_pack_sync
 from app.services.user_service import ensure_default_admin
 from app.services.jpilot_settings_service import ensure_jpilot_settings
 from app.services.security_settings_service import ensure_security_settings
 from app.services.slack_settings_service import ensure_slack_settings
+from app.services.tls_certificate_service import request_nginx_reload
 from app.services.webauthn_service import ensure_webauthn_indexes
+
+logger = logging.getLogger(__name__)
+
+
+async def _run_startup_sync(label: str, sync_fn) -> None:
+    try:
+        await sync_fn()
+    except Exception:
+        logger.exception("%s failed", label)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_app_logging()
     await connect_to_mongo()
     db = get_database()
     await ensure_default_admin(db)
@@ -32,6 +47,8 @@ async def lifespan(app: FastAPI):
     await ensure_jpilot_settings(db)
     await ensure_license_collection(db)
     await ensure_calibration_indexes(db)
+    if settings.knowledge_pack_enabled:
+        await ensure_knowledge_pack_indexes(db)
     await ensure_webauthn_indexes(db)
     await ensure_auth_lockout_indexes(db)
     await ensure_password_reset_indexes(db)
@@ -46,12 +63,24 @@ async def lifespan(app: FastAPI):
         await push_config_to_mcp_server(mcp_settings)
     except Exception:
         pass
-    await run_startup_license_sync()
+    asyncio.create_task(_run_startup_sync("Startup license sync", run_startup_license_sync))
+    if settings.knowledge_pack_enabled:
+        asyncio.create_task(_run_startup_sync("Startup knowledge pack sync", run_startup_knowledge_pack_sync))
+    request_nginx_reload()
     license_sync_stop = asyncio.Event()
     license_sync_task = asyncio.create_task(periodic_license_sync(license_sync_stop))
+    knowledge_pack_sync_stop = asyncio.Event()
+    knowledge_pack_sync_task = (
+        asyncio.create_task(periodic_knowledge_pack_sync(knowledge_pack_sync_stop))
+        if settings.knowledge_pack_enabled
+        else None
+    )
     yield
     license_sync_stop.set()
     await license_sync_task
+    if knowledge_pack_sync_task is not None:
+        knowledge_pack_sync_stop.set()
+        await knowledge_pack_sync_task
     await close_mongo_connection()
 
 

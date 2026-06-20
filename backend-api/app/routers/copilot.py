@@ -1,5 +1,5 @@
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -33,6 +33,14 @@ from app.schemas.calibration import (
     CalibrationSkillSummary,
     CalibrationSyncResponse,
     CalibrationUninstallResponse,
+    KnowledgePackImportResponse,
+    KnowledgePackPinRequest,
+    KnowledgePackPinResponse,
+    KnowledgePackRollbackResponse,
+    KnowledgePackScheduleRequest,
+    KnowledgePackScheduleResponse,
+    KnowledgePackStatusResponse,
+    KnowledgePackSummary,
 )
 from app.schemas.calibration_feedback import CalibrationFeedbackRequest, CalibrationFeedbackResponse
 from app.schemas.copilot import (
@@ -53,6 +61,14 @@ from app.services.calibration_sync_service import (
     list_installed_skills,
     sync_calibrations_from_studio,
     uninstall_calibration_skill,
+)
+from app.services.knowledge_pack_service import (
+    KnowledgePackError,
+    get_knowledge_pack_state,
+    install_knowledge_pack_bytes,
+    pin_knowledge_pack_version,
+    rollback_knowledge_pack,
+    update_knowledge_pack_schedule,
 )
 from app.services.skill_feedback_service import CalibrationFeedbackError, submit_calibration_feedback
 from app.services.copilot_roles import get_role_catalog, normalize_role, role_requires_appliance
@@ -307,6 +323,8 @@ async def get_calibration_catalog(
         localLicenseType=result.local_license_type,
         licenseEntitlementMismatch=result.license_entitlement_mismatch,
         studioAuthMissing=result.studio_auth_missing,
+        hasLicenseCode=result.has_license_code,
+        appFingerprint=result.app_fingerprint,
         clientId=result.client_id,
         entitlements=result.entitlements,
         skills=[CalibrationCatalogSkill(**skill) for skill in result.skills],
@@ -323,12 +341,133 @@ async def sync_calibrations(
     except CalibrationSyncError as exc:
         raise HTTPException(status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
+    pack_payload = result.knowledge_pack or {}
+    knowledge_pack_model = None
+    if pack_payload:
+        knowledge_pack_model = KnowledgePackSummary(
+            id=str(pack_payload.get("id") or ""),
+            version=str(pack_payload.get("version") or ""),
+            contentHash=pack_payload.get("contentHash"),
+            packageSignature=pack_payload.get("packageSignature"),
+            bundleUrl=pack_payload.get("bundleUrl"),
+            manifestUrl=pack_payload.get("manifestUrl"),
+        )
+
     return CalibrationSyncResponse(
         installed=result.installed,
         updated=result.updated,
         removed=result.removed,
         skills=result.skills,
-        message=f"Synced {result.updated} updated and {result.installed} unchanged entitled skill(s) from Calibration Studio.",
+        knowledgePack=knowledge_pack_model,
+        knowledgePackUpdated=result.knowledge_pack_updated,
+        knowledgePackSkipped=result.knowledge_pack_skipped,
+        stackProfile=result.stack_profile,
+        legacySkills=result.legacy_skills or [],
+        message=_build_sync_message(result),
+    )
+
+
+def _build_sync_message(result) -> str:
+    parts: list[str] = []
+    if result.knowledge_pack_updated:
+        pack = result.knowledge_pack or {}
+        parts.append(
+            f"Knowledge pack {pack.get('id') or 'unknown'} ({pack.get('version') or '?'}) updated."
+        )
+    elif result.knowledge_pack_skipped:
+        parts.append("Knowledge pack already up to date.")
+    if result.updated or result.installed:
+        parts.append(
+            f"Synced {result.updated} updated and {result.installed} unchanged entitled skill(s) from Calibration Studio."
+        )
+    if not parts:
+        return "Calibration sync completed."
+    return " ".join(parts)
+
+
+@router.get("/knowledge-pack", response_model=KnowledgePackStatusResponse)
+async def get_knowledge_pack_status(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> KnowledgePackStatusResponse:
+    state = await get_knowledge_pack_state(db)
+    legacy_count = len(list_installed_skills(include_legacy_only=True))
+    return KnowledgePackStatusResponse(
+        **state,
+        legacySkillCount=legacy_count,
+        message="Knowledge pack status loaded.",
+    )
+
+
+@router.post("/knowledge-pack/import", response_model=KnowledgePackImportResponse)
+async def import_knowledge_pack(
+    file: UploadFile = File(...),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> KnowledgePackImportResponse:
+    if not settings.calibration_sync_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Calibration sync is disabled.")
+    package_bytes = await file.read()
+    if not package_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty knowledge pack file.")
+    try:
+        result = await install_knowledge_pack_bytes(db, package_bytes)
+    except KnowledgePackError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return KnowledgePackImportResponse(
+        packId=result["packId"],
+        version=result["version"],
+        contentHash=result.get("contentHash"),
+        blueprintCount=result.get("blueprintCount", 0),
+        path=result.get("path", ""),
+        message=f"Imported knowledge pack {result['packId']} ({result['version']}).",
+    )
+
+
+@router.post("/knowledge-pack/rollback", response_model=KnowledgePackRollbackResponse)
+async def rollback_knowledge_pack_route(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> KnowledgePackRollbackResponse:
+    try:
+        result = await rollback_knowledge_pack(db)
+    except KnowledgePackError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return KnowledgePackRollbackResponse(
+        packId=result["packId"],
+        version=result["version"],
+        previousVersion=result.get("previousVersion"),
+        blueprintCount=result.get("blueprintCount", 0),
+        message=f"Rolled back to knowledge pack {result['packId']} ({result['version']}).",
+    )
+
+
+@router.put("/knowledge-pack/pin", response_model=KnowledgePackPinResponse)
+async def pin_knowledge_pack_route(
+    payload: KnowledgePackPinRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> KnowledgePackPinResponse:
+    try:
+        result = await pin_knowledge_pack_version(db, payload.version)
+    except KnowledgePackError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    pinned = result.get("pinnedVersion")
+    action = f"Pinned to {pinned}" if pinned else "Pin cleared"
+    return KnowledgePackPinResponse(
+        packId=result["packId"],
+        pinnedVersion=pinned,
+        currentVersion=result.get("currentVersion"),
+        message=f"{action} for knowledge pack {result['packId']}.",
+    )
+
+
+@router.put("/knowledge-pack/schedule", response_model=KnowledgePackScheduleResponse)
+async def update_knowledge_pack_schedule_route(
+    payload: KnowledgePackScheduleRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> KnowledgePackScheduleResponse:
+    state = await update_knowledge_pack_schedule(db, enabled=payload.enabled, hours=payload.hours)
+    return KnowledgePackScheduleResponse(
+        syncScheduleEnabled=bool(state.get("syncScheduleEnabled", True)),
+        syncScheduleHours=int(state.get("syncScheduleHours") or 6),
+        message="Knowledge pack sync schedule updated.",
     )
 
 

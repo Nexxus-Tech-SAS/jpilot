@@ -12,6 +12,7 @@ from app.services.calibration_sync_service import (
     _build_installed_blueprints,
     _enrich_catalog_skills_with_sync_entitlements,
     _extract_calpkg_bytes,
+    _merge_studio_identity,
     fetch_calibration_catalog,
     install_calibration_skill,
     installed_versions_map,
@@ -45,6 +46,20 @@ def test_enrich_catalog_skills_with_sync_entitlements():
     assert enriched[0]["entitledViaSync"] is True
     assert enriched[0]["version"] == "0.1.1"
     assert enriched[0]["ineligibleReason"] is None
+
+
+def test_merge_studio_identity_prefers_sync_license_and_client():
+    license_type, client_id, entitlements = _merge_studio_identity(
+        {"licenseType": "free", "clientId": None, "entitlements": []},
+        {
+            "licenseType": "enterprise",
+            "clientId": "client-acme",
+            "entitlements": ["blueprint_library"],
+        },
+    )
+    assert license_type == "enterprise"
+    assert client_id == "client-acme"
+    assert entitlements == ["blueprint_library"]
 
 
 def test_installed_versions_map_empty(tmp_path, monkeypatch):

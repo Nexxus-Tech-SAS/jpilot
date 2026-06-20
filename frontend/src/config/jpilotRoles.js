@@ -8,7 +8,8 @@ export const JPILOT_ROLES = [
     requiresAppliance: false,
     suggestedPaneLabel: 'Plan',
     handoffTarget: 'operator',
-    icon: 'pi pi-compass'
+    icon: 'pi pi-compass',
+    accent: '#6366f1'
   },
   {
     id: 'operator',
@@ -17,7 +18,8 @@ export const JPILOT_ROLES = [
     requiresAppliance: true,
     suggestedPaneLabel: 'Operate',
     handoffTarget: null,
-    icon: 'pi pi-cog'
+    icon: 'pi pi-cog',
+    accent: '#0ea5e9'
   },
   {
     id: 'analyst',
@@ -26,7 +28,8 @@ export const JPILOT_ROLES = [
     requiresAppliance: true,
     suggestedPaneLabel: 'Analyze',
     handoffTarget: 'operator',
-    icon: 'pi pi-search'
+    icon: 'pi pi-search',
+    accent: '#10b981'
   }
 ]
 

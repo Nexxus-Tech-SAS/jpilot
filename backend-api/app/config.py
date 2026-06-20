@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     nexxus_calibration_base_url: str = "https://scstudio.nexxus-tech.com"
     calibration_feedback_enabled: bool = True
     calibration_sync_enabled: bool = True
+    knowledge_pack_enabled: bool = False
     jpilot_app_name: str = "JPilot"
     license_sync_interval_seconds: int = 86400
 

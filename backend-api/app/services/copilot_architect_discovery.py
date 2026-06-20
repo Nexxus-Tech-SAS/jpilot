@@ -595,6 +595,36 @@ def architect_discovery_should_retry(
     )
 
 
+DISCOVERY_WORKBOOK_TITLE = "# Discovery workbook"
+
+
+def is_discovery_workbook(design_document_context: str) -> bool:
+    text = (design_document_context or "").strip()
+    if not text or conversation_has_deliverable(text):
+        return False
+    return text.startswith(DISCOVERY_WORKBOOK_TITLE)
+
+
+def append_discovery_workbook_context(
+    user_message: str,
+    design_document_context: str,
+) -> str:
+    """Inject accumulated discovery notes from the Document Editor."""
+    doc = (design_document_context or "").strip()
+    if not doc:
+        return user_message
+    prefix = (user_message or "").strip()
+    nudge = (
+        "The user is continuing Architect discovery. The Document Editor contains an accumulated "
+        "discovery workbook (below). Treat it as the source of truth for answers already captured. "
+        "Do not re-ask topics already covered unless the user contradicts the workbook. "
+        "After acknowledging new input, output the next ```jpilot-form``` or the formal deliverable "
+        "when discovery is sufficient."
+    )
+    block = f"\n\n--- Discovery workbook ---\n{doc}\n--- end ---\n\n{nudge}"
+    return f"{prefix}{block}" if prefix else block.strip()
+
+
 def append_design_document_revision_context(
     user_message: str,
     design_document_context: str,
@@ -619,3 +649,28 @@ def append_design_document_revision_context(
     )
     block = f"\n\n--- Current design document ---\n{doc}\n--- end ---\n\n{nudge}"
     return f"{prefix}{block}" if prefix else block.strip()
+
+
+def append_architect_panel_context(
+    user_message: str,
+    design_document_context: str,
+    *,
+    include_revision: bool = False,
+) -> str:
+    """Route panel context to discovery workbook or deliverable revision prompts."""
+    doc = (design_document_context or "").strip()
+    if not doc:
+        return user_message
+    if include_revision or conversation_has_deliverable(doc):
+        return append_design_document_revision_context(
+            user_message,
+            design_document_context,
+            include_revision=include_revision,
+        )
+    if is_discovery_workbook(doc):
+        return append_discovery_workbook_context(user_message, design_document_context)
+    return append_design_document_revision_context(
+        user_message,
+        design_document_context,
+        include_revision=False,
+    )

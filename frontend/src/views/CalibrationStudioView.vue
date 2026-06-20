@@ -260,17 +260,17 @@
                       <Tag :value="blueprintTierLabel(data)" :severity="blueprintTierSeverity(data)" />
                       <span
                         class="current-tier-note"
-                        :class="{ 'current-tier-note-ok': blueprintTierRowNote(data, licenseType) === 'Tier OK' }"
-                        :title="blueprintTierRowTooltip(data, licenseType, studioLicenseLabel)"
+                        :class="{ 'current-tier-note-ok': blueprintTierRowNote(data, effectiveLicenseType) === 'Tier OK' }"
+                        :title="blueprintTierRowTooltip(data, effectiveLicenseType, effectiveLicenseLabel)"
                       >
                         You: {{ currentTierShortLabel }}
                       </span>
                       <span
-                        v-if="blueprintTierRowNote(data, licenseType)"
+                        v-if="blueprintTierRowNote(data, effectiveLicenseType)"
                         class="current-tier-match"
-                        :title="data.ineligibleReason || blueprintTierRowTooltip(data, licenseType, studioLicenseLabel)"
+                        :title="data.ineligibleReason || blueprintTierRowTooltip(data, effectiveLicenseType, effectiveLicenseLabel)"
                       >
-                        {{ blueprintTierRowNote(data, licenseType) }}
+                        {{ blueprintTierRowNote(data, effectiveLicenseType) }}
                       </span>
                     </div>
                   </template>
@@ -426,6 +426,7 @@ import {
   groupBlueprintRows,
   installCalibrationSkill,
   licenseTypeLabel,
+  licenseTierRank,
   syncCalibrationsFromStudio,
   uninstallCalibrationSkill,
 } from '../services/calibrationSync.js'
@@ -449,6 +450,8 @@ const checkDetails = ref([])
 const showUpdatesOnly = ref(false)
 const catalogUrl = ref('')
 const clientId = ref('')
+const hasLicenseCode = ref(false)
+const appFingerprint = ref('')
 const licenseType = ref('')
 const localLicenseType = ref('')
 const licenseEntitlementMismatch = ref(false)
@@ -532,7 +535,14 @@ function toggleDomain(vendorKey, product, domain) {
 
 const studioLicenseLabel = computed(() => licenseTypeLabel(licenseType.value))
 const localLicenseLabel = computed(() => licenseTypeLabel(localLicenseType.value))
-const currentTierShortLabel = computed(() => currentBlueprintTierLabel(licenseType.value))
+const effectiveLicenseType = computed(() => {
+  const studio = licenseType.value
+  const local = localLicenseType.value
+  if (!local) return studio
+  return licenseTierRank(local) > licenseTierRank(studio) ? local : studio
+})
+const effectiveLicenseLabel = computed(() => licenseTypeLabel(effectiveLicenseType.value))
+const currentTierShortLabel = computed(() => currentBlueprintTierLabel(effectiveLicenseType.value))
 
 const licenseMismatchMessage = computed(() => {
   if (!licenseEntitlementMismatch.value) return ''
@@ -549,21 +559,41 @@ const licenseMismatchMessage = computed(() => {
 })
 
 const tierOkBlockedMessage = computed(() => {
-  const blocked = collectTierOkBlockedRows(blueprints.value, licenseType.value)
+  const blocked = collectTierOkBlockedRows(blueprints.value, effectiveLicenseType.value)
   if (!blocked.length) return ''
   const names = blocked.slice(0, 3).map((row) => row.label).join(', ')
   const suffix = blocked.length > 3 ? ` and ${blocked.length - 3} more` : ''
-  const clientHint = clientId.value
-    ? ' Nexxus must enable each blueprint for your organization in Calibration Studio.'
-    : ' This install has no Nexxus client id yet — assign the license to this fingerprint in Nexxus Admin, then click Refresh entitlements.'
+
+  if (!hasLicenseCode.value) {
+    const fpHint = appFingerprint.value
+      ? ` Installation ID: ${appFingerprint.value.slice(0, 12)}…`
+      : ''
+    return (
+      `Your Nexxus account may include ${effectiveLicenseLabel.value} blueprints such as ${names}${suffix}, ` +
+      'but this JPilot install is not linked to that license yet. Open Settings → License, enter the license code ' +
+      'from your activation email (or use Obtain license if you upgraded on nexxus-tech.com), then click ' +
+      `Refresh entitlements.${fpHint}`
+    )
+  }
+
+  const entitledHint =
+    entitledViaSyncCount.value > 0
+      ? ` ${entitledViaSyncCount.value} other blueprint(s) are already assigned to this install and can be downloaded.`
+      : ''
+
+  const installId = appFingerprint.value
+    ? ` Installation ID: ${appFingerprint.value}`
+    : ''
+
   return (
-    `Your ${studioLicenseLabel.value} license tier qualifies for ${blocked.length} blueprint(s) ` +
-    `(${names}${suffix}), but they are not enabled for download yet.${clientHint} ` +
-    'After a license change in Nexxus Admin, use Refresh entitlements above.'
+    `Your ${effectiveLicenseLabel.value} license is active on this JPilot install, but ${names}${suffix} ` +
+    `has not been assigned for download by Nexxus yet.${entitledHint} Share${installId} with your Nexxus admin ` +
+    'so they can enable this blueprint for your organization in Calibration Studio, then click Refresh entitlements.'
   )
 })
 
 const installableCount = computed(() => blueprints.value.filter((row) => row.installable).length)
+const entitledViaSyncCount = computed(() => blueprints.value.filter((row) => row.entitledViaSync).length)
 
 const filteredRows = computed(() => {
   let rows = filterBlueprintRows(blueprints.value, {
@@ -663,7 +693,7 @@ watch([hasActiveFilters, groupedLibrary], ([active, groups]) => {
 })
 
 function statusLabel(row) {
-  return blueprintStatusLabel(row, licenseType.value)
+  return blueprintStatusLabel(row, effectiveLicenseType.value)
 }
 
 function statusSeverity(row) {
@@ -689,6 +719,8 @@ function downloadLabel(row) {
 function applyCatalog(catalog) {
   catalogUrl.value = catalog.catalogUrl || studioBaseUrl
   clientId.value = catalog.clientId || ''
+  hasLicenseCode.value = Boolean(catalog.hasLicenseCode)
+  appFingerprint.value = catalog.appFingerprint || ''
   licenseType.value = catalog.licenseType || 'free'
   localLicenseType.value = catalog.localLicenseType || ''
   licenseEntitlementMismatch.value = Boolean(catalog.licenseEntitlementMismatch)
@@ -698,10 +730,17 @@ function applyCatalog(catalog) {
 
 async function refreshEntitlements() {
   refreshingEntitlements.value = true
+  syncMessage.value = ''
   syncError.value = ''
   try {
-    await getLicense()
+    const license = await getLicense()
+    if (license.syncError) {
+      syncError.value = `License sync: ${license.syncError}`
+    }
     await loadCatalog()
+    if (!syncError.value && license.licenseType && license.licenseType !== 'free') {
+      syncMessage.value = `License refreshed (${licenseTypeLabel(license.licenseType)}). Blueprint library updated.`
+    }
   } catch (error) {
     syncError.value =
       error.response?.data?.detail || error.message || 'Could not refresh entitlements from Nexxus.'

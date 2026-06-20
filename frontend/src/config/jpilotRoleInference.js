@@ -18,6 +18,26 @@ function isFormSubmission(text) {
   )
 }
 
+function isChangeControlPlanningRequest(text) {
+  const lowered = (text || '').trim().toLowerCase()
+  return containsAny(lowered, [
+    'change control',
+    'change-control',
+    'maintenance window',
+    'maintenance record',
+    'change record',
+    'cab record',
+    'itil change',
+    'servicenow change',
+    'rollback plan',
+    'pre-change checklist',
+    'pre change checklist',
+    'firmware upgrade plan',
+    'upgrade plan for',
+    'maintenance plan'
+  ])
+}
+
 function attachmentIsDesignDocument(name) {
   const lowered = (name || '').toLowerCase()
   return lowered.endsWith('.md') || lowered.endsWith('.markdown')
@@ -56,11 +76,11 @@ function requestsDesignImplementation(text, attachmentNames = []) {
 export function inferChatRoleFromMessage(text, opts = {}) {
   const lowered = (text || '').trim().toLowerCase()
   const attachmentNames = opts.attachmentNames || []
+  const currentRole = normalizeRoleId(opts.currentRole)
   if (lowered.length < 4) return null
 
   if (isFormSubmission(text)) {
     const stripped = (text || '').trim()
-    const currentRole = normalizeRoleId(opts.currentRole)
     if (stripped.startsWith('Planning inputs for:')) {
       if (currentRole !== 'architect') {
         return { role: 'architect', reason: 'planning forms are handled by Architect', confidence: 20 }
@@ -73,11 +93,68 @@ export function inferChatRoleFromMessage(text, opts = {}) {
     return null
   }
 
+  if (isChangeControlPlanningRequest(text)) {
+    if (currentRole === 'architect') return null
+    return {
+      role: 'architect',
+      reason: 'change control records and maintenance planning are handled by Architect',
+      confidence: 20
+    }
+  }
+
   if (requestsDesignImplementation(text, attachmentNames)) {
     return { role: 'operator', reason: 'design implementation runs on the connected appliance', confidence: 20 }
   }
 
+  // Installed calibration skills (Operator discover/list tasks) — stay in Operator.
+  if (
+    currentRole === 'operator' &&
+    containsAny(lowered, [
+      'list all ip',
+      'list ip address',
+      'list every ip',
+      'list all the ip',
+      'show ns ip',
+      'nsip, snip, vip',
+      'nsip, snip',
+    ])
+  ) {
+    return null
+  }
+
   const scores = { architect: 0, operator: 0, analyst: 0 }
+
+  if (
+    containsAny(lowered, [
+      'calibration blueprint',
+      'installed blueprint',
+      'calibration skill',
+      'stack calibration',
+    ]) &&
+    containsAny(lowered, [
+      'list ',
+      'list all',
+      'show ',
+      'get ',
+      'display ',
+      'summarize ',
+      'configure ',
+      'create ',
+      'deploy ',
+      'load balanc',
+      'http lb',
+    ])
+  ) {
+    if (currentRole === 'operator') return null
+    scores.operator += 10
+  }
+
+  if (
+    currentRole === 'operator' &&
+    containsAny(lowered, ['http load balancer', 'create http lb', 'deploy http lb'])
+  ) {
+    return null
+  }
 
   if (containsAny(lowered, [' as architect', 'architect mode', 'architect role', 'using architect'])) {
     scores.architect += 20
@@ -147,7 +224,10 @@ export function inferChatRoleFromMessage(text, opts = {}) {
       'capacity plan',
       'blueprint',
       'reference appliance',
-      'without connecting'
+      'without connecting',
+      'change control record',
+      'change control document',
+      'maintenance window'
     ])
   ) {
     scores.architect += 8
@@ -158,7 +238,7 @@ export function inferChatRoleFromMessage(text, opts = {}) {
   }
 
   if (
-    containsAny(lowered, ['plan a ', 'plan for ', 'plan the ', 'plan our ', "planning for", 'planning a '])
+    containsAny(lowered, ['plan a ', 'plan for ', 'plan the ', 'plan our ', 'planning for', 'planning a '])
   ) {
     scores.architect += 6
   }
@@ -218,38 +298,41 @@ export function inferChatRoleFromMessage(text, opts = {}) {
     scores.analyst += 3
   }
 
-  if (
-    containsAny(lowered, [
-      'add ',
-      'create ',
-      'configure ',
-      'implement ',
-      'apply ',
-      'deploy ',
-      'provision ',
-      'bind ',
-      'unbind ',
-      'set ',
-      'update ',
-      'change ',
-      'remove ',
-      'delete ',
-      'enable ',
-      'disable ',
-      'run cli',
-      'cli command',
-      'save ns config',
-      'new lb',
-      'new vip',
-      'new vserver',
-      'static route',
-      'vlan ',
-      'channel ',
-      'certificate bind',
-      'upload cert'
-    ])
-  ) {
+  const operatorPhrases = [
+    'add ',
+    'create ',
+    'configure ',
+    'implement ',
+    'apply ',
+    'deploy ',
+    'provision ',
+    'bind ',
+    'unbind ',
+    'set ',
+    'update ',
+    'change ',
+    'remove ',
+    'delete ',
+    'enable ',
+    'disable ',
+    'run cli',
+    'cli command',
+    'save ns config',
+    'new lb',
+    'new vip',
+    'new vserver',
+    'static route',
+    'vlan ',
+    'channel ',
+    'certificate bind',
+    'upload cert'
+  ]
+
+  for (const phrase of operatorPhrases) {
+    if (!lowered.includes(phrase)) continue
+    if (phrase === 'change ' && isChangeControlPlanningRequest(text)) continue
     scores.operator += 8
+    break
   }
 
   if (containsAny(lowered, ['outline', 'gateway', 'storefront', 'gslb'])) {
@@ -263,7 +346,6 @@ export function inferChatRoleFromMessage(text, opts = {}) {
   if (bestScore < 5) return null
   if (secondScore >= 5 && bestScore - secondScore < 3) return null
 
-  const currentRole = normalizeRoleId(opts.currentRole)
   if (bestRole === currentRole) return null
 
   return {

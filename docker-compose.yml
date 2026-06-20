@@ -15,8 +15,10 @@ services:
     networks:
       - jpilot-network
     depends_on:
-      - frontend
-      - backend-api
+      frontend:
+        condition: service_started
+      backend-api:
+        condition: service_healthy
 
   frontend:
     build:

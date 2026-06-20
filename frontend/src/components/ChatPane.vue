@@ -5,8 +5,10 @@
       'pane-empty': !session.messages.length,
       'pane-generating': isGenerating,
       'chat-pane-beta': uiVariant === 'beta',
+      'chat-pane-lab': showBetaLabel,
       'chat-pane-architect': isArchitectPane(),
-      'chat-pane-design-panel-open': isArchitectPane() && designPanelVisible
+      'chat-pane-design-panel-open':
+        isArchitectPane() && designPanelVisible && !useDetachedDesignPanel
     }"
     @mousedown="markPaneFocused"
     @focusin="markPaneFocused"
@@ -41,7 +43,15 @@
             />
             <div v-if="!showConversationSwitcher" class="beta-header-identity">
               <div class="beta-avatar-wrap">
-                <img src="/jpilot-favicon.png" alt="JPilot" class="beta-avatar" />
+                <span
+                  v-if="showBetaLabel"
+                  class="beta-avatar beta-avatar-role"
+                  :style="{ '--role-accent': activeRole.accent }"
+                  :aria-label="activeRole.label"
+                >
+                  <i :class="activeRole.icon" aria-hidden="true" />
+                </span>
+                <img v-else src="/jpilot-favicon.png" alt="JPilot" class="beta-avatar" />
                 <span
                   class="beta-status-dot"
                   :class="{
@@ -52,7 +62,15 @@
                 />
               </div>
               <div class="beta-header-copy">
-                <span class="beta-title">JPilot · {{ activeRole.label }}</span>
+                <span class="beta-title">
+                  <template v-if="showBetaLabel">
+                    <span class="beta-title-brand">JPilot</span>
+                    <span class="beta-title-sep" aria-hidden="true"> · </span>
+                    <span class="beta-title-role">{{ activeRole.label }}</span>
+                  </template>
+                  <template v-else>JPilot · {{ activeRole.label }}</template>
+                </span>
+                <span v-if="showBetaLabel" class="beta-lab-tag">Beta</span>
                 <span class="beta-subtitle">{{ betaStatusLine }}</span>
               </div>
             </div>
@@ -63,27 +81,51 @@
               <JPilot :size="34" />
             </RouterLink>
             <span class="beta-subtitle-compact">{{ activeRole.label }}</span>
+            <span v-if="showBetaLabel" class="beta-lab-tag beta-lab-tag-compact">Beta</span>
           </div>
 
           <div v-if="!showConversationSwitcher" class="beta-header-center">
-            <SelectButton
-              v-model="session.role"
-              :options="roleOptions"
-              option-value="id"
-              data-key="id"
-              :allow-empty="false"
-              class="beta-role-toggle"
-              :disabled="isGenerating"
-              aria-label="JPilot role"
-            >
-              <template #option="slotProps">
-                <i
-                  :class="slotProps.option.icon"
-                  v-tooltip.bottom="roleOptionTooltip(slotProps.option)"
-                  :aria-label="slotProps.option.label"
+            <div class="beta-header-center-stack">
+              <SelectButton
+                v-model="session.role"
+                :options="roleOptions"
+                option-value="id"
+                data-key="id"
+                :allow-empty="false"
+                class="beta-role-toggle"
+                :disabled="isGenerating"
+                aria-label="JPilot role"
+              >
+                <template #option="slotProps">
+                  <i
+                    :class="slotProps.option.icon"
+                    v-tooltip.bottom="roleOptionTooltip(slotProps.option)"
+                    :aria-label="slotProps.option.label"
+                  />
+                </template>
+              </SelectButton>
+              <div v-if="roleProviders.length" class="beta-header-model">
+                <Select
+                  v-if="roleProviders.length > 1"
+                  v-model="session.providerId"
+                  :options="providerOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="Model"
+                  class="beta-header-model-select"
+                  :disabled="isGenerating"
+                  aria-label="AI model"
                 />
-              </template>
-            </SelectButton>
+                <span
+                  v-else
+                  v-tooltip.bottom="activeProviderTooltip"
+                  class="beta-header-model-name"
+                >
+                  <i class="pi pi-sparkles" aria-hidden="true" />
+                  {{ activeProviderDisplayLabel }}
+                </span>
+              </div>
+            </div>
           </div>
 
           <div class="beta-header-actions">
@@ -131,13 +173,13 @@
             />
             <Button
               v-if="isArchitectPane()"
-              v-tooltip.bottom="designPanelVisible ? 'Hide design panel' : 'Show design panel'"
+              v-tooltip.bottom="designPanelVisible ? 'Hide Document Editor' : 'Show Document Editor'"
               :icon="designPanelVisible ? 'pi pi-eye-slash' : 'pi pi-file-edit'"
               text
               rounded
               severity="secondary"
               class="beta-header-design-toggle"
-              aria-label="Toggle design panel"
+              aria-label="Toggle Document Editor"
               @click="toggleDesignPanel"
             />
             <Button
@@ -222,8 +264,7 @@
                   class="beta-bg-thumb beta-bg-thumb-animated"
                   :class="{
                     'beta-bg-thumb-active': betaBackground === bg.id,
-                    'beta-bg-thumb-white': bg.base === 'white',
-                    'beta-bg-thumb-black': bg.base === 'black'
+                    'beta-bg-thumb-theme': bg.base === 'theme'
                   }"
                   :aria-label="`${bg.label} (${bg.base} background)`"
                   @click="chooseBetaBackground(bg.id)"
@@ -300,21 +341,32 @@
         </Popover>
 
         <div ref="messagesEl" class="beta-messages user-message-container">
-          <div v-if="!session.messages.length" class="beta-empty">
-            <p class="beta-empty-title">{{ showConversationSwitcher ? 'What can I help with?' : `Ask JPilot — ${activeRole.label}` }}</p>
-            <p class="beta-empty-hint">{{ activeRole.description }}</p>
-            <div v-if="showConversationSwitcher" class="beta-mobile-prompts">
-              <button
-                v-for="prompt in mobileQuickPrompts"
-                :key="prompt.id"
-                type="button"
-                class="beta-mobile-prompt"
-                :disabled="chatInputDisabled"
-                @click="onMobileQuickPrompt(prompt.text)"
-              >
-                {{ prompt.label }}
-              </button>
-            </div>
+          <div v-if="!session.messages.length" class="beta-empty" :class="{ 'beta-empty-welcome': showBetaLabel }">
+            <template v-if="!showBetaLabel">
+              <p class="beta-empty-title">{{ showConversationSwitcher ? 'What can I help with?' : `Ask JPilot — ${activeRole.label}` }}</p>
+              <p class="beta-empty-hint">{{ activeRole.description }}</p>
+              <div v-if="showConversationSwitcher" class="beta-mobile-prompts">
+                <button
+                  v-for="prompt in mobileQuickPrompts"
+                  :key="prompt.id"
+                  type="button"
+                  class="beta-mobile-prompt"
+                  :disabled="chatInputDisabled"
+                  @click="onMobileQuickPrompt(prompt.text)"
+                >
+                  {{ prompt.label }}
+                </button>
+              </div>
+            </template>
+            <BetaWelcome
+              v-else
+              :active-role="session.role"
+              :provider-name="activeProviderName"
+              :ready="ready"
+              :disabled="chatInputDisabled"
+              @select-persona="onSelectPersona"
+              @select-skill="onSelectSkill"
+            />
           </div>
 
           <template v-else>
@@ -333,7 +385,15 @@
 
               <div v-else-if="msg.role !== 'user'" class="beta-msg-grid beta-msg-grid-assistant">
                 <div class="beta-msg-avatar-col">
-                  <img src="/jpilot-favicon.png" alt="JPilot" class="beta-msg-avatar" />
+                  <span
+                    v-if="showBetaLabel"
+                    class="beta-msg-avatar beta-msg-avatar-role"
+                    :style="{ '--role-accent': activeRole.accent }"
+                    :aria-label="activeRole.label"
+                  >
+                    <i :class="activeRole.icon" aria-hidden="true" />
+                  </span>
+                  <img v-else src="/jpilot-favicon.png" alt="JPilot" class="beta-msg-avatar" />
                 </div>
                 <div class="beta-msg-content-col">
                   <p class="beta-message-author">JPilot</p>
@@ -467,7 +527,15 @@
 
             <div v-if="isGenerating" class="beta-msg-grid beta-msg-grid-assistant">
               <div class="beta-msg-avatar-col">
-                <img src="/jpilot-favicon.png" alt="JPilot" class="beta-msg-avatar" />
+                <span
+                  v-if="showBetaLabel"
+                  class="beta-msg-avatar beta-msg-avatar-role"
+                  :style="{ '--role-accent': activeRole.accent }"
+                  :aria-label="activeRole.label"
+                >
+                  <i :class="activeRole.icon" aria-hidden="true" />
+                </span>
+                <img v-else src="/jpilot-favicon.png" alt="JPilot" class="beta-msg-avatar" />
               </div>
               <div class="beta-msg-content-col">
                 <div class="beta-bubble beta-bubble-assistant beta-bubble-loading">
@@ -487,6 +555,7 @@
           </template>
 
           <AskJpilotCommandMenu
+            v-if="!showBetaLabel"
             ref="commandMenuRef"
             variant="beta"
             :headless="session.messages.length > 0"
@@ -498,20 +567,22 @@
             @pick="onCommandPick"
           />
 
-          <p v-if="!session.messages.length && !ready" class="beta-empty-note">
-            No LLM assigned to {{ activeRole.label }} — configure one in Settings → AI Providers.
-          </p>
-          <p v-else-if="!session.messages.length && activeProviderName && !showConversationSwitcher" class="beta-empty-note">
-            <i class="pi pi-sparkles" aria-hidden="true" />
-            Using <strong>{{ activeProviderName }}</strong>
-          </p>
-          <p v-if="!session.messages.length && !showConversationSwitcher" class="beta-empty-note chat-support-note">
-            <i class="pi pi-life-ring" aria-hidden="true" />
-            Need help? Email
-            <a href="mailto:support@nexxus-tech.com">support@nexxus-tech.com</a>
-            or visit
-            <a href="https://www.nexxus-tech.com" target="_blank" rel="noopener noreferrer">nexxus-tech.com</a>.
-          </p>
+          <template v-if="!showBetaLabel">
+            <p v-if="!session.messages.length && !ready" class="beta-empty-note">
+              No LLM assigned to {{ activeRole.label }} — configure one in Settings → AI Providers.
+            </p>
+            <p v-else-if="!session.messages.length && activeProviderName && !showConversationSwitcher" class="beta-empty-note">
+              <i class="pi pi-sparkles" aria-hidden="true" />
+              Using <strong>{{ activeProviderName }}</strong>
+            </p>
+            <p v-if="!session.messages.length && !showConversationSwitcher" class="beta-empty-note chat-support-note">
+              <i class="pi pi-life-ring" aria-hidden="true" />
+              Need help? Email
+              <a href="mailto:support@nexxus-tech.com">support@nexxus-tech.com</a>
+              or visit
+              <a href="https://www.nexxus-tech.com" target="_blank" rel="noopener noreferrer">nexxus-tech.com</a>.
+            </p>
+          </template>
         </div>
 
         <div v-if="pendingAttachments.length" class="pending-attachments beta-pending">
@@ -526,6 +597,7 @@
         <div class="beta-footer" :class="{ 'beta-footer-compact': showConversationSwitcher }">
           <div class="beta-composer">
             <Button
+              v-if="!showBetaLabel"
               v-tooltip.top="'Browse recommended actions'"
               icon="pi pi-search"
               severity="secondary"
@@ -536,6 +608,7 @@
               @click="openCommandMenu"
             />
             <InputText
+              ref="betaComposerRef"
               id="beta-message"
               v-model="session.input"
               type="text"
@@ -577,6 +650,7 @@
               @click="openCalibrationDialog"
             />
             <Button
+              v-if="!showBetaLabel"
               v-tooltip.top="'Browse recommended actions (⌘K)'"
               icon="pi pi-search"
               severity="secondary"
@@ -717,7 +791,7 @@
       />
       <Button
         v-if="isArchitectPane()"
-        v-tooltip.bottom="designPanelVisible ? 'Hide design panel' : 'Show design panel'"
+        v-tooltip.bottom="designPanelVisible ? 'Hide Document Editor' : 'Show Document Editor'"
         :icon="designPanelVisible ? 'pi pi-eye-slash' : 'pi pi-file-edit'"
         text
         rounded
@@ -1016,12 +1090,24 @@
     </template>
     </template>
 
+    <Teleport v-if="useDetachedDesignPanel && isArchitectPane() && designPanelVisible" to="#beta-architect-design-slot">
+      <ArchitectDesignPanel
+        class="architect-design-rail architect-design-rail-detached"
+        :document="session.designDocument"
+        :disabled="isGenerating"
+        @close="closeDesignPanel"
+        @update:markdown="onDesignDocumentEdit"
+        @send-revision="sendDesignDocumentRevision"
+        @send-to-operator="sendDesignToOperator()"
+        @download="downloadDesignDocumentFromPanel()"
+      />
+    </Teleport>
     <ArchitectDesignPanel
-      v-if="isArchitectPane() && designPanelVisible"
+      v-else-if="isArchitectPane() && designPanelVisible"
       class="architect-design-rail"
       :document="session.designDocument"
       :disabled="isGenerating"
-      @close="designPanelVisible = false"
+      @close="closeDesignPanel"
       @update:markdown="onDesignDocumentEdit"
       @send-revision="sendDesignDocumentRevision"
       @send-to-operator="sendDesignToOperator()"
@@ -1106,6 +1192,7 @@ import ApplianceNameLabel from './ApplianceNameLabel.vue'
 import ContextUsageRing from './ContextUsageRing.vue'
 import ChatConfigForm from './ChatConfigForm.vue'
 import AskJpilotCommandMenu from './AskJpilotCommandMenu.vue'
+import BetaWelcome from './BetaWelcome.vue'
 import ChatMarkdown from './ChatMarkdown.vue'
 import ChatToolTrace from './ChatToolTrace.vue'
 import ChatDeploymentSubtasks from './ChatDeploymentSubtasks.vue'
@@ -1132,7 +1219,7 @@ import {
   JPILOT_CHANGE_CONTROL_MARKER
 } from '../utils/architectDeliverable'
 import { JPILOT_DESIGN_MARKER } from '../utils/designDocument'
-import { resolveBetaHandoffTargetSessionId } from '../stores/betaChatConversations'
+import { getBetaChatStore } from '../stores/betaChatConversations'
 import {
   ARCHITECT_SESSION_ID,
   DESIGN_HANDOFF_MESSAGE,
@@ -1169,7 +1256,9 @@ import ArchitectDesignPanel from './ArchitectDesignPanel.vue'
 import ArchitectDeliverableCard from './ArchitectDeliverableCard.vue'
 import {
   applyDeliverableToSession,
+  appendDiscoveryFormAnswers,
   beginDesignDocumentStreaming,
+  isFormalDeliverableMarkdown,
   saveDesignPanelVisible,
   seedDesignDocumentFromAttachment
 } from '../utils/architectDesignDocument'
@@ -1202,10 +1291,24 @@ const props = defineProps({
   showChatSidebarToggle: { type: Boolean, default: false },
   chatSidebarVisible: { type: Boolean, default: true },
   betaBackground: { type: String, default: 'constellation' },
-  betaBackgrounds: { type: Array, default: () => [] }
+  betaBackgrounds: { type: Array, default: () => [] },
+  /** Isolates beta chat conversation storage (`main` vs experimental `lab`). */
+  chatNamespace: { type: String, default: 'main' },
+  /** Show experimental Chat Beta label in the chat header. */
+  showBetaLabel: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['close', 'open-conversations', 'toggle-chat-sidebar', 'update:betaBackground'])
+const emit = defineEmits([
+  'close',
+  'open-conversations',
+  'toggle-chat-sidebar',
+  'update:betaBackground',
+  'design-panel-visible-change'
+])
+
+const useDetachedDesignPanel = computed(
+  () => props.uiVariant === 'beta' && !props.showConversationSwitcher
+)
 
 const openAppNav = inject('openMobileNav', () => {})
 
@@ -1243,6 +1346,7 @@ const attachMenu = ref(null)
 const betaOptionsOp = ref(null)
 const askInputRef = ref(null)
 const commandMenuRef = ref(null)
+const betaComposerRef = ref(null)
 const generationStatus = ref({
   phase: 'thinking',
   label: 'Thinking…',
@@ -1411,7 +1515,9 @@ const rolePlaceholder = computed(() => {
 })
 const providerOptions = computed(() =>
   roleProviders.value.map((provider) => ({
-    label: provider.providerName,
+    label: provider.model
+      ? `${provider.providerName} · ${provider.model}`
+      : provider.providerName,
     value: provider.id
   }))
 )
@@ -1440,9 +1546,17 @@ const contextUsage = computed(() =>
 
 const activeProviderName = computed(() => activeProvider.value?.providerName || '')
 
+const activeProviderDisplayLabel = computed(() => {
+  if (!activeProvider.value) return ''
+  if (activeProvider.value.model) {
+    return `${activeProvider.value.providerName} · ${activeProvider.value.model}`
+  }
+  return activeProvider.value.providerName
+})
+
 const activeProviderTooltip = computed(() =>
-  activeProviderName.value
-    ? `LLM for ${activeRole.value.label}: ${activeProviderName.value}`
+  activeProviderDisplayLabel.value
+    ? `LLM for ${activeRole.value.label}: ${activeProviderDisplayLabel.value}`
     : ''
 )
 
@@ -1658,14 +1772,33 @@ function designDocumentHandoffContent() {
   return `${marker}\n${doc.markdown}`
 }
 
+function resolveDesignDocumentContext(runOptions = {}) {
+  if (runOptions.designDocumentContext) {
+    return runOptions.designDocumentContext
+  }
+  if (!isArchitectPane()) return undefined
+  const doc = session.designDocument
+  if (!doc?.markdown?.trim() || isFormalDeliverableMarkdown(doc.markdown)) {
+    return undefined
+  }
+  return doc.markdown
+}
+
+function setDesignPanelVisible(visible) {
+  designPanelVisible.value = visible
+  saveDesignPanelVisible(visible)
+}
+
 function toggleDesignPanel() {
-  designPanelVisible.value = !designPanelVisible.value
-  saveDesignPanelVisible(designPanelVisible.value)
+  setDesignPanelVisible(!designPanelVisible.value)
 }
 
 function openDesignPanel() {
-  designPanelVisible.value = true
-  saveDesignPanelVisible(true)
+  setDesignPanelVisible(true)
+}
+
+function closeDesignPanel() {
+  setDesignPanelVisible(false)
 }
 
 function onDesignDocumentEdit(markdown) {
@@ -1745,7 +1878,7 @@ function sendDesignToOperator(content) {
     const attachment = createArchitectDeliverableAttachment(handoffContent)
     const targetSessionId =
       props.uiVariant === 'beta' || props.sessionId.startsWith('beta-')
-        ? resolveBetaHandoffTargetSessionId()
+        ? getBetaChatStore(props.chatNamespace).resolveBetaHandoffTargetSessionId()
         : props.sessionId.replace(/pane-1$/, 'pane-2')
     queueDesignHandoff({
       content: handoffContent,
@@ -1875,8 +2008,40 @@ function openCommandMenu() {
   commandMenuRef.value?.openMenu?.()
 }
 
+function focusComposer() {
+  nextTick(() => {
+    if (props.uiVariant === 'beta') {
+      const el = betaComposerRef.value?.$el
+      if (el?.focus) {
+        el.focus()
+      } else {
+        el?.querySelector?.('input')?.focus()
+      }
+      return
+    }
+    askInputRef.value?.focus()
+  })
+}
+
+function onSelectPersona(payload) {
+  const roleId = typeof payload === 'string' ? payload : payload?.roleId
+  const deferFocus = typeof payload === 'object' && payload?.deferFocus
+  if (!roleId) return
+  session.role = roleId
+  if (!deferFocus) {
+    focusComposer()
+  }
+}
+
+function onSelectSkill({ prompt }) {
+  if (prompt) {
+    session.input = prompt
+  }
+  focusComposer()
+}
+
 function focusAskInput() {
-  askInputRef.value?.focus()
+  focusComposer()
 }
 
 async function addFiles(fileList) {
@@ -1920,7 +2085,7 @@ function clearConversation() {
   clearSession(props.sessionId)
   pendingAttachments.value = []
   // No document after a clear, so keep the design panel closed.
-  designPanelVisible.value = false
+  closeDesignPanel()
 }
 
 const WEB_SEARCH_TOOLS = ['search_netscaler_nextgen_api', 'search_netscaler_cli_reference']
@@ -2043,7 +2208,7 @@ async function runChat(content, attachments, runOptions = {}) {
   beginChatRun(props.sessionId, controller)
   resetGenerationStatus()
   startGenerationTimer()
-  if (isArchitectPane()) {
+  if (isArchitectPane() && session.designDocument?.markdown) {
     beginDesignDocumentStreaming(session)
   }
   let wasError = false
@@ -2073,7 +2238,7 @@ async function runChat(content, attachments, runOptions = {}) {
         webSearch: session.webSearch !== false,
         deploymentContinuation: Boolean(runOptions.deploymentContinuation),
         longTaskApproved: Boolean(runOptions.longTaskApproved),
-        designDocumentContext: runOptions.designDocumentContext || undefined,
+        designDocumentContext: resolveDesignDocumentContext(runOptions),
         includeDesignRevision: Boolean(runOptions.includeDesignRevision)
       },
       {
@@ -2088,8 +2253,8 @@ async function runChat(content, attachments, runOptions = {}) {
       : { chatContent: parsed.content || rawContent, revision: null }
     const chatContent =
       deliverable.revision != null ? deliverable.chatContent : parsed.content || rawContent
-    // Reveal the design panel only once the model has actually produced a document.
-    if (isArchitectPane() && deliverable.revision != null) {
+    // Reveal the design panel once the model produces a deliverable or discovery notes exist.
+    if (isArchitectPane() && (deliverable.revision != null || session.designDocument?.source === 'discovery')) {
       openDesignPanel()
     }
     session.messages.push({
@@ -2167,9 +2332,17 @@ async function submitConfigForm(values, messageIndex) {
   )
 
   msg.formSubmitted = true
+  if (isArchitect) {
+    appendDiscoveryFormAnswers(session, {
+      title: view.inputForm.title,
+      fields: view.inputForm.fields,
+      values
+    })
+    openDesignPanel()
+  }
   submittingFormIndex.value = messageIndex
   try {
-    await sendMessage(lines.join('\n'))
+    await sendMessage(lines.join('\n'), null, isArchitect ? { skipRoleInference: true } : undefined)
   } finally {
     submittingFormIndex.value = null
   }
@@ -2286,6 +2459,13 @@ watch(
     }
   },
   { immediate: true }
+)
+
+watch(
+  () => isArchitectPane() && designPanelVisible.value,
+  (open) => {
+    emit('design-panel-visible-change', open)
+  }
 )
 
 onMounted(() => {
@@ -2876,6 +3056,8 @@ onUnmounted(() => {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .beta-header-start {
@@ -2893,6 +3075,54 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.beta-header-center-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 15rem;
+}
+
+.beta-header-model {
+  width: 100%;
+  min-width: 0;
+}
+
+.beta-header-model-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.beta-header-model-select :deep(.p-select) {
+  width: 100%;
+}
+
+.beta-header-model-select :deep(.p-select-label) {
+  font-size: 0.75rem;
+  padding: 0.28rem 0.55rem;
+  color: var(--p-text-muted-color);
+}
+
+.beta-header-model-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-pane-lab .beta-header-model-select :deep(.p-select-label),
+.chat-pane-lab .beta-header-model-name {
+  font-size: 0.72rem;
 }
 
 @media (min-width: 992px) {
@@ -2910,6 +3140,47 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.chat-pane-lab .beta-header-identity {
+  gap: 0.6rem;
+}
+
+.chat-pane-lab .beta-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.08);
+}
+
+.chat-pane-lab .beta-status-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+}
+
+.chat-pane-lab .beta-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.chat-pane-lab .beta-title-brand {
+  color: var(--p-text-muted-color);
+}
+
+.chat-pane-lab .beta-title-role {
+  color: var(--p-text-color);
+}
+
+.chat-pane-lab .beta-subtitle {
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--p-text-muted-color) 85%, transparent);
+}
+
+.chat-pane-lab .beta-lab-tag {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.5625rem;
+  background: color-mix(in srgb, var(--p-orange-500) 10%, transparent);
+  border-color: color-mix(in srgb, var(--p-orange-500) 24%, transparent);
+}
+
 .beta-avatar-wrap {
   position: relative;
   flex-shrink: 0;
@@ -2920,6 +3191,23 @@ onUnmounted(() => {
   height: 4rem;
   border-radius: 999px;
   box-shadow: 0 8px 24px rgba(2, 6, 23, 0.12);
+}
+
+.beta-avatar-role {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--role-accent, var(--p-primary-color)) 16%, transparent);
+  color: var(--role-accent, var(--p-primary-color));
+  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.08);
+}
+
+.beta-avatar-role i {
+  font-size: 1.35rem;
+}
+
+.chat-pane-lab .beta-avatar-role i {
+  font-size: 1rem;
 }
 
 .beta-status-dot {
@@ -2960,6 +3248,28 @@ onUnmounted(() => {
 .beta-subtitle {
   font-size: 0.875rem;
   color: var(--p-text-muted-color);
+}
+
+.beta-lab-tag {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--p-orange-700);
+  background: color-mix(in srgb, var(--p-orange-500) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--p-orange-500) 32%, transparent);
+}
+
+.beta-lab-tag-compact {
+  margin-top: 0.1rem;
+}
+
+:global(.app-dark) .beta-lab-tag {
+  color: var(--p-orange-300);
 }
 
 .beta-header-actions {
@@ -3017,6 +3327,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+}
+
+.beta-bg-thumb-theme {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-content-border-color) 70%, transparent);
+}
+
+:global(.app-dark) .beta-bg-thumb-theme {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .beta-bg-thumb-white {
@@ -3106,6 +3424,105 @@ onUnmounted(() => {
   padding: 0.5rem 0.75rem;
   margin-top: 0.25rem;
   min-height: 0;
+}
+
+.chat-pane-lab .beta-messages.user-message-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-pane-lab .beta-empty-welcome {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-pane-lab .beta-empty-welcome > * {
+  width: 100%;
+}
+
+.chat-pane-lab.chat-pane-beta {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.chat-pane-lab .beta-shell {
+  background: transparent;
+}
+
+/* Liquid glass shell — transparent window, solid message cards */
+.chat-pane-lab .beta-header {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom-color: color-mix(in srgb, var(--p-content-border-color) 32%, transparent);
+}
+
+.chat-pane-lab .beta-messages.user-message-container {
+  background: transparent;
+}
+
+.chat-pane-lab .beta-bubble-assistant {
+  background: var(--p-content-background);
+  border-color: var(--p-content-border-color);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 4px 18px rgba(2, 6, 23, 0.08);
+}
+
+.chat-pane-lab .beta-bubble-user {
+  background: var(--p-primary-100);
+  border-color: color-mix(in srgb, var(--p-primary-color) 24%, var(--p-content-border-color));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 4px 18px rgba(2, 6, 23, 0.06);
+}
+
+:global(.app-dark) .chat-pane-lab .beta-bubble-assistant {
+  background: var(--p-surface-800);
+  border-color: var(--p-content-border-color);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.3);
+}
+
+:global(.app-dark) .chat-pane-lab .beta-bubble-user {
+  color: var(--p-primary-100);
+  background: color-mix(in srgb, var(--p-primary-color) 30%, var(--p-surface-800));
+  border-color: color-mix(in srgb, var(--p-primary-color) 38%, var(--p-content-border-color));
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.28);
+}
+
+.chat-pane-lab .beta-pending {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top-color: color-mix(in srgb, var(--p-content-border-color) 32%, transparent);
+}
+
+.chat-pane-lab .beta-footer {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top-color: color-mix(in srgb, var(--p-content-border-color) 32%, transparent);
+}
+
+.chat-pane-lab .beta-footer:not(.beta-footer-compact) .beta-composer-input :deep(input) {
+  background: var(--p-content-background);
+  border-color: var(--p-content-border-color);
+  backdrop-filter: none;
+  box-shadow: 0 2px 14px rgba(2, 6, 23, 0.07);
+}
+
+:global(.app-dark) .chat-pane-lab .beta-footer:not(.beta-footer-compact) .beta-composer-input :deep(input) {
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.28);
+}
+
+.chat-pane-lab .role-switch-notice {
+  background: var(--p-content-background);
+  border-color: var(--p-content-border-color);
 }
 
 @media (min-width: 768px) {
@@ -3239,6 +3656,18 @@ onUnmounted(() => {
   height: 2.25rem;
   border-radius: 999px;
   box-shadow: 0 4px 12px rgba(2, 6, 23, 0.08);
+}
+
+.beta-msg-avatar-role {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--role-accent, var(--p-primary-color)) 16%, transparent);
+  color: var(--role-accent, var(--p-primary-color));
+}
+
+.beta-msg-avatar-role i {
+  font-size: 1rem;
 }
 
 .beta-message-author {
@@ -3878,27 +4307,79 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
+.architect-design-rail-detached {
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  z-index: auto;
+  box-shadow: none;
+  border-left: none;
+  border-radius: 0;
+  overflow: hidden;
+}
+
 .chat-pane-architect.chat-pane-design-panel-open {
   position: relative;
 }
 
-.architect-design-rail {
+@media (min-width: 992px) {
+  .chat-pane-architect.chat-pane-design-panel-open {
+    flex-direction: row;
+    min-height: 0;
+  }
+
+  .chat-pane-architect.chat-pane-design-panel-open .beta-shell {
+    flex: 0 0 72%;
+    width: 72%;
+    max-width: 72%;
+    min-width: 0;
+    margin-right: 0;
+  }
+
+  .chat-pane-architect.chat-pane-design-panel-open .architect-design-rail {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    flex: 0 0 23%;
+    width: 23%;
+    max-width: 23%;
+    min-width: 0;
+    height: 100%;
+    box-shadow: none;
+    border-left: 1px solid var(--p-content-border-color);
+  }
+
+  .chat-pane-architect.chat-pane-design-panel-open .pane-toolbar,
+  .chat-pane-architect.chat-pane-design-panel-open .ask-hero,
+  .chat-pane-architect.chat-pane-design-panel-open .messages-scroll,
+  .chat-pane-architect.chat-pane-design-panel-open .chat-input-bar,
+  .chat-pane-architect.chat-pane-design-panel-open .calibration-offer {
+    margin-right: 23%;
+  }
+}
+
+.architect-design-rail:not(.architect-design-rail-detached) {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(42%, 24rem);
+  width: 23%;
   z-index: 4;
   box-shadow: -8px 0 24px rgba(15, 23, 42, 0.08);
 }
 
-.chat-pane-architect.chat-pane-design-panel-open .beta-shell,
 .chat-pane-architect.chat-pane-design-panel-open .pane-toolbar,
 .chat-pane-architect.chat-pane-design-panel-open .ask-hero,
 .chat-pane-architect.chat-pane-design-panel-open .messages-scroll,
 .chat-pane-architect.chat-pane-design-panel-open .chat-input-bar,
 .chat-pane-architect.chat-pane-design-panel-open .calibration-offer {
-  margin-right: min(42%, 24rem);
+  margin-right: 23%;
 }
 
 .architect-summary-bubble {

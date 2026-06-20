@@ -307,12 +307,22 @@ def _apply_blueprint_context(
     role: str,
     vendor: str | None,
 ) -> tuple[str, bool, bool]:
-    ctx = resolve_blueprint_turn_context(
-        user_message=user_message,
-        role=role,
-        vendor=vendor or "netscaler",
-        installed=list_installed_skills(),
-    )
+    from app.services.knowledge_pack_runtime import resolve_knowledge_pack_turn_context
+    from app.services.knowledge_pack_service import get_active_pack_dir
+
+    if get_active_pack_dir():
+        ctx, _tool_policy = resolve_knowledge_pack_turn_context(
+            user_message=user_message,
+            role=role,
+            vendor=vendor or "netscaler",
+        )
+    else:
+        ctx = resolve_blueprint_turn_context(
+            user_message=user_message,
+            role=role,
+            vendor=vendor or "netscaler",
+            installed=list_installed_skills(),
+        )
     if ctx.injection_block:
         system_prompt = f"{system_prompt}\n\n{ctx.injection_block}"
     if ctx.relevant:
@@ -911,9 +921,9 @@ async def run_copilot_chat(
     chat_role = normalize_role(role)
 
     if chat_role == JPilotRole.ARCHITECT and design_document_context:
-        from app.services.copilot_architect_discovery import append_design_document_revision_context
+        from app.services.copilot_architect_discovery import append_architect_panel_context
 
-        user_message = append_design_document_revision_context(
+        user_message = append_architect_panel_context(
             user_message,
             design_document_context,
             include_revision=include_design_revision,
@@ -991,6 +1001,7 @@ async def run_copilot_chat(
         parse_natural_language_lb_request,
         try_auto_create_application,
         try_auto_deploy_classic_lb,
+        try_auto_deploy_http_lb,
         try_auto_deploy_lb_from_message,
     )
     from app.services.copilot_remove import try_auto_remove_lb_targets
@@ -1003,12 +1014,19 @@ async def run_copilot_chat(
     auto_response = None
     if appliance_name and role_requires_appliance(chat_role):
         if is_form_submission(user_message):
-            auto_traces, auto_response = await try_auto_create_application(
+            auto_traces, auto_response = await try_auto_deploy_http_lb(
                 db,
                 user_message=user_message,
                 appliance_name=appliance_name,
                 enabled_tool_names=enabled_tool_names,
             )
+            if not auto_traces:
+                auto_traces, auto_response = await try_auto_create_application(
+                    db,
+                    user_message=user_message,
+                    appliance_name=appliance_name,
+                    enabled_tool_names=enabled_tool_names,
+                )
             if not auto_traces:
                 auto_traces, auto_response = await try_auto_deploy_classic_lb(
                     db,

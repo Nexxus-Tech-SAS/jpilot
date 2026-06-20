@@ -11,6 +11,96 @@ export const MAX_PERSISTED_DESIGN_DOC_CHARS = 512_000
 
 const MARKERS = [JPILOT_DESIGN_MARKER, JPILOT_CHANGE_CONTROL_MARKER]
 
+export const DISCOVERY_WORKBOOK_TITLE = '# Discovery workbook'
+
+const DISCOVERY_WORKBOOK_INTRO =
+  '_Captured from discovery forms. Edit here anytime — JPilot uses this when generating the formal design document._'
+
+export function isFormalDeliverableMarkdown(markdown) {
+  if (!markdown || typeof markdown !== 'string') return false
+  return MARKERS.some((marker) => markdown.includes(marker))
+}
+
+export function isDiscoveryWorkbook(markdown) {
+  const text = (markdown || '').trim()
+  if (!text || isFormalDeliverableMarkdown(text)) return false
+  return text.startsWith(DISCOVERY_WORKBOOK_TITLE)
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function formatDiscoveryFieldValue(field, value) {
+  if (field.type === 'boolean') return value ? 'yes' : 'no'
+  const rendered = String(value ?? '').trim()
+  return rendered || '_TBD_'
+}
+
+function formatDiscoverySection(title, fields, values) {
+  const lines = [`## ${title}`, '']
+  for (const field of fields) {
+    lines.push(`- **${field.label}:** ${formatDiscoveryFieldValue(field, values[field.id])}`)
+  }
+  return lines.join('\n')
+}
+
+function upsertDiscoverySection(markdown, title, sectionMarkdown) {
+  const pattern = new RegExp(
+    `^## ${escapeRegExp(title)}\\s*\\n[\\s\\S]*?(?=\\n## |$)`,
+    'm'
+  )
+  if (pattern.test(markdown)) {
+    return markdown.replace(pattern, sectionMarkdown)
+  }
+  return `${markdown.trimEnd()}\n\n${sectionMarkdown}`
+}
+
+function ensureDiscoveryWorkbook(session) {
+  const existing = session.designDocument
+  if (existing?.markdown?.trim() && isFormalDeliverableMarkdown(existing.markdown)) {
+    return false
+  }
+  if (!existing) {
+    session.designDocument = createDesignDocument({
+      markdown: `${DISCOVERY_WORKBOOK_TITLE}\n\n${DISCOVERY_WORKBOOK_INTRO}\n`,
+      type: 'design',
+      source: 'discovery',
+      revision: 0
+    })
+    return true
+  }
+  if (!existing.markdown.trim()) {
+    existing.markdown = `${DISCOVERY_WORKBOOK_TITLE}\n\n${DISCOVERY_WORKBOOK_INTRO}\n`
+    existing.source = 'discovery'
+    existing.revision = existing.revision || 0
+  }
+  return true
+}
+
+/**
+ * Append or update a discovery form section in the Document Editor workbook.
+ * @param {object} session
+ * @param {{ title: string, fields: Array<{ id: string, label: string, type?: string }>, values: Record<string, unknown> }} params
+ * @returns {boolean}
+ */
+export function appendDiscoveryFormAnswers(session, { title, fields, values }) {
+  if (!title || !fields?.length) return false
+  if (!ensureDiscoveryWorkbook(session)) return false
+
+  const sectionMarkdown = formatDiscoverySection(title, fields, values)
+  session.designDocument.markdown = upsertDiscoverySection(
+    session.designDocument.markdown,
+    title,
+    sectionMarkdown
+  )
+  session.designDocument.source = 'discovery'
+  session.designDocument.updatedAt = new Date().toISOString()
+  session.designDocument.dirty = false
+  session.designDocument.streaming = false
+  return true
+}
+
 export function isMarkdownAttachmentName(name) {
   const lowered = (name || '').toLowerCase()
   return lowered.endsWith('.md') || lowered.endsWith('.markdown')
@@ -149,18 +239,9 @@ export function seedDesignDocumentFromAttachment(session, attachment) {
 
 export function beginDesignDocumentStreaming(session) {
   const existing = session.designDocument
-  if (existing) {
-    existing.streaming = true
-    existing.updatedAt = new Date().toISOString()
-    return
-  }
-  session.designDocument = createDesignDocument({
-    markdown: '',
-    type: 'design',
-    source: 'assistant',
-    revision: 0
-  })
-  session.designDocument.streaming = true
+  if (!existing?.markdown?.trim()) return
+  existing.streaming = true
+  existing.updatedAt = new Date().toISOString()
 }
 
 export function loadDesignPanelVisible() {

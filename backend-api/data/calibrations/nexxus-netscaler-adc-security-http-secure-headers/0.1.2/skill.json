@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "skillId": "nexxus-netscaler-adc-security-http-secure-headers",
+  "version": "0.1.2",
+  "vendor": "netscaler",
+  "domains": [
+    "ssl-tls-management",
+    "security"
+  ],
+  "label": "Configure HTTP Secure Headers",
+  "description": "Configure HTTP Secure Headers",
+  "roles": {
+    "operator": "roles/operator-addon.md",
+    "architect": "roles/architect-addon.md"
+  },
+  "memory": [
+    {
+      "id": "why-rewrite-over-responder",
+      "path": "memory/why-rewrite-over-responder.md",
+      "label": "Why Rewrite over Responder?"
+    }
+  ],
+  "minTier": "free",
+  "globalFreeSkill": true
+}

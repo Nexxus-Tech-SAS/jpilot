@@ -7,17 +7,18 @@
           :value="document?.type === 'change_control' ? 'Change control' : 'Design'"
           :severity="document?.type === 'change_control' ? 'warn' : 'info'"
         />
+        <Tag v-if="isDiscoveryWorkbook" value="Discovery" severity="success" />
         <Tag v-if="document?.revision" :value="`v${document.revision}`" severity="secondary" />
         <Tag v-if="document?.dirty" value="Edited" severity="warn" />
       </div>
       <div class="architect-design-panel-actions">
         <Button
-          v-tooltip.bottom="'Hide design panel'"
+          v-tooltip.bottom="'Hide Document Editor'"
           icon="pi pi-times"
           text
           rounded
           severity="secondary"
-          aria-label="Hide design panel"
+          aria-label="Hide Document Editor"
           @click="$emit('close')"
         />
       </div>
@@ -30,7 +31,10 @@
 
     <div v-if="!document?.markdown && !document?.streaming" class="architect-design-panel-empty">
       <i class="pi pi-file-edit" />
-      <p>Your design document or change control record will appear here after discovery, when you attach a <code>.md</code> file, or when you ask JPilot to generate it.</p>
+      <p>
+        Discovery answers will build up here as you submit forms. When ready, JPilot will compile the
+        formal design document or change control record — or you can attach a <code>.md</code> file.
+      </p>
     </div>
 
     <template v-else>
@@ -88,6 +92,7 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import ChatMarkdown from './ChatMarkdown.vue'
 import { canSendDeliverableToOperator } from '../utils/architectDeliverable'
+import { isDiscoveryWorkbook as isDiscoveryWorkbookMarkdown } from '../utils/architectDesignDocument'
 
 const props = defineProps({
   document: { type: Object, default: null },
@@ -97,8 +102,10 @@ const props = defineProps({
 const emit = defineEmits(['close', 'update:markdown', 'send-revision', 'send-to-operator', 'download'])
 
 const panelTitle = computed(() =>
-  props.document?.type === 'change_control' ? 'Change control record' : 'Design document'
+  props.document?.type === 'change_control' ? 'Change control record' : 'Document Editor'
 )
+
+const isDiscoveryWorkbook = computed(() => isDiscoveryWorkbookMarkdown(props.document?.markdown))
 
 const downloadLabel = computed(() =>
   props.document?.type === 'change_control' ? 'Download record' : 'Download design'
@@ -127,6 +134,18 @@ function onEditorInput(value) {
   height: 100%;
   border-left: 1px solid var(--p-content-border-color);
   background: var(--p-content-background);
+}
+
+.architect-design-panel.architect-design-rail-detached {
+  border-left: none;
+  border-radius: 0;
+  overflow: hidden;
+  background: var(--p-content-background);
+}
+
+.architect-design-panel.architect-design-rail-detached .architect-design-panel-head {
+  border-top-left-radius: var(--p-content-border-radius, var(--content-radius));
+  border-top-right-radius: var(--p-content-border-radius, var(--content-radius));
 }
 
 .architect-design-panel-head {

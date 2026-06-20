@@ -1,0 +1,1 @@
+As an architect, note that this design utilizes NetScaler Rewrite policies instead of Responder policies because we are modifying the HTTP response headers returned to the client. The policies use the `EXISTS.NOT` expression to avoid duplicating headers if the backend application already sends them, ensuring optimal compatibility and compliance with security standards like OWASP.

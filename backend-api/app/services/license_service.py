@@ -298,6 +298,8 @@ def _extract_sync_metadata(payload: dict[str, Any], *, message: str = "") -> dic
         ("customerEmail", "customerEmail"),
         ("company", "company"),
         ("usageType", "usageType"),
+        ("clientId", "clientId"),
+        ("organizationId", "clientId"),
     )
     for source in _profile_sources(payload):
         for source_key, target_key in field_map:
@@ -413,6 +415,8 @@ def _apply_sync_metadata(updates: dict[str, Any], metadata: dict[str, Any]) -> N
         updates["company"] = str(metadata["company"])
     if metadata.get("usageType"):
         updates["usageType"] = str(metadata["usageType"])
+    if metadata.get("clientId"):
+        updates["clientId"] = str(metadata["clientId"])
     updates["cachedLicense"] = _merge_license_cache(updates.get("cachedLicense"), metadata)
 
 
@@ -615,6 +619,12 @@ def _apply_sync_result(document: dict[str, Any], result: LicenseSyncResult) -> d
             updates["algorithm"] = str(payload["algorithm"])
         if payload.get("version") is not None:
             updates["version"] = int(payload["version"])
+        code_from_server = payload.get("licenseCode") or payload.get("license_code")
+        if code_from_server and not _has_license_code(document):
+            try:
+                updates["encryptedLicenseCode"] = encrypt_value(normalize_license_code(str(code_from_server)))
+            except ValueError:
+                pass
 
         encrypted = str(updates.get("encryptedLicense") or document.get("encryptedLicense") or "")
         crypto_version = int(updates.get("version") or document.get("version") or 1)
@@ -720,8 +730,8 @@ async def sync_license(
 
 async def ensure_license_synced_for_studio(db: AsyncIOMotorDatabase) -> None:
     """Best-effort Nexxus license sync before scstudio catalog/sync calls."""
-    document = await _find_license_document(db)
-    if document is None or not _should_sync_with_server(document):
+    document = await _ensure_license_record(db)
+    if not _should_sync_with_server(document):
         return
     try:
         await sync_license(db, document=document)
@@ -730,10 +740,14 @@ async def ensure_license_synced_for_studio(db: AsyncIOMotorDatabase) -> None:
 
 
 def _should_sync_with_server(document: dict[str, Any]) -> bool:
-    """Sync when online activation applies (skipped for offline ``.lic`` imports)."""
+    """Sync when online activation applies (skipped for offline ``.lic`` imports).
+
+    Fingerprint-only sync is allowed so installs activated on nexxus-tech.com can pull
+    license updates before the user pastes a code into Settings → License.
+    """
     if document.get("obtainedOffline"):
         return False
-    return bool(document.get("appFingerprint")) and _has_license_code(document)
+    return bool(document.get("appFingerprint"))
 
 
 async def run_scheduled_license_sync(db: AsyncIOMotorDatabase) -> None:

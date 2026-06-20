@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.64` — Settings and JPilot Chat are now the sole sidebar entries (no duplicate legacy items or β badges); chat lives at `/jpilot`; Calibration Studio gets a summary header with license and entitlement metrics.
+**Current release:** `v0.65` — Calibration Studio entitlement refresh syncs on installation fingerprint (no local license code required); HTTP Load Balancer blueprint forms auto-deploy with `IP:PORT` backends; clearer blueprint status when tier is OK but a skill is not assigned.
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -71,6 +71,16 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.65
+
+| Area | Highlights |
+|------|------------|
+| **Calibration Studio** | **Refresh entitlements** syncs with Nexxus using the installation fingerprint alone — upgrades activated on the Nexxus site apply even when no license code is stored locally. Catalog merges `licenseType`, `clientId`, and entitlements from the server. Blueprint rows show **Not assigned** when your tier allows the skill but Nexxus has not linked it to this installation (instead of misleading “Not enabled”). |
+| **Operator blueprints** | HTTP Load Balancer calibration forms accept `IP:PORT` backend lists and auto-deploy via classic CLI (server → service group → lb vserver → save) without relying on telnet-style tool loops. List All IP addresses and similar Operator prompts stay in Operator role instead of switching to Architect. |
+| **JPilot Chat** | Blueprint-aware welcome and installed-blueprint browser; persona skill hints; improved design-document handoff and pane layout polish. |
+| **Knowledge packs** | Signed pack runtime and scheduler ship behind `knowledge_pack_enabled` (default **off**); Calibration Studio no longer exposes the pack panel until enabled in config. |
+| **Docs** | Expanded [Calibration Sync](docs/CALIBRATION_SYNC.md) and SCStudio integration notes for fingerprint sync, entitlement merge, and assignment troubleshooting. |
 
 ## What's new in v0.64
 

@@ -1,0 +1,42 @@
+{
+  "id": "nexxus-netscaler-adc-load-balancing-http-lb",
+  "type": "skill",
+  "vendor": "netscaler",
+  "domains": [
+    "load-balancing"
+  ],
+  "label": "HTTP Load Balancer",
+  "description": "Configure a HTTP Load Balancer",
+  "minTier": "free",
+  "globalFreeSkill": true,
+  "primaryDomain": "load-balancing",
+  "deviceId": "netscaler-adc",
+  "roles": [
+    "operator"
+  ],
+  "triggers": {
+    "intents": [
+      "create http load balancer",
+      "configure netscaler vip",
+      "setup netscaler load balancing",
+      "add netscaler virtual server",
+      "deploy http lb"
+    ],
+    "commands": [
+      "create-http-lb",
+      "configure-netscaler-vip"
+    ]
+  },
+  "toolPack": [
+    "netscaler_classic_cli"
+  ],
+  "memoryModules": [
+    {
+      "id": "netscaler-http-load-balancing-basics",
+      "filename": "memory/netscaler-http-load-balancing-basics.md",
+      "roleTags": [
+        "operator"
+      ]
+    }
+  ]
+}

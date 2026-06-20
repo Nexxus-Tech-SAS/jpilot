@@ -22,6 +22,35 @@ export async function syncCalibrationsFromStudio() {
   return data
 }
 
+export async function fetchKnowledgePackStatus() {
+  const { data } = await api.get('/copilot/knowledge-pack')
+  return data
+}
+
+export async function importKnowledgePack(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await api.post('/copilot/knowledge-pack/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return data
+}
+
+export async function rollbackKnowledgePack() {
+  const { data } = await api.post('/copilot/knowledge-pack/rollback')
+  return data
+}
+
+export async function pinKnowledgePackVersion(version) {
+  const { data } = await api.put('/copilot/knowledge-pack/pin', { version: version || null })
+  return data
+}
+
+export async function updateKnowledgePackSchedule({ enabled, hours }) {
+  const { data } = await api.put('/copilot/knowledge-pack/schedule', { enabled, hours })
+  return data
+}
+
 export async function installCalibrationSkill(skillId) {
   const { data } = await api.post(`/copilot/calibrations/${encodeURIComponent(skillId)}/install`)
   return data
@@ -143,7 +172,7 @@ export function blueprintStatusLabel(row, currentLicenseType) {
     return tierOk ? 'Update blocked' : blueprintRequirementLabel(row)
   }
   if (row.installed) return 'Installed'
-  if (tierOk && row.inCatalog) return 'Not enabled'
+  if (tierOk && row.inCatalog) return 'Not assigned'
   return blueprintRequirementLabel(row)
 }
 
@@ -169,7 +198,7 @@ export function blueprintDownloadBlockedButtonLabel(row, currentLicenseType) {
     return tierMeetsBlueprintRequirement(currentLicenseType, row) ? 'Update blocked' : 'Not entitled'
   }
   if (tierMeetsBlueprintRequirement(currentLicenseType, row) && row.inCatalog && !row.installable) {
-    return 'Not enabled'
+    return 'Not assigned'
   }
   return 'Not entitled'
 }

@@ -1,9 +1,16 @@
 <template>
-  <div class="beta-sidebar flex flex-column h-full" :class="{ 'beta-sidebar-drawer': variant === 'drawer' }">
+  <div
+    class="beta-sidebar flex flex-column h-full"
+    :class="{
+      'beta-sidebar-drawer': variant === 'drawer',
+      'beta-sidebar-lab': showBetaLabel
+    }"
+  >
     <div v-if="variant !== 'drawer'" class="beta-sidebar-profile">
       <img src="/jpilot-favicon.png" alt="JPilot" class="beta-sidebar-logo" />
       <span class="beta-sidebar-brand">JPilot</span>
       <span class="beta-sidebar-tagline">AI assistant for your appliances</span>
+      <span v-if="showBetaLabel" class="beta-sidebar-beta-tag">Beta</span>
     </div>
 
     <div class="beta-sidebar-body">
@@ -36,6 +43,7 @@
           :pane="pane"
           :active="pane.sessionId === activeSessionId"
           :deletable="conversationCount > 1"
+          :lab-variant="showBetaLabel"
           @select="$emit('select', pane.sessionId)"
           @delete="$emit('delete', pane.sessionId)"
         />
@@ -63,7 +71,9 @@ const props = defineProps({
   conversationCount: { type: Number, default: 0 },
   maxConversations: { type: Number, default: 12 },
   /** `drawer` — compact list for mobile slide-over. */
-  variant: { type: String, default: 'default' }
+  variant: { type: String, default: 'default' },
+  /** Show experimental Chat Beta label under the sidebar title. */
+  showBetaLabel: { type: Boolean, default: false }
 })
 
 defineEmits(['select', 'new-chat', 'delete'])
@@ -96,6 +106,12 @@ const filteredPanes = computed(() => {
   text-align: center;
 }
 
+.beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-profile {
+  padding: 1.1rem 1.25rem;
+  background: transparent;
+  border-bottom-color: color-mix(in srgb, var(--p-content-border-color) 22%, transparent);
+}
+
 .beta-sidebar-logo {
   width: 6rem;
   height: 6rem;
@@ -103,11 +119,22 @@ const filteredPanes = computed(() => {
   box-shadow: 0 10px 28px rgba(2, 6, 23, 0.12);
 }
 
+.beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-logo {
+  width: 2.75rem;
+  height: 2.75rem;
+  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.08);
+}
+
 .beta-sidebar-brand {
   margin-top: 1.25rem;
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--p-text-color);
+}
+
+.beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-brand {
+  margin-top: 0.5rem;
+  font-size: 1rem;
 }
 
 .beta-sidebar-tagline {
@@ -118,6 +145,32 @@ const filteredPanes = computed(() => {
   max-width: 14rem;
 }
 
+.beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-tagline {
+  display: none;
+}
+
+.beta-sidebar-beta-tag {
+  display: inline-flex;
+  margin-top: 0.55rem;
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--p-orange-700);
+  background: color-mix(in srgb, var(--p-orange-500) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--p-orange-500) 32%, transparent);
+}
+
+.beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-beta-tag {
+  margin-top: 0.35rem;
+}
+
+:global(.app-dark) .beta-sidebar-beta-tag {
+  color: var(--p-orange-300);
+}
+
 .beta-sidebar-body {
   display: flex;
   flex-direction: column;
@@ -125,6 +178,12 @@ const filteredPanes = computed(() => {
   padding: 1.25rem;
   min-height: 0;
   flex: 1;
+}
+
+.beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-body {
+  gap: 0.75rem;
+  padding: 1rem;
+  background: transparent;
 }
 
 .beta-sidebar-toolbar {
@@ -154,6 +213,10 @@ const filteredPanes = computed(() => {
   flex: 1;
 }
 
+.beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-list {
+  gap: 0.5rem;
+}
+
 .beta-sidebar:not(.beta-sidebar-drawer) :deep(.beta-pane-card) {
   background: color-mix(in srgb, var(--p-content-background) 50%, transparent);
   border-color: color-mix(in srgb, var(--p-content-border-color) 52%, transparent);
@@ -171,6 +234,11 @@ const filteredPanes = computed(() => {
 
 .beta-sidebar:not(.beta-sidebar-drawer) :deep(.beta-pane-card-active) {
   background: color-mix(in srgb, var(--p-primary-color) 12%, transparent);
+}
+
+.beta-sidebar-lab:not(.beta-sidebar-drawer) :deep(.beta-pane-card-active) {
+  background: color-mix(in srgb, var(--role-accent, var(--p-primary-color)) 10%, transparent);
+  border-color: color-mix(in srgb, var(--role-accent, var(--p-primary-color)) 45%, transparent);
 }
 
 .beta-sidebar-limit {

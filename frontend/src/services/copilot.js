@@ -151,21 +151,26 @@ export function setChatBackground(url) {
 
 /** Animated backgrounds for JPilot Beta chat only. */
 export const BETA_CHAT_BACKGROUNDS = [
-  { id: 'constellation', label: 'Constellation', base: 'white' },
-  { id: 'waves', label: 'Waves', base: 'white' },
-  { id: 'drift', label: 'Drift', base: 'black' },
-  { id: 'orbit', label: 'Orbit', base: 'black' }
+  { id: 'constellation', label: 'Constellation', base: 'theme' },
+  { id: 'waves', label: 'Waves', base: 'theme' },
+  { id: 'drift', label: 'Drift', base: 'theme' },
+  { id: 'orbit', label: 'Orbit', base: 'theme' }
 ]
 
-const BETA_BG_KEY = 'jpilot_beta_background'
+const BETA_BG_KEYS = {
+  main: 'jpilot_beta_background',
+  lab: 'jpilot_beta_lab_background'
+}
 const BETA_BG_IDS = new Set([...BETA_CHAT_BACKGROUNDS.map((bg) => bg.id), 'none'])
 
-export function getBetaChatBackground() {
-  const saved = localStorage.getItem(BETA_BG_KEY)
+export function getBetaChatBackground(namespace = 'main') {
+  const key = BETA_BG_KEYS[namespace] || BETA_BG_KEYS.main
+  const saved = localStorage.getItem(key)
   if (saved && BETA_BG_IDS.has(saved)) return saved
   return BETA_CHAT_BACKGROUNDS[0].id
 }
 
-export function setBetaChatBackground(id) {
-  localStorage.setItem(BETA_BG_KEY, BETA_BG_IDS.has(id) ? id : 'constellation')
+export function setBetaChatBackground(id, namespace = 'main') {
+  const key = BETA_BG_KEYS[namespace] || BETA_BG_KEYS.main
+  localStorage.setItem(key, BETA_BG_IDS.has(id) ? id : 'constellation')
 }

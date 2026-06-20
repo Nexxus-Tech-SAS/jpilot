@@ -1,0 +1,45 @@
+{
+  "id": "nexxus-netscaler-adc-system-management-list-ips",
+  "type": "skill",
+  "vendor": "netscaler",
+  "domains": [
+    "network-configuration",
+    "system-management"
+  ],
+  "label": "List All the IP addresses",
+  "description": "List all the IPs configured in the NetScaler",
+  "minTier": "free",
+  "globalFreeSkill": true,
+  "primaryDomain": "system-management",
+  "deviceId": "netscaler-adc",
+  "roles": [
+    "operator"
+  ],
+  "triggers": {
+    "intents": [
+      "list netscaler ips",
+      "show netscaler ip addresses",
+      "get netscaler ip table",
+      "display configured ips on netscaler",
+      "view netscaler snip vip nsip"
+    ],
+    "commands": [
+      "list-netscaler-ips",
+      "show-ns-ip-table"
+    ]
+  },
+  "toolPack": [
+    "netscaler_ssh_run_command",
+    "netscaler_run_cli_command",
+    "search_netscaler_cli_reference"
+  ],
+  "memoryModules": [
+    {
+      "id": "netscaler-ip-types-quick-reference",
+      "filename": "memory/netscaler-ip-types-quick-reference.md",
+      "roleTags": [
+        "operator"
+      ]
+    }
+  ]
+}

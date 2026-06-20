@@ -39,6 +39,11 @@ class CalibrationSyncResult:
     updated: int
     removed: int
     skills: list[dict[str, Any]]
+    knowledge_pack: dict[str, Any] | None = None
+    knowledge_pack_updated: bool = False
+    knowledge_pack_skipped: bool = False
+    stack_profile: dict[str, Any] | None = None
+    legacy_skills: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +57,8 @@ class CalibrationCatalogResult:
     local_license_type: str | None = None
     license_entitlement_mismatch: bool = False
     studio_auth_missing: bool = False
+    has_license_code: bool = False
+    app_fingerprint: str | None = None
 
 
 def _calibrations_root() -> Path:
@@ -68,13 +75,46 @@ async def ensure_calibration_indexes(db: AsyncIOMotorDatabase) -> None:
     await db[COLLECTION].create_index([("enabled", 1)])
 
 
-def list_installed_skills() -> list[dict[str, Any]]:
+def _skill_row_from_manifest(
+    manifest: dict[str, Any],
+    *,
+    skill_dir_name: str,
+    version_fallback: str,
+    path: str,
+    source: str,
+) -> dict[str, Any]:
+    skill_id = str(manifest.get("id") or skill_dir_name)
+    return {
+        "skillId": skill_id,
+        "version": str(manifest.get("version") or version_fallback or ""),
+        "label": str(manifest.get("label") or skill_dir_name),
+        "vendor": manifest.get("vendor"),
+        "path": path,
+        "source": source,
+        "roles": list(manifest.get("roles") or []),
+        "description": str(manifest.get("description") or ""),
+        "domains": list(manifest.get("domains") or []),
+    }
+
+
+def list_installed_skills(*, include_legacy_only: bool = False) -> list[dict[str, Any]]:
+    from app.services.knowledge_pack_service import get_active_pack_dir, list_pack_embedded_skills
+
+    rows: list[dict[str, Any]] = []
+    pack_dir = get_active_pack_dir()
+    pack_skill_ids: set[str] = set()
+    if pack_dir and not include_legacy_only:
+        for row in list_pack_embedded_skills(pack_dir):
+            skill_id = str(row.get("skillId") or "")
+            if skill_id:
+                pack_skill_ids.add(skill_id)
+            rows.append(row)
+
     root = _calibrations_root()
     if not root.is_dir():
-        return []
-    rows: list[dict[str, Any]] = []
+        return rows
     for skill_dir in sorted(root.iterdir()):
-        if not skill_dir.is_dir():
+        if not skill_dir.is_dir() or skill_dir.name == "knowledge-packs":
             continue
         for version_dir in sorted(skill_dir.iterdir()):
             manifest_file = version_dir / "manifest.json"
@@ -86,15 +126,18 @@ def list_installed_skills() -> list[dict[str, Any]]:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 continue
+            skill_id = str(manifest.get("id") or skill_dir.name)
+            if skill_id in pack_skill_ids:
+                continue
             rows.append(
-                    {
-                        "skillId": manifest.get("id") or skill_dir.name,
-                        "version": manifest.get("version") or version_dir.name,
-                        "label": manifest.get("label") or skill_dir.name,
-                        "vendor": manifest.get("vendor"),
-                        "path": str(version_dir),
-                    }
+                _skill_row_from_manifest(
+                    manifest,
+                    skill_dir_name=skill_dir.name,
+                    version_fallback=version_dir.name,
+                    path=str(version_dir),
+                    source="legacy",
                 )
+            )
     return rows
 
 
@@ -118,6 +161,11 @@ async def _studio_request_body(db: AsyncIOMotorDatabase) -> dict[str, Any]:
     license_code = license_context.get("licenseCode")
     if license_code:
         body["licenseCode"] = license_code
+    from app.services.knowledge_pack_service import get_installed_knowledge_pack_sync_state
+
+    installed_pack = get_installed_knowledge_pack_sync_state()
+    if installed_pack:
+        body["installedKnowledgePack"] = installed_pack
     return body
 
 
@@ -127,6 +175,25 @@ def _sync_entitled_by_id(sync_payload: dict[str, Any]) -> dict[str, dict[str, An
         for skill in (sync_payload.get("skills") or [])
         if skill.get("id")
     }
+
+
+def _merge_studio_identity(
+    catalog_payload: dict[str, Any],
+    sync_payload: dict[str, Any],
+) -> tuple[str, str | None, list[str]]:
+    license_type = normalize_license_type(str(catalog_payload.get("licenseType") or "free"))
+    sync_license_type = normalize_license_type(str(sync_payload.get("licenseType") or ""))
+    if sync_license_type and license_tier_rank(sync_license_type) > license_tier_rank(license_type):
+        license_type = sync_license_type
+
+    client_id = catalog_payload.get("clientId") or sync_payload.get("clientId")
+    if client_id is not None:
+        client_id = str(client_id).strip() or None
+
+    entitlements = list(catalog_payload.get("entitlements") or [])
+    if not entitlements:
+        entitlements = list(sync_payload.get("entitlements") or [])
+    return license_type, client_id, entitlements
 
 
 def _enrich_catalog_skills_with_sync_entitlements(
@@ -254,7 +321,7 @@ async def fetch_calibration_catalog(
     installed_rows = list_installed_skills()
     license_context = await get_license_context_for_studio(db)
     local_license_type = license_context.get("localLicenseType")
-    studio_license_type = normalize_license_type(str(payload.get("licenseType") or "free"))
+    studio_license_type, client_id, entitlements = _merge_studio_identity(payload, sync_payload)
     license_entitlement_mismatch = bool(
         local_license_type
         and license_tier_rank(local_license_type) > license_tier_rank(studio_license_type)
@@ -262,17 +329,20 @@ async def fetch_calibration_catalog(
     studio_auth_missing = bool(
         license_entitlement_mismatch and not license_context.get("hasLicenseCode")
     )
+    fingerprint = await get_installation_fingerprint(db)
 
     return CalibrationCatalogResult(
         catalog_url=str(payload.get("catalogUrl") or catalog_url),
         license_type=studio_license_type,
-        client_id=payload.get("clientId"),
-        entitlements=list(payload.get("entitlements") or []),
+        client_id=client_id,
+        entitlements=entitlements,
         skills=catalog_skills,
         installed_blueprints=_build_installed_blueprints(catalog_skills, installed_rows),
         local_license_type=str(local_license_type) if local_license_type else None,
         license_entitlement_mismatch=license_entitlement_mismatch,
         studio_auth_missing=studio_auth_missing,
+        has_license_code=bool(license_context.get("hasLicenseCode")),
+        app_fingerprint=str(fingerprint.get("fingerprint") or license_document_id()).strip() or None,
     )
 
 
@@ -549,6 +619,33 @@ async def sync_calibrations_from_studio(db: AsyncIOMotorDatabase) -> Calibration
     payload = await _post_studio_sync_manifest(body)
     skills = payload.get("skills") or []
     removed = payload.get("removed") or []
+    stack_profile = payload.get("stackProfile") or None
+    knowledge_pack_meta = payload.get("knowledgePack") or None
+
+    knowledge_pack_updated = False
+    knowledge_pack_skipped = False
+    knowledge_pack_summary: dict[str, Any] | None = None
+
+    if knowledge_pack_meta:
+        from app.services.knowledge_pack_service import KnowledgePackError, process_knowledge_pack_from_sync
+
+        try:
+            pack_outcome = await process_knowledge_pack_from_sync(
+                db,
+                knowledge_pack=knowledge_pack_meta,
+                base_url=base,
+                stack_profile=stack_profile,
+            )
+            knowledge_pack_updated = pack_outcome.updated
+            knowledge_pack_skipped = pack_outcome.skipped
+            if pack_outcome.pack_id:
+                knowledge_pack_summary = {
+                    "id": pack_outcome.pack_id,
+                    "version": pack_outcome.version,
+                    "contentHash": pack_outcome.content_hash,
+                }
+        except KnowledgePackError as exc:
+            raise CalibrationSyncError(str(exc), status_code=exc.status_code) from exc
 
     updated = 0
     installed = 0
@@ -577,9 +674,16 @@ async def sync_calibrations_from_studio(db: AsyncIOMotorDatabase) -> Calibration
         else:
             updated += 1
 
+    legacy_skills = skills if not knowledge_pack_meta else skills
+
     return CalibrationSyncResult(
         installed=installed,
         updated=updated,
         removed=len(removed),
         skills=skills,
+        knowledge_pack=knowledge_pack_summary or knowledge_pack_meta,
+        knowledge_pack_updated=knowledge_pack_updated,
+        knowledge_pack_skipped=knowledge_pack_skipped,
+        stack_profile=stack_profile,
+        legacy_skills=legacy_skills,
     )

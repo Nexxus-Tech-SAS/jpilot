@@ -90,6 +90,26 @@ Returns signed skill bundles and stack profile metadata for this install.
 
 **JPilot client:** `calibration_sync_service.sync_calibrations_from_studio` · local proxy `POST /copilot/calibrations/sync`
 
+#### Knowledge Pack (v1 extension)
+
+Sync request may include `installedKnowledgePack` (`id`, `version`, `contentHash`). Response may include `knowledgePack` (preferred) alongside transitional `skills[]`.
+
+Full JPilot-side contract (local cache, verify, runtime assembly, UI): [CALIBRATION_SYNC.md — Knowledge Pack](./CALIBRATION_SYNC.md#knowledge-pack-knowpkg--jpilot-sync-contract-v1)
+
+```json
+{
+  "knowledgePack": {
+    "id": "nexxus-global",
+    "version": "2.4.0",
+    "contentHash": "sha256:...",
+    "packageSignature": "<Ed25519>",
+    "bundleUrl": "/calibrations/knowledge-packs/nexxus-global/2.4.0"
+  },
+  "stackProfile": { "knowledgePackVersion": "2.4.0" },
+  "skills": []
+}
+```
+
 ---
 
 ## POST /calibrations/catalog
@@ -160,14 +180,14 @@ Categories: `wrong_tool`, `missing_step`, `wrong_answer`, `skill_not_triggered`,
 
 ## JPilot runtime (summary)
 
-1. Sync or manual upload → extract to `data/calibrations/{skillId}/{version}/`
-2. MongoDB `stack_calibrations` index row per installed version
-3. Matcher: filter `skill.vendor == chat_vendor`, role, triggers + memory search; cap 2 skills/turn
-4. **Blueprint-first:** server-side memory search + prompt injection before the LLM loop; gate blocks generic CLI/API tools when a blueprint matches until context is loaded (`copilot_calibration_gate`)
-5. Inject `prompts/{role}.md` + matched memory excerpts; expose `search_stack_calibration_memory` in routed tool packs when skills are installed
+1. Sync or manual import → Knowledge Pack to `data/calibrations/knowledge-packs/` **or** legacy skills to `data/calibrations/{skillId}/{version}/`
+2. MongoDB `knowledge_pack_state` + `stack_calibrations` index rows
+3. **No SCStudio persona/assignment HTTP at chat time** — runtime reads active local pack only
+4. Matcher: pack assembly (`knowledge_pack_runtime`) or legacy `calibration_matcher`; filter `skill.vendor == chat_vendor`, role; cap 2 skills/turn
+5. **Blueprint-first:** server-side memory search + prompt injection before the LLM loop; gate blocks generic CLI/API tools when a blueprint matches until context is loaded (`copilot_calibration_gate`)
 6. Platform gates (`copilot_memory_gate`, role tool allowlists) unchanged
 
----
+See [CALIBRATION_SYNC.md](./CALIBRATION_SYNC.md) for Knowledge Pack details.
 
 ## Sample skill
 

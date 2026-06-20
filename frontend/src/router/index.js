@@ -55,10 +55,15 @@ const router = createRouter({
       meta: { requiresAuth: true },
       children: [
         { path: '', name: 'dashboard', component: DashboardView },
-        { path: 'jpilot', name: 'jpilot', component: CopilotBetaView },
-        { path: 'jpilot/beta', redirect: '/jpilot' },
+        { path: 'jpilot', name: 'jpilot', component: CopilotBetaView, meta: { chatNamespace: 'main' } },
+        {
+          path: 'jpilot/beta',
+          name: 'jpilot-beta',
+          component: CopilotBetaView,
+          meta: { chatNamespace: 'lab' }
+        },
         { path: 'copilot', redirect: '/jpilot' },
-        { path: 'copilot/beta', redirect: '/jpilot' },
+        { path: 'copilot/beta', redirect: '/jpilot/beta' },
         { path: 'appliances', redirect: (to) => ({ path: '/settings', query: { ...to.query, section: 'appliances' } }) },
         { path: 'netscalers', redirect: (to) => ({ path: '/settings', query: { ...to.query, section: 'appliances', tab: to.query.tab || 'inventory' } }) },
         { path: 'other-appliances', redirect: { path: '/settings', query: { section: 'appliances' } } },

@@ -116,7 +116,33 @@ def parse_configuration_form_fields(user_message: str) -> dict[str, str]:
     return fields
 
 
+def parse_backend_server_endpoints(raw: str, *, default_port: int = 80) -> list[tuple[str, int]]:
+    """Parse backend list entries: plain IPs or IP:PORT (calibration HTTP LB forms)."""
+    endpoints: list[tuple[str, int]] = []
+    for part in re.split(r"[,;\n]+", raw or ""):
+        candidate = part.strip()
+        if not candidate:
+            continue
+        if ":" in candidate:
+            ip, _, port_text = candidate.partition(":")
+            ip = ip.strip()
+            try:
+                port = int(port_text.strip())
+            except ValueError:
+                continue
+            if _IP_RE.match(ip) and 0 < port <= 65535:
+                endpoints.append((ip, port))
+            continue
+        token = candidate.split()[0].strip()
+        if _IP_RE.match(token):
+            endpoints.append((token, default_port))
+    return endpoints
+
+
 def parse_backend_servers(raw: str) -> list[str]:
+    endpoints = parse_backend_server_endpoints(raw)
+    if endpoints:
+        return [ip for ip, _ in endpoints]
     servers: list[str] = []
     for part in re.split(r"[,;\n]+", raw or ""):
         candidate = part.strip()
@@ -128,7 +154,61 @@ def parse_backend_servers(raw: str) -> list[str]:
     return servers
 
 
+def _http_lb_resource_names(name: str) -> tuple[str, str, str]:
+    cleaned = re.sub(r"[^\w-]", "_", (name or "").strip()).strip("_") or "http_lb"
+    base = cleaned[:-3] if cleaned.endswith("_vs") else cleaned
+    vserver = cleaned if cleaned.endswith("_vs") else f"{base}_vs"
+    service_group = f"{base}_sg"
+    return base, vserver, service_group
+
+
+def detect_http_lb_form_submission(user_message: str) -> bool:
+    if not is_form_submission(user_message):
+        return False
+    title = (user_message.splitlines()[0] if user_message else "").lower()
+    if "http load balancer" not in title:
+        return False
+    fields = parse_configuration_form_fields(user_message)
+    if not fields.get("name") or not fields.get("virtual_ip"):
+        return False
+    return len(parse_backend_server_endpoints(fields.get("servers", ""))) >= 1
+
+
+def build_http_lb_commands(fields: dict[str, Any], *, skip_vip_add: bool = False) -> list[str]:
+    """Classic ADC workflow: server objects → service group → lb vserver → save."""
+    base, vserver, service_group = _http_lb_resource_names(str(fields["name"]))
+    vip = str(fields["virtual_ip"]).strip()
+    frontend_port = int(str(fields.get("port") or "80").strip() or 80)
+    protocol = str(fields.get("protocol") or "HTTP").strip().upper()
+    default_backend_port = frontend_port
+    if fields.get("servers_port"):
+        try:
+            default_backend_port = int(str(fields["servers_port"]).strip())
+        except ValueError:
+            pass
+    endpoints = parse_backend_server_endpoints(
+        fields.get("servers", ""),
+        default_port=default_backend_port,
+    )
+
+    commands: list[str] = []
+    if not skip_vip_add:
+        commands.append(f"add ns ip {vip} 255.255.255.255 -type VIP")
+    for index, (ip, port) in enumerate(endpoints, start=1):
+        server_name = f"{base}_srv{index}"
+        commands.append(f"add server {server_name} {ip}")
+    commands.append(f"add serviceGroup {service_group} {protocol}")
+    for index, (_, port) in enumerate(endpoints, start=1):
+        commands.append(f"bind serviceGroup {service_group} {base}_srv{index} {port}")
+    commands.append(f"add lb vserver {vserver} {protocol} {vip} {frontend_port}")
+    commands.append(f"bind lb vserver {vserver} {service_group}")
+    commands.append("save ns config")
+    return commands
+
+
 def detect_nextgen_application_form_submission(user_message: str) -> bool:
+    if detect_http_lb_form_submission(user_message):
+        return False
     fields = parse_configuration_form_fields(user_message)
     if not fields.get("name") or not fields.get("virtual_ip"):
         return False
@@ -790,3 +870,101 @@ async def try_auto_deploy_classic_lb(
         fields=fields,
         enabled_tool_names=enabled_tool_names,
     )
+
+
+async def try_auto_deploy_http_lb(
+    db: AsyncIOMotorDatabase,
+    *,
+    user_message: str,
+    appliance_name: str,
+    enabled_tool_names: set[str],
+) -> tuple[list[ToolCallTrace], str | None]:
+    """Apply calibration HTTP LB form via classic server + serviceGroup + vserver CLI."""
+    if not appliance_name:
+        return [], None
+    if not detect_http_lb_form_submission(user_message):
+        return [], None
+    if "netscaler_run_cli_commands" not in enabled_tool_names:
+        return [], (
+            "**HTTP Load Balancer form received** — enable `netscaler_run_cli_commands` "
+            "in MCP settings and retry."
+        )
+
+    from app.services.copilot_service import execute_copilot_tool
+
+    fields = parse_configuration_form_fields(user_message)
+    _, vserver, _ = _http_lb_resource_names(str(fields["name"]))
+    vip = str(fields["virtual_ip"]).strip()
+    traces: list[ToolCallTrace] = []
+    existing_vips = await _existing_vip_addresses(
+        db,
+        appliance_name=appliance_name,
+        enabled_tool_names=enabled_tool_names,
+        traces=traces,
+    )
+    cleanup = await _cleanup_commands_for_existing_lb(
+        db,
+        appliance_name=appliance_name,
+        fields={"vserver_name": vserver, "vip": vip},
+        enabled_tool_names=enabled_tool_names,
+        traces=traces,
+    )
+    commands = cleanup + build_http_lb_commands(fields, skip_vip_add=vip in existing_vips)
+    arguments = {
+        "appliance_name": appliance_name,
+        "commands": commands,
+        "purpose": "Deploy HTTP load balancer from calibration form",
+    }
+    try:
+        result = await execute_copilot_tool(
+            db,
+            "netscaler_run_cli_commands",
+            arguments,
+            default_appliance_name=appliance_name,
+        )
+    except Exception as exc:
+        result = json.dumps({"success": False, "message": str(exc)}, indent=2)
+
+    traces.append(ToolCallTrace(name="netscaler_run_cli_commands", arguments=arguments, result=result))
+    data = _parse_tool_result(result) or {}
+    if data.get("blocked"):
+        return traces, data.get("message") or "HTTP load balancer deploy was blocked."
+
+    if data.get("success") is False or data.get("commandFailed"):
+        message = str(data.get("message") or data.get("error") or "HTTP load balancer deploy failed.")
+        return traces, f"**HTTP load balancer deploy failed** — {message}"
+
+    verify_data: dict[str, Any] | None = None
+    if "netscaler_list_virtual_servers" in enabled_tool_names:
+        verify_args = {"appliance_name": appliance_name}
+        try:
+            verify_result = await execute_copilot_tool(
+                db,
+                "netscaler_list_virtual_servers",
+                verify_args,
+                default_appliance_name=appliance_name,
+            )
+        except Exception:
+            verify_result = ""
+        if verify_result:
+            traces.append(
+                ToolCallTrace(
+                    name="netscaler_list_virtual_servers",
+                    arguments=verify_args,
+                    result=verify_result,
+                )
+            )
+            verify_data = _parse_tool_result(verify_result) or {}
+
+    endpoints = parse_backend_server_endpoints(fields.get("servers", ""))
+    backend_text = ", ".join(f"`{ip}:{port}`" for ip, port in endpoints)
+    state, server_count = _vserver_state_from_list(verify_data or {}, vserver)
+    lines = [
+        f"**{appliance_name}** — HTTP load balancer `{vserver}` deployed via classic CLI.",
+        "",
+        f"- Frontend VIP: `{vip}:{fields.get('port', '80')}` ({fields.get('protocol', 'HTTP')})",
+        f"- Backends: {backend_text}",
+    ]
+    if verify_data:
+        lines.append(f"- vServer state: **{state or 'UNKNOWN'}** ({server_count} backend(s) bound)")
+    return traces, "\n".join(lines)

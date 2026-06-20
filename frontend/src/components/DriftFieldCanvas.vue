@@ -9,7 +9,9 @@ import { onThemeChange, prefersReducedMotion, resolveCanvasColors } from '../uti
 
 const props = defineProps({
   dotColor: { type: String, default: '' },
-  dotOpacity: { type: Number, default: null }
+  dotOpacity: { type: Number, default: null },
+  density: { type: Number, default: 1 },
+  monochrome: { type: Boolean, default: false }
 })
 
 const canvasRef = ref(null)
@@ -34,13 +36,15 @@ function resizeCanvas(canvas) {
 }
 
 function createParticles(canvas) {
-  const count = Math.min(60, Math.floor((canvas.width * canvas.height) / 12000))
-  return Array.from({ length: Math.max(count, 24) }, () => ({
+  const areaFactor = canvas.width * canvas.height
+  const scaled = Math.floor(areaFactor / (4800 / Math.max(props.density, 0.5)))
+  const count = Math.min(Math.round(140 * props.density), Math.max(scaled, Math.round(48 * props.density)))
+  return Array.from({ length: count }, () => ({
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height,
-    vx: (Math.random() - 0.5) * 0.25,
-    vy: (Math.random() - 0.5) * 0.25,
-    r: Math.random() * 1.8 + 0.6,
+    vx: (Math.random() - 0.5) * 0.22,
+    vy: (Math.random() - 0.5) * 0.22,
+    r: Math.random() * 1.4 + 0.45,
     phase: Math.random() * Math.PI * 2
   }))
 }
@@ -59,7 +63,7 @@ function drawFrame(canvas, ctx, animate = true) {
     })
   }
 
-  const glow = Boolean(props.dotColor)
+  const glow = Boolean(props.dotColor) && !props.monochrome
 
   particles.forEach((p) => {
     const pulse = 0.65 + Math.sin(p.phase) * 0.35

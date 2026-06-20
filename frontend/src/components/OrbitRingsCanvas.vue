@@ -11,7 +11,11 @@ const props = defineProps({
   ringColor: { type: String, default: '' },
   dotColor: { type: String, default: '' },
   ringOpacity: { type: Number, default: null },
-  dotOpacity: { type: Number, default: null }
+  dotOpacity: { type: Number, default: null },
+  ringCount: { type: Number, default: 4 },
+  centerCount: { type: Number, default: 1 },
+  density: { type: Number, default: 1 },
+  monochrome: { type: Boolean, default: false }
 })
 
 const canvasRef = ref(null)
@@ -43,29 +47,45 @@ function resizeCanvas(canvas) {
 function drawFrame(canvas, ctx, animate = true) {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   const colors = themeColors()
-  const cx = canvas.width * 0.62
-  const cy = canvas.height * 0.48
-  const base = Math.min(canvas.width, canvas.height) * 0.22
+  const centers = []
+  const count = Math.max(1, props.centerCount)
 
-  if (animate) angle += 0.003
-
-  for (let i = 0; i < 4; i += 1) {
-    const radius = base + i * base * 0.55
-    const ringAngle = angle * (i % 2 === 0 ? 1 : -0.7) + i * 0.4
-
-    ctx.beginPath()
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2)
-    ctx.strokeStyle = `rgba(${colors.ring}, ${colors.ringOpacity * (1 - i * 0.15)})`
-    ctx.lineWidth = props.ringColor ? 1.25 : 0.9
-    ctx.stroke()
-
-    const dotX = cx + Math.cos(ringAngle) * radius
-    const dotY = cy + Math.sin(ringAngle) * radius
-    ctx.beginPath()
-    ctx.arc(dotX, dotY, 2.2 - i * 0.2, 0, Math.PI * 2)
-    ctx.fillStyle = `rgba(${colors.dot}, ${colors.dotOpacity})`
-    ctx.fill()
+  for (let c = 0; c < count; c += 1) {
+    const col = c % 2
+    const row = Math.floor(c / 2)
+    const cols = count === 1 ? 1 : 2
+    const rows = Math.ceil(count / cols)
+    centers.push({
+      cx: canvas.width * (0.28 + (col / Math.max(cols - 1, 1)) * 0.44),
+      cy: canvas.height * (0.3 + (row / Math.max(rows - 1, 1)) * 0.4),
+      phase: c * 1.7
+    })
   }
+
+  const base = Math.min(canvas.width, canvas.height) * (0.14 / Math.max(props.density, 0.5))
+
+  if (animate) angle += 0.0035 * props.density
+
+  centers.forEach((center, centerIndex) => {
+    for (let i = 0; i < props.ringCount; i += 1) {
+      const radius = base + i * base * 0.34
+      const ringAngle =
+        angle * (i % 2 === 0 ? 1 : -0.72) + i * 0.38 + center.phase + centerIndex * 0.55
+
+      ctx.beginPath()
+      ctx.arc(center.cx, center.cy, radius, 0, Math.PI * 2)
+      ctx.strokeStyle = `rgba(${colors.ring}, ${colors.ringOpacity * (1 - i * 0.07)})`
+      ctx.lineWidth = props.monochrome ? 0.85 : props.ringColor ? 1.25 : 0.9
+      ctx.stroke()
+
+      const dotX = center.cx + Math.cos(ringAngle) * radius
+      const dotY = center.cy + Math.sin(ringAngle) * radius
+      ctx.beginPath()
+      ctx.arc(dotX, dotY, Math.max(1.2, 2.1 - i * 0.12), 0, Math.PI * 2)
+      ctx.fillStyle = `rgba(${colors.dot}, ${colors.dotOpacity})`
+      ctx.fill()
+    }
+  })
 }
 
 function startAnimation() {

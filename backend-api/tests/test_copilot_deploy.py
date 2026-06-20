@@ -3,10 +3,13 @@ import json
 from app.schemas.copilot import ToolCallTrace
 from app.services.copilot_deploy import (
     build_classic_lb_commands,
+    build_http_lb_commands,
     detect_classic_lb_form_submission,
+    detect_http_lb_form_submission,
     detect_natural_language_lb_request,
     detect_nextgen_application_form_submission,
     format_create_application_response,
+    parse_backend_server_endpoints,
     parse_backend_servers,
     parse_classic_lb_form_fields,
     parse_configuration_form_fields,
@@ -49,6 +52,44 @@ def test_parse_nextgen_form_fields():
 
 def test_parse_backend_servers():
     assert parse_backend_servers("10.0.0.1, 10.0.0.2") == ["10.0.0.1", "10.0.0.2"]
+
+
+def test_parse_backend_server_endpoints_ip_port():
+    assert parse_backend_server_endpoints("10.0.0.10:80,10.0.0.11:80,10.0.0.12:80") == [
+        ("10.0.0.10", 80),
+        ("10.0.0.11", 80),
+        ("10.0.0.12", 80),
+    ]
+    assert parse_backend_servers("10.0.0.10:80,10.0.0.11:80") == ["10.0.0.10", "10.0.0.11"]
+
+
+_HTTP_LB_FORM = """Configuration inputs for: HTTP Load Balancer — required parameters
+- Application / Load Balancer name: my_web_jp
+- VIP (Virtual IP) address: 10.0.0.100
+- VIP port: 80
+- Backend servers (IP:PORT): 10.0.0.10:80,10.0.0.11:80,10.0.0.12:80,
+- Service type: HTTP
+
+Proceed with the configuration on the connected appliance using these values. Do not ask the same questions in prose again."""
+
+
+def test_detect_http_lb_form_submission():
+    assert detect_http_lb_form_submission(_HTTP_LB_FORM) is True
+    assert detect_nextgen_application_form_submission(_HTTP_LB_FORM) is False
+
+
+def test_build_http_lb_commands():
+    fields = parse_configuration_form_fields(_HTTP_LB_FORM)
+    commands = build_http_lb_commands(fields)
+    assert commands[0] == "add ns ip 10.0.0.100 255.255.255.255 -type VIP"
+    assert "add server my_web_jp_srv1 10.0.0.10" in commands
+    assert "add server my_web_jp_srv2 10.0.0.11" in commands
+    assert "add server my_web_jp_srv3 10.0.0.12" in commands
+    assert "add serviceGroup my_web_jp_sg HTTP" in commands
+    assert "bind serviceGroup my_web_jp_sg my_web_jp_srv1 80" in commands
+    assert "add lb vserver my_web_jp_vs HTTP 10.0.0.100 80" in commands
+    assert "bind lb vserver my_web_jp_vs my_web_jp_sg" in commands
+    assert commands[-1] == "save ns config"
 
 
 def test_detect_nextgen_application_form_submission():

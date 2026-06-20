@@ -273,7 +273,9 @@ const fullscreenLabel = computed(() =>
 
 const fullscreenTooltip = computed(() => fullscreenLabel.value)
 
-const isImmersiveBetaChat = computed(() => route.name === 'jpilot')
+const isImmersiveBetaChat = computed(
+  () => route.name === 'jpilot' || route.name === 'jpilot-beta'
+)
 
 const updateBannerVisible = computed(() =>
   Boolean(updateInfo.value?.update_available) && !updateBannerDismissed.value
@@ -354,7 +356,8 @@ const mainNavGroups = [
     id: 'jpilot-chat',
     label: 'JPilot Chat',
     items: [
-      { label: 'Chat', path: '/jpilot', icon: 'pi pi-sparkles' }
+      { label: 'Chat', path: '/jpilot', icon: 'pi pi-sparkles' },
+      { label: 'Chat Beta', path: '/jpilot/beta', icon: 'pi pi-sparkles', beta: true }
     ]
   }
 ]
@@ -434,7 +437,7 @@ watch(
 )
 
 function isCopilotNavItem(item) {
-  return item.path === '/jpilot'
+  return item.path === '/jpilot' || item.path === '/jpilot/beta'
 }
 
 function navTooltip(item) {
@@ -447,7 +450,10 @@ function isActive(item) {
     return route.path === '/'
   }
   if (path === '/jpilot') {
-    return route.path === '/jpilot' || route.path === '/jpilot/beta'
+    return route.path === '/jpilot'
+  }
+  if (path === '/jpilot/beta') {
+    return route.path === '/jpilot/beta'
   }
   return route.path.startsWith(path)
 }

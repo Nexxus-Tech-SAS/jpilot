@@ -43,6 +43,42 @@ body {
   overflow: hidden;
 }
 
+html:not(.app-dark) .beta-chat-bg-base {
+  background: #ffffff;
+}
+
+html.app-dark .beta-chat-bg-base {
+  background: #000000;
+}
+
+@media (min-width: 992px) {
+  .beta-chat-layout-lab .beta-chat-card.content-panel {
+    background: transparent;
+    backdrop-filter: blur(6px) saturate(120%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+  }
+
+  html.app-dark .beta-chat-layout-lab .beta-chat-card.content-panel {
+    background: rgba(8, 12, 22, 0.04);
+  }
+
+  .beta-chat-layout-lab .beta-sidebar-card.content-panel {
+    background: rgba(255, 255, 255, 0.01);
+    backdrop-filter: blur(6px) saturate(120%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+  }
+
+  html.app-dark .beta-chat-layout-lab .beta-sidebar-card.content-panel {
+    background: rgba(8, 12, 22, 0.01);
+  }
+
+  .beta-chat-workspace-split .beta-chat-card.content-panel,
+  .beta-chat-workspace-split .beta-design-card.content-panel {
+    border-radius: var(--p-content-border-radius, var(--content-radius));
+    overflow: hidden;
+  }
+}
+
 .content-panel-padded {
   padding: 1.25rem;
 }
