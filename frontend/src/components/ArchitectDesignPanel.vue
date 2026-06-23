@@ -24,6 +24,11 @@
       </div>
     </div>
 
+    <p class="architect-design-panel-mobile-hint">
+      <i class="pi pi-desktop" aria-hidden="true" />
+      For the best editing view, open JPilot on a laptop or iPad.
+    </p>
+
     <div v-if="document?.streaming" class="architect-design-panel-status">
       <ProgressSpinner style="width: 1.25rem; height: 1.25rem" />
       <span>Writing document…</span>
@@ -134,6 +139,25 @@ function onEditorInput(value) {
   height: 100%;
   border-left: 1px solid var(--p-content-border-color);
   background: var(--p-content-background);
+}
+
+/* Larger-screen hint — only shown on phones, where the editor is cramped. */
+.architect-design-panel-mobile-hint {
+  display: none;
+}
+
+@media (max-width: 991px) {
+  .architect-design-panel-mobile-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.75rem;
+    color: var(--p-text-muted-color);
+    background: color-mix(in srgb, var(--p-primary-color) 7%, transparent);
+    border-bottom: 1px solid var(--p-content-border-color);
+  }
 }
 
 .architect-design-panel.architect-design-rail-detached {

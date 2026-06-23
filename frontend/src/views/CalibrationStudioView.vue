@@ -255,7 +255,13 @@
       </div>
     </template>
 
-    <CalibrationPersonaUpdatesPanel v-else-if="activeView === 'personas'" />
+    <CalibrationPersonaUpdatesPanel
+      v-else-if="activeView === 'personas'"
+      :personas="personaRows"
+      :busy-id="installingSkillId || uninstallingSkillId"
+      @update="downloadSkill"
+      @delete="confirmUninstall"
+    />
     <CalibrationKnowledgePacksPanel v-else />
 
     <BlueprintDetailsDrawer
@@ -389,9 +395,10 @@ const installedBlueprints = computed(() =>
     .filter((row) => row.installed && normalizeArtifactType(row.type) === 'skill')
     .sort((a, b) => a.label.localeCompare(b.label))
 )
-const catalogPersonaCount = computed(
-  () => blueprints.value.filter((row) => normalizeArtifactType(row.type) === 'persona').length
+const personaRows = computed(() =>
+  blueprints.value.filter((row) => normalizeArtifactType(row.type) === 'persona')
 )
+const catalogPersonaCount = computed(() => personaRows.value.length)
 const installedPersonaCount = computed(() => catalogPersonaCount.value || JPILOT_ROLES.length)
 const updatesAvailable = computed(() => collectBlueprintUpdates(blueprints.value).updateCount)
 

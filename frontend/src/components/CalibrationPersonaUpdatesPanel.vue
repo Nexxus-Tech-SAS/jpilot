@@ -3,17 +3,20 @@
     <div class="persona-heading">
       <h2 class="persona-title m-0">Personas</h2>
       <p class="persona-subtitle m-0">
-        Personas define how JPilot behaves for each role. They are delivered as part of the active
-        Knowledge Pack and applied automatically per chat role.
+        Personas define how JPilot behaves for each role. Base roles ship with the active
+        Knowledge Pack; custom personas can be updated or removed individually.
       </p>
     </div>
 
-    <!-- Installed personas (sourced from the active knowledge pack / role config) -->
+    <!-- Base role personas: always present, updateable from here -->
     <section class="persona-section">
-      <h3 class="persona-section-title">Installed personas</h3>
+      <div class="persona-section-row">
+        <h3 class="persona-section-title m-0">Base roles</h3>
+        <Tag value="Updateable" severity="secondary" />
+      </div>
       <div class="persona-grid">
         <div
-          v-for="persona in installedPersonas"
+          v-for="persona in baseRolePersonas"
           :key="persona.id"
           class="content-panel content-panel-padded persona-card"
         >
@@ -25,83 +28,159 @@
               <div class="persona-name">{{ persona.label }}</div>
               <code class="persona-role">role: {{ persona.id }}</code>
             </div>
-            <Tag value="Active" severity="success" />
+            <Tag :value="persona.version ? `v${persona.version}` : 'Active'" severity="success" />
           </div>
           <p class="persona-desc m-0">{{ persona.description }}</p>
           <div class="persona-card-actions">
             <Button
-              label="Disable"
-              icon="pi pi-pause"
+              v-if="persona.updateAvailable"
+              label="Update"
+              icon="pi pi-download"
+              size="small"
+              :loading="busyId === persona.id"
+              @click="$emit('update', persona.row)"
+            />
+            <Button
+              v-else
+              label="Up to date"
+              icon="pi pi-check"
               severity="secondary"
               outlined
               size="small"
               disabled
-              v-tooltip="'Personas are bundled with the active Knowledge Pack and cannot be toggled individually yet.'"
             />
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Downloaded persona updates.
-         TODO(backend): there is currently no API that lists individually downloaded persona
-         updates — persona content ships inside the Knowledge Pack (personas/<role>/). When a
-         dedicated persona-update feed exists, populate `personaUpdates` and wire the actions
-         (Apply/Enable, Update, Remove) to it. Until then this stays as an honest empty state. -->
+    <!-- Custom personas: installed individually; can be updated or deleted -->
     <section class="persona-section">
       <div class="persona-section-row">
-        <h3 class="persona-section-title m-0">Persona updates</h3>
-        <Tag value="Managed via Knowledge Pack" severity="secondary" />
+        <h3 class="persona-section-title m-0">Custom personas</h3>
+        <Tag :value="`${customPersonas.length} installed`" severity="secondary" />
       </div>
 
-      <div v-if="!personaUpdates.length" class="persona-empty-card">
+      <div v-if="!customPersonas.length" class="persona-empty-card">
         <i class="pi pi-users persona-empty-icon" />
         <div>
-          <p class="persona-empty-title m-0">No standalone persona updates</p>
+          <p class="persona-empty-title m-0">No custom personas installed</p>
           <p class="persona-empty-copy m-0 mt-1">
-            Persona behaviour is updated together with the Knowledge Pack. Check the
-            <strong>Knowledge Packs</strong> tab to update or roll back persona content.
+            Install personas from the <strong>Blueprint Library</strong> to tailor JPilot for
+            specialised roles. They will appear here so you can update or remove them.
           </p>
         </div>
       </div>
 
-      <DataTable v-else :value="personaUpdates" striped-rows data-key="id" class="persona-table">
-        <Column field="name" header="Persona" />
-        <Column field="role" header="Target role" />
-        <Column field="scope" header="Scope" />
-        <Column field="version" header="Version" />
-        <Column header="Status">
-          <template #body="{ data }">
-            <Tag :value="data.status" :severity="data.statusSeverity || 'secondary'" />
-          </template>
-        </Column>
-        <Column header="Actions">
-          <template #body="{ data }">
-            <div class="persona-row-actions">
-              <Button label="Apply" icon="pi pi-check" size="small" @click="$emit('apply', data)" />
-              <Button label="Update" icon="pi pi-download" size="small" severity="secondary" outlined @click="$emit('update', data)" />
-              <Button label="Remove" icon="pi pi-trash" size="small" severity="danger" text @click="$emit('remove', data)" />
+      <div v-else class="persona-grid">
+        <div
+          v-for="persona in customPersonas"
+          :key="persona.id"
+          class="content-panel content-panel-padded persona-card"
+        >
+          <div class="persona-card-head">
+            <span class="persona-icon persona-icon-custom">
+              <i class="pi pi-user" />
+            </span>
+            <div class="persona-card-id">
+              <div class="persona-name">{{ persona.label }}</div>
+              <code class="persona-role">role: {{ persona.baseRole || persona.id }}</code>
             </div>
-          </template>
-        </Column>
-      </DataTable>
+            <Tag :value="persona.version ? `v${persona.version}` : 'Active'" severity="success" />
+          </div>
+          <p class="persona-desc m-0">{{ persona.description || 'Custom persona installed from the Blueprint Library.' }}</p>
+          <div class="persona-card-actions">
+            <Button
+              v-if="persona.updateAvailable"
+              label="Update"
+              icon="pi pi-download"
+              size="small"
+              :loading="busyId === persona.id"
+              @click="$emit('update', persona.row)"
+            />
+            <Button
+              label="Delete"
+              icon="pi pi-trash"
+              severity="danger"
+              outlined
+              size="small"
+              :loading="busyId === persona.id"
+              @click="(event) => $emit('delete', event, persona.row)"
+            />
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import Button from 'primevue/button'
-import Column from 'primevue/column'
-import DataTable from 'primevue/datatable'
 import Tag from 'primevue/tag'
 import { JPILOT_ROLES } from '../config/jpilotRoles.js'
 
-defineEmits(['apply', 'update', 'remove'])
+const props = defineProps({
+  // Persona blueprint rows from the catalog (type === 'persona'), each carrying
+  // install state + version (installedVersion / catalogVersion / updateAvailable).
+  personas: { type: Array, default: () => [] },
+  // skillId currently being installed/updated/removed (drives per-card loading state).
+  busyId: { type: String, default: '' }
+})
 
-const installedPersonas = JPILOT_ROLES
+defineEmits(['update', 'delete'])
 
-// Placeholder until a persona-update feed exists (see TODO in template).
-const personaUpdates = []
+const BASE_ROLE_IDS = new Set(JPILOT_ROLES.map((r) => r.id))
+
+const rowById = computed(() => {
+  const map = new Map()
+  for (const row of props.personas) {
+    if (row?.skillId) map.set(row.skillId, row)
+  }
+  return map
+})
+
+// The three base roles are always shown; enrich each with version / update state
+// from a matching catalog row when one exists.
+const baseRolePersonas = computed(() =>
+  JPILOT_ROLES.map((role) => {
+    const row = rowById.value.get(role.id) || null
+    return {
+      id: role.id,
+      label: role.label,
+      description: role.description,
+      icon: role.icon,
+      accent: role.accent,
+      version: row?.installedVersion || null,
+      updateAvailable: Boolean(row?.updateAvailable && row?.installable),
+      row
+    }
+  })
+)
+
+// Custom personas = installed persona rows that aren't one of the base roles,
+// de-duplicated by display label so identical installs only appear once.
+const customPersonas = computed(() => {
+  const seenLabels = new Set()
+  const result = []
+  for (const row of props.personas) {
+    const id = row?.skillId
+    if (!id || BASE_ROLE_IDS.has(id) || !row.installed) continue
+    const labelKey = (row.label || '').trim().toLowerCase()
+    if (labelKey && seenLabels.has(labelKey)) continue
+    if (labelKey) seenLabels.add(labelKey)
+    result.push({
+      id,
+      label: row.label || id,
+      description: row.description,
+      baseRole: row.baseRole || null,
+      version: row.installedVersion || null,
+      updateAvailable: Boolean(row.updateAvailable && row.installable),
+      row
+    })
+  }
+  return result.sort((a, b) => a.label.localeCompare(b.label))
+})
 </script>
 
 <style scoped>
@@ -151,7 +230,7 @@ const personaUpdates = []
 
 .persona-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
   gap: 0.75rem;
 }
 
@@ -179,6 +258,10 @@ const personaUpdates = []
   flex-shrink: 0;
 }
 
+.persona-icon-custom {
+  --persona-accent: #f59e0b;
+}
+
 .persona-card-id {
   display: flex;
   flex-direction: column;
@@ -200,6 +283,7 @@ const personaUpdates = []
 .persona-desc {
   font-size: 0.8125rem;
   color: var(--p-text-muted-color);
+  flex: 1;
 }
 
 .persona-card-actions {
@@ -231,11 +315,5 @@ const personaUpdates = []
   font-size: 0.8125rem;
   color: var(--p-text-muted-color);
   max-width: 38rem;
-}
-
-.persona-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
 }
 </style>

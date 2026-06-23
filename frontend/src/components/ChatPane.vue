@@ -77,9 +77,15 @@
 
           <div v-if="showConversationSwitcher" class="beta-header-mobile-title">
             <RouterLink to="/" class="beta-header-logo-link" aria-label="JPilot home">
-              <JPilot :size="34" />
+              <JPilot :size="44" />
             </RouterLink>
-            <span class="beta-subtitle-compact">{{ activeRole.label }}</span>
+            <span
+              class="beta-subtitle-compact beta-role-chip"
+              :style="{ '--role-chip-accent': activeRole.accent }"
+            >
+              <i :class="activeRole.icon" class="beta-role-chip-icon" aria-hidden="true" />
+              {{ activeRole.label }}
+            </span>
           </div>
 
           <div v-if="!showConversationSwitcher" class="beta-header-center">
@@ -1548,9 +1554,34 @@ const installedPersonas = ref([])
 
 const ready = computed(() => roleProviders.value.length > 0)
 
+// Custom personas, cleaned for display in the role picker:
+//  - drop personas whose id mirrors a built-in base role (architect/operator/analyst);
+//    those are already shown in the base Role section and would collide on id.
+//  - collapse duplicates: the same persona id (multiple installed versions) or the same
+//    display label (distinct installs that present identically, e.g. two "Security Architect"
+//    bundles) should appear only once.
+const BASE_ROLE_IDS = new Set(JPILOT_ROLES.map((r) => r.id))
+const BASE_ROLE_LABELS = new Set(JPILOT_ROLES.map((r) => r.label.trim().toLowerCase()))
+
+const cleanedPersonas = computed(() => {
+  const seenIds = new Set()
+  const seenLabels = new Set()
+  const result = []
+  for (const p of installedPersonas.value) {
+    const id = p.id
+    if (!id || BASE_ROLE_IDS.has(id) || seenIds.has(id)) continue
+    const labelKey = (p.label || '').trim().toLowerCase()
+    if (BASE_ROLE_LABELS.has(labelKey) || (labelKey && seenLabels.has(labelKey))) continue
+    seenIds.add(id)
+    if (labelKey) seenLabels.add(labelKey)
+    result.push(p)
+  }
+  return result
+})
+
 // Base roles combined with any installed custom personas for the picker.
 const roleOptions = computed(() => {
-  const customs = installedPersonas.value.map((p) => ({
+  const customs = cleanedPersonas.value.map((p) => ({
     id: p.id,
     label: p.label,
     description: p.description,
@@ -2580,14 +2611,36 @@ onMounted(() => {
       calibrationFeedbackReady.value = true
     })
   // Load installed custom personas from the API (non-blocking).
-  listCopilotRoles()
+  loadInstalledPersonas()
+  // A persona installed/uninstalled elsewhere (Calibration Studio, another tab,
+  // background sync) should appear/disappear in the role selector without a full
+  // reload — refresh the list when the chat regains focus/visibility.
+  window.addEventListener('focus', refreshInstalledPersonasOnFocus)
+  document.addEventListener('visibilitychange', refreshInstalledPersonasOnVisible)
+})
+
+// Load the installed custom personas that back the role selector. Source of truth
+// is GET /copilot/roles, which the backend populates only with installed (enabled)
+// personas and prunes on uninstall — so this directly reflects install state.
+function loadInstalledPersonas() {
+  return listCopilotRoles()
     .then((roles) => {
       installedPersonas.value = (roles || []).filter((r) => r.isCustomPersona)
     })
     .catch(() => {
       // Silently ignore — custom personas won't appear but base roles still work.
     })
-})
+}
+
+function refreshInstalledPersonasOnFocus() {
+  loadInstalledPersonas()
+}
+
+function refreshInstalledPersonasOnVisible() {
+  if (document.visibilityState === 'visible') {
+    loadInstalledPersonas()
+  }
+}
 
 watch(
   () => handoffState.pending?.queuedAt,
@@ -2598,6 +2651,8 @@ watch(
 
 onUnmounted(() => {
   stopGenerationTimer()
+  window.removeEventListener('focus', refreshInstalledPersonasOnFocus)
+  document.removeEventListener('visibilitychange', refreshInstalledPersonasOnVisible)
 })
 </script>
 
@@ -4089,9 +4144,10 @@ onUnmounted(() => {
 /* ---------- Beta mobile (SuperGrok-style) ---------- */
 .beta-header-mobile-title {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 0.15rem;
+  justify-content: center;
+  gap: 0.5rem;
   min-width: 0;
   text-align: center;
 }
@@ -4115,10 +4171,30 @@ onUnmounted(() => {
   color: var(--p-text-color);
 }
 
+/* Role chip shown to the right of the logo in the mobile header */
 .beta-subtitle-compact {
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--p-text-muted-color);
+}
+
+.beta-role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--role-chip-accent, var(--p-text-muted-color));
+  background: color-mix(in srgb, var(--role-chip-accent, var(--p-primary-color)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--role-chip-accent, var(--p-primary-color)) 28%, transparent);
+}
+
+.beta-role-chip-icon {
+  font-size: 0.625rem;
 }
 
 .beta-role-toggle-label {
@@ -4466,6 +4542,67 @@ onUnmounted(() => {
     --glass-muted: #a3a3a3;
     background: #000000;
   }
+
+  /* ---- Mobile header: tighter actions, improved role-chip contrast ---- */
+  .beta-header-compact .beta-role-chip {
+    color: var(--role-chip-accent, var(--beta-mobile-muted));
+    background: color-mix(in srgb, var(--role-chip-accent, currentColor) 10%, transparent);
+    border-color: color-mix(in srgb, var(--role-chip-accent, currentColor) 22%, transparent);
+  }
+
+  .beta-header-compact .beta-header-actions {
+    gap: 0.05rem;
+  }
+
+  /* Slightly smaller action buttons on narrow screens to prevent crowding */
+  .beta-header-compact .beta-header-actions :deep(.p-button.p-button-rounded) {
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0;
+  }
+
+  /* ---- Mobile composer: stronger surface, more comfortable touch targets ---- */
+  .beta-footer-compact {
+    padding:
+      0.6rem 0.75rem
+      calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .beta-footer-compact .beta-composer {
+    border-radius: 1.1rem;
+    box-shadow:
+      0 2px 8px rgba(2, 6, 23, 0.07),
+      0 0 0 1px var(--beta-mobile-border);
+    border-color: transparent;
+    padding: 0.4rem 0.5rem 0.4rem 0.3rem;
+  }
+
+  :global(.app-dark) .beta-footer-compact .beta-composer {
+    box-shadow:
+      0 2px 14px rgba(0, 0, 0, 0.35),
+      0 0 0 1px var(--beta-mobile-border);
+  }
+
+  /* Slightly larger send button for easier tap target */
+  .beta-footer-compact .beta-composer-send {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    border-radius: 0.85rem !important;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--p-primary-color) 35%, transparent);
+  }
+
+  /* Composer icons consistent size */
+  .beta-footer-compact .beta-composer-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  /* Input text sizing */
+  .beta-footer-compact .beta-composer-input :deep(input) {
+    font-size: 1rem;
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4614,10 +4751,22 @@ onUnmounted(() => {
     margin-right: 0;
   }
 
-  .architect-design-rail {
+  /* Document Editor on mobile: stack it full-width below the chat and let it
+     take the remaining height. The base rule pins it absolutely to the right
+     at 23% width, which on a phone overlaps the header action buttons. Match
+     that rule's specificity here (:not(.architect-design-rail-detached)) so
+     the in-flow stacked layout actually wins. */
+  .architect-design-rail:not(.architect-design-rail-detached) {
     position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
     width: 100%;
-    height: min(48vh, 28rem);
+    max-width: 100%;
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    z-index: auto;
     box-shadow: none;
     border-top: 1px solid var(--p-content-border-color);
   }
@@ -4625,10 +4774,13 @@ onUnmounted(() => {
   .chat-pane-architect.chat-pane-design-panel-open {
     display: flex;
     flex-direction: column;
+    min-height: 0;
   }
 
+  /* Keep the chat reachable above, but give the document the most room. */
   .chat-pane-architect.chat-pane-design-panel-open .beta-shell {
-    flex: 1 1 52%;
+    flex: 0 0 auto;
+    height: 40vh;
     min-height: 0;
   }
 }
