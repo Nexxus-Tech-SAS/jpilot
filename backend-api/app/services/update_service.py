@@ -123,9 +123,26 @@ def _pick_latest_semver_tag(tags: list[dict[str, Any]]) -> str | None:
     return best_tag
 
 
+def _version_key(tag: str) -> tuple[int, ...]:
+    """Sortable version key; unparseable tags sort lowest."""
+    try:
+        return _version_tuple(_normalize_version(tag))
+    except ValueError:
+        return (-1,)
+
+
 async def _fetch_latest_version_info(repo: str) -> dict[str, Any]:
+    """Resolve the newest available version, picking the higher of the latest
+    published GitHub Release and the latest semver *tag*.
+
+    Releases can lag behind tags (or never be cut), so trusting ``releases/latest``
+    alone hides newer tags. We consider both and return whichever is higher.
+    """
     headers = _github_headers()
     async with httpx.AsyncClient(timeout=15.0) as client:
+        candidates: list[dict[str, Any]] = []
+
+        # Latest *published* release (carries release notes), if any.
         release_response = await client.get(
             f"https://api.github.com/repos/{repo}/releases/latest",
             headers=headers,
@@ -135,16 +152,17 @@ async def _fetch_latest_version_info(repo: str) -> dict[str, Any]:
             tag = str(release.get("tag_name") or "").strip()
             if tag:
                 body = release.get("body")
-                return {
+                candidates.append({
                     "tag": tag,
                     "release_url": release.get("html_url"),
-                    "release_name": release.get("name"),
+                    "release_name": release.get("name") or tag,
                     "release_notes": str(body).strip() if body else None,
-                }
-
-        if release_response.status_code not in (404,):
+                })
+        elif release_response.status_code not in (404,):
             release_response.raise_for_status()
 
+        # Latest semver *tag* — authoritative for what is shippable / checkout-able,
+        # even when no Release has been published for it.
         tags_response = await client.get(
             f"https://api.github.com/repos/{repo}/tags",
             headers=headers,
@@ -152,26 +170,29 @@ async def _fetch_latest_version_info(repo: str) -> dict[str, Any]:
         )
         tags_response.raise_for_status()
         latest_tag = _pick_latest_semver_tag(tags_response.json())
-        if not latest_tag:
+        if latest_tag:
+            display_tag = latest_tag if latest_tag.startswith(("v", "V")) else f"v{latest_tag}"
+            release_notes: str | None = None
+            tag_release = await client.get(
+                f"https://api.github.com/repos/{repo}/releases/tags/{latest_tag}",
+                headers=headers,
+            )
+            if tag_release.status_code == 200:
+                body = tag_release.json().get("body")
+                if body:
+                    release_notes = str(body).strip()
+            candidates.append({
+                "tag": latest_tag,
+                "release_url": f"https://github.com/{repo}/tree/{display_tag}",
+                "release_name": display_tag,
+                "release_notes": release_notes,
+            })
+
+        if not candidates:
             raise ValueError("No version tags found on GitHub.")
 
-        display_tag = latest_tag if latest_tag.startswith(("v", "V")) else f"v{latest_tag}"
-        release_notes: str | None = None
-        tag_release = await client.get(
-            f"https://api.github.com/repos/{repo}/releases/tags/{latest_tag}",
-            headers=headers,
-        )
-        if tag_release.status_code == 200:
-            body = tag_release.json().get("body")
-            if body:
-                release_notes = str(body).strip()
-
-        return {
-            "tag": latest_tag,
-            "release_url": f"https://github.com/{repo}/tree/{display_tag}",
-            "release_name": display_tag,
-            "release_notes": release_notes,
-        }
+        # Highest version wins — a newer tag beats an older published release.
+        return max(candidates, key=lambda c: _version_key(c["tag"]))
 
 
 async def check_for_updates(*, force: bool = False, repo: str = _DEFAULT_REPO) -> UpdateCheckResponse:
