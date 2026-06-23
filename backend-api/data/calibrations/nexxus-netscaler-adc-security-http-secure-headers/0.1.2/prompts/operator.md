@@ -1,1 +1,0 @@
-As an operator, you can safely apply these HTTP security headers to the specified NetScaler Load Balancing Virtual Server. This configuration is non-disruptive and only inserts headers if they do not already exist in the backend response. Ensure you have the correct Load Balancing Virtual Server name before executing.

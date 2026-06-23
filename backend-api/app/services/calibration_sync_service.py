@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import re
 import shutil
 import zipfile
@@ -22,6 +23,8 @@ from app.services.license_service import (
     license_tier_rank,
     normalize_license_type,
 )
+
+logger = logging.getLogger(__name__)
 
 CALIBRATIONS_DIR = Path("data/calibrations")
 COLLECTION = "stack_calibrations"
@@ -418,8 +421,15 @@ async def _download_and_install_skill(
     installed_versions: dict[str, str] | None = None,
 ) -> bool:
     fetch_url = _resolve_bundle_url(base, bundle_url)
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        bundle_response = await client.get(fetch_url)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            bundle_response = await client.get(fetch_url)
+    except httpx.RequestError as exc:
+        logger.exception("Bundle download failed for %s from %s", skill_id, fetch_url)
+        raise CalibrationSyncError(
+            f"Could not reach the bundle host for {skill_id} at {fetch_url}: {exc}",
+            status_code=502,
+        ) from exc
     if bundle_response.status_code >= 400:
         raise CalibrationSyncError(
             f"Could not download bundle for {skill_id} ({bundle_response.status_code}).",
@@ -427,13 +437,26 @@ async def _download_and_install_skill(
         )
 
     content_type = (bundle_response.headers.get("content-type") or "").lower()
-    if "json" in content_type:
-        bundle = bundle_response.json()
-        skill_dir = _write_skill_bundle(skill_id, version, bundle)
-        manifest = bundle.get("manifest") or {}
-    else:
-        skill_dir = _extract_calpkg_bytes(skill_id, version, bundle_response.content)
-        manifest = _manifest_from_skill_dir(skill_dir)
+    try:
+        if "json" in content_type:
+            bundle = bundle_response.json()
+            skill_dir = _write_skill_bundle(skill_id, version, bundle)
+            manifest = bundle.get("manifest") or {}
+        else:
+            skill_dir = _extract_calpkg_bytes(skill_id, version, bundle_response.content)
+            manifest = _manifest_from_skill_dir(skill_dir)
+    except (json.JSONDecodeError, zipfile.BadZipFile, ValueError) as exc:
+        logger.exception("Bundle for %s from %s is not a valid package", skill_id, fetch_url)
+        raise CalibrationSyncError(
+            f"Bundle for {skill_id} from {fetch_url} is not a valid package: {exc}",
+            status_code=502,
+        ) from exc
+    except OSError as exc:
+        logger.exception("Could not write bundle for %s to disk", skill_id)
+        raise CalibrationSyncError(
+            f"Could not write the bundle for {skill_id} to disk: {exc}",
+            status_code=500,
+        ) from exc
 
     await _upsert_calibration_index(
         db,
