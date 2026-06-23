@@ -27,7 +27,9 @@ from app.services.license_service import (
 logger = logging.getLogger(__name__)
 
 CALIBRATIONS_DIR = Path("data/calibrations")
+PERSONAS_DIR = Path("data/calibrations/personas")
 COLLECTION = "stack_calibrations"
+PERSONA_COLLECTION = "stack_personas"
 
 
 class CalibrationSyncError(Exception):
@@ -47,6 +49,8 @@ class CalibrationSyncResult:
     knowledge_pack_skipped: bool = False
     stack_profile: dict[str, Any] | None = None
     legacy_skills: list[dict[str, Any]] | None = None
+    entitled_items: list[dict[str, Any]] | None = None
+    personas_installed: int = 0
 
 
 @dataclass(frozen=True)
@@ -57,6 +61,7 @@ class CalibrationCatalogResult:
     entitlements: list[str]
     skills: list[dict[str, Any]]
     installed_blueprints: list[dict[str, Any]]
+    items: list[dict[str, Any]] | None = None
     local_license_type: str | None = None
     license_entitlement_mismatch: bool = False
     studio_auth_missing: bool = False
@@ -172,11 +177,73 @@ async def _studio_request_body(db: AsyncIOMotorDatabase) -> dict[str, Any]:
     return body
 
 
-def _sync_entitled_by_id(sync_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {
-        str(skill.get("id") or ""): skill
+SKILL_TYPE = "skill"
+PERSONA_TYPE = "persona"
+KNOWLEDGE_PACK_TYPE = "knowledge_pack"
+
+
+def _normalize_type(value: Any) -> str:
+    cleaned = str(value or "").strip().lower().replace("-", "_")
+    return cleaned or SKILL_TYPE
+
+
+def _catalog_item_globally_free(raw: dict[str, Any]) -> bool:
+    """Contract uses ``globalFree``; legacy skills mirror used ``globalFreeSkill``."""
+    return bool(raw.get("globalFree") or raw.get("globalFreeSkill"))
+
+
+def _normalize_catalog_item(raw: dict[str, Any], *, default_type: str = SKILL_TYPE) -> dict[str, Any]:
+    """Coerce a contract ``CatalogItem`` (or a legacy skill row) into the unified shape.
+
+    Carries both contract field names and the legacy ``globalFreeSkill`` alias so the
+    existing skills marketplace UI keeps working unchanged.
+    """
+    item = dict(raw)
+    item["type"] = _normalize_type(raw.get("type") or default_type)
+    item["id"] = str(raw.get("id") or "")
+    item["version"] = str(raw.get("version") or "")
+    global_free = _catalog_item_globally_free(raw)
+    item["globalFree"] = global_free
+    item["globalFreeSkill"] = global_free
+    item["meta"] = dict(raw.get("meta") or {})
+    item.setdefault("domains", list(raw.get("domains") or []))
+    return item
+
+
+def _sync_entitled_items(sync_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Prefer the contract ``entitledItems[]``; fall back to the legacy ``skills[]``.
+
+    Legacy ``skills[]`` entries are untyped — treat each as a ``skill``.
+    """
+    raw_items = sync_payload.get("entitledItems")
+    if raw_items:
+        return [
+            {**item, "type": _normalize_type(item.get("type"))}
+            for item in raw_items
+            if item.get("id")
+        ]
+    return [
+        {**skill, "type": SKILL_TYPE}
         for skill in (sync_payload.get("skills") or [])
         if skill.get("id")
+    ]
+
+
+def _sync_entitled_by_key(sync_payload: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    """Key entitled sync items by ``(type, id)`` so a persona and a skill sharing an id don't collide."""
+    return {
+        (_normalize_type(item.get("type")), str(item.get("id") or "")): item
+        for item in _sync_entitled_items(sync_payload)
+        if item.get("id")
+    }
+
+
+def _sync_entitled_by_id(sync_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Skills-only view keyed by id (back-compat for the skill install path)."""
+    return {
+        key[1]: item
+        for key, item in _sync_entitled_by_key(sync_payload).items()
+        if key[0] == SKILL_TYPE
     }
 
 
@@ -206,26 +273,30 @@ def _enrich_catalog_skills_with_sync_entitlements(
     """Merge entitled bundles from POST /calibrations/sync into catalog rows.
 
     scstudio catalog ``installable`` can be false while sync still returns entitled
-    skills for this fingerprint — use sync as the download source of truth.
+    items for this fingerprint — use sync as the download source of truth. Items are
+    matched by ``(type, id)`` so a persona and a skill sharing an id don't collide;
+    untyped rows (legacy catalog + legacy sync ``skills[]``) default to ``skill`` on
+    both sides, preserving the original behavior.
     """
-    entitled = _sync_entitled_by_id(sync_payload)
+    entitled = _sync_entitled_by_key(sync_payload)
     enriched: list[dict[str, Any]] = []
     for raw in catalog_skills:
-        skill = dict(raw)
-        skill_id = str(skill.get("id") or "")
-        sync_skill = entitled.get(skill_id)
-        if sync_skill:
-            sync_version = str(sync_skill.get("version") or "")
-            sync_bundle = str(sync_skill.get("bundleUrl") or "")
-            skill["entitledViaSync"] = True
-            skill["entitledVersion"] = sync_version or None
+        item = dict(raw)
+        item_type = _normalize_type(item.get("type"))
+        item_id = str(item.get("id") or "")
+        sync_item = entitled.get((item_type, item_id))
+        if sync_item:
+            sync_version = str(sync_item.get("version") or "")
+            sync_bundle = str(sync_item.get("bundleUrl") or "")
+            item["entitledViaSync"] = True
+            item["entitledVersion"] = sync_version or None
             if sync_bundle:
-                skill["syncBundleUrl"] = sync_bundle
-            skill["installable"] = True
-            skill["ineligibleReason"] = None
+                item["syncBundleUrl"] = sync_bundle
+            item["installable"] = True
+            item["ineligibleReason"] = None
         else:
-            skill["entitledViaSync"] = False
-        enriched.append(skill)
+            item["entitledViaSync"] = False
+        enriched.append(item)
     return enriched
 
 
@@ -285,6 +356,27 @@ def _build_installed_blueprints(
     return rows
 
 
+def _unified_catalog_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build the unified catalog item list (all three types).
+
+    Prefer the contract ``items[]`` (skills + personas + knowledge packs). If an older
+    scstudio returns only the legacy ``skills[]`` (no ``items[]``), fall back to it and
+    tag each entry as a ``skill`` so the rest of the pipeline is type-uniform.
+    """
+    raw_items = payload.get("items")
+    if raw_items:
+        return [_normalize_catalog_item(raw) for raw in raw_items if raw.get("id")]
+    return [
+        _normalize_catalog_item(raw, default_type=SKILL_TYPE)
+        for raw in (payload.get("skills") or [])
+        if raw.get("id")
+    ]
+
+
+def _skills_only(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in items if _normalize_type(item.get("type")) == SKILL_TYPE]
+
+
 async def fetch_calibration_catalog(
     db: AsyncIOMotorDatabase,
     *,
@@ -315,12 +407,15 @@ async def fetch_calibration_catalog(
         )
 
     payload = response.json() if response.content else {}
-    catalog_skills = payload.get("skills") or []
+    # Prefer the contract items[] (all three types); fall back to legacy skills[].
+    catalog_items = _unified_catalog_items(payload)
     try:
         sync_payload = await _fetch_studio_sync_manifest(db)
     except CalibrationSyncError:
         sync_payload = {}
-    catalog_skills = _enrich_catalog_skills_with_sync_entitlements(catalog_skills, sync_payload)
+    # Enrichment + gating apply uniformly across all types, keyed by (type, id).
+    catalog_items = _enrich_catalog_skills_with_sync_entitlements(catalog_items, sync_payload)
+    catalog_skills = _skills_only(catalog_items)
     installed_rows = list_installed_skills()
     license_context = await get_license_context_for_studio(db)
     local_license_type = license_context.get("localLicenseType")
@@ -340,6 +435,7 @@ async def fetch_calibration_catalog(
         client_id=client_id,
         entitlements=entitlements,
         skills=catalog_skills,
+        items=catalog_items,
         installed_blueprints=_build_installed_blueprints(catalog_skills, installed_rows),
         local_license_type=str(local_license_type) if local_license_type else None,
         license_entitlement_mismatch=license_entitlement_mismatch,
@@ -539,6 +635,272 @@ async def install_calibration_skill(
     )
 
 
+def _personas_root() -> Path:
+    return PERSONAS_DIR
+
+
+def _catalog_item(
+    catalog: CalibrationCatalogResult,
+    item_id: str,
+    *,
+    item_type: str = SKILL_TYPE,
+) -> dict[str, Any] | None:
+    wanted_type = _normalize_type(item_type)
+    for item in catalog.items or []:
+        if str(item.get("id") or "") == item_id and _normalize_type(item.get("type")) == wanted_type:
+            return item
+    return None
+
+
+def _extract_persona_skill_refs(item: dict[str, Any], manifest: dict[str, Any]) -> list[dict[str, str]]:
+    """Collect referenced skills from the catalog ``meta.skillRefs`` and/or the persona manifest."""
+    refs: list[dict[str, str]] = []
+    seen: set[str] = set()
+    sources = [
+        (item.get("meta") or {}).get("skillRefs") or [],
+        manifest.get("skillRefs") or [],
+    ]
+    for source in sources:
+        for ref in source:
+            if not isinstance(ref, dict):
+                continue
+            ref_id = str(ref.get("id") or "").strip()
+            if not ref_id or ref_id in seen:
+                continue
+            seen.add(ref_id)
+            refs.append({"id": ref_id, "version": str(ref.get("version") or "").strip()})
+    return refs
+
+
+@dataclass(frozen=True)
+class CalibrationPersonaInstallResult:
+    persona_id: str
+    version: str
+    label: str
+    vendor: str | None
+    path: str
+    updated: bool
+    installed_skill_refs: list[str]
+    skipped_skill_refs: list[str]
+
+
+async def _upsert_persona_index(
+    db: AsyncIOMotorDatabase,
+    *,
+    persona_id: str,
+    version: str,
+    vendor: str | None,
+    label: str | None,
+    skill_refs: list[dict[str, str]],
+    path: str,
+) -> None:
+    now = datetime.now(timezone.utc)
+    await db[PERSONA_COLLECTION].update_one(
+        {"personaId": persona_id, "version": version},
+        {
+            "$set": {
+                "personaId": persona_id,
+                "version": version,
+                "vendor": vendor,
+                "label": label,
+                "skillRefs": skill_refs,
+                "enabled": True,
+                "path": path,
+                "updatedAt": now,
+            },
+            "$setOnInsert": {"installedAt": now},
+        },
+        upsert=True,
+    )
+
+
+async def install_calibration_persona(
+    db: AsyncIOMotorDatabase,
+    persona_id: str,
+) -> CalibrationPersonaInstallResult:
+    """Install a persona bundle: register its manifest, then ensure entitled skillRefs are present.
+
+    A persona bundle is a ``.calpkg``-style zip (manifest.json + prompts/ + roles/).
+    Installing registers the manifest and downloads each referenced skill that is entitled,
+    reusing the skill install path. Un-entitled skill refs are skipped (not fatal).
+    """
+    if not settings.calibration_sync_enabled:
+        raise CalibrationSyncError("Calibration sync is disabled on this installation.")
+
+    cleaned_id = (persona_id or "").strip()
+    if not cleaned_id:
+        raise CalibrationSyncError("personaId is required.", status_code=400)
+
+    catalog = await fetch_calibration_catalog(db)
+    item = _catalog_item(catalog, cleaned_id, item_type=PERSONA_TYPE)
+    if item is None:
+        raise CalibrationSyncError(
+            f"Persona '{cleaned_id}' is not in the official blueprint catalog.",
+            status_code=404,
+        )
+    if not item.get("installable"):
+        sync_item = _sync_entitled_by_key(
+            await _fetch_studio_sync_manifest(db)
+        ).get((PERSONA_TYPE, cleaned_id))
+        if sync_item is None:
+            reason = str(item.get("ineligibleReason") or "Not entitled under your current license.")
+            raise CalibrationSyncError(reason, status_code=403)
+        item = {
+            **item,
+            "installable": True,
+            "entitledViaSync": True,
+            "entitledVersion": str(sync_item.get("version") or ""),
+            "syncBundleUrl": str(sync_item.get("bundleUrl") or ""),
+            "ineligibleReason": None,
+        }
+
+    version = str(item.get("entitledVersion") or item.get("version") or "")
+    bundle_url = str(item.get("syncBundleUrl") or item.get("bundleUrl") or "")
+    if not version or not bundle_url:
+        raise CalibrationSyncError(
+            f"Persona '{cleaned_id}' has no downloadable bundle.",
+            status_code=502,
+        )
+
+    base = settings.nexxus_calibration_base_url.rstrip("/")
+    target = _personas_root() / _safe_segment(cleaned_id) / _safe_segment(version)
+    already_present = target.is_dir() and (target / "manifest.json").is_file()
+
+    fetch_url = _resolve_bundle_url(base, bundle_url)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            bundle_response = await client.get(fetch_url)
+    except httpx.RequestError as exc:
+        logger.exception("Persona bundle download failed for %s from %s", cleaned_id, fetch_url)
+        raise CalibrationSyncError(
+            f"Could not reach the bundle host for persona {cleaned_id} at {fetch_url}: {exc}",
+            status_code=502,
+        ) from exc
+    if bundle_response.status_code >= 400:
+        raise CalibrationSyncError(
+            f"Could not download bundle for persona {cleaned_id} ({bundle_response.status_code}).",
+            status_code=bundle_response.status_code,
+        )
+
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(io.BytesIO(bundle_response.content)) as archive:
+            for name in archive.namelist():
+                if name.endswith("/"):
+                    continue
+                rel = Path(name)
+                if ".." in rel.parts:
+                    continue
+                dest = target / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(archive.read(name))
+    except (zipfile.BadZipFile, ValueError) as exc:
+        logger.exception("Persona bundle for %s is not a valid package", cleaned_id)
+        raise CalibrationSyncError(
+            f"Bundle for persona {cleaned_id} from {fetch_url} is not a valid package: {exc}",
+            status_code=502,
+        ) from exc
+    except OSError as exc:
+        logger.exception("Could not write persona bundle for %s to disk", cleaned_id)
+        raise CalibrationSyncError(
+            f"Could not write the persona bundle for {cleaned_id} to disk: {exc}",
+            status_code=500,
+        ) from exc
+
+    manifest = _manifest_from_skill_dir(target)
+    skill_refs = _extract_persona_skill_refs(item, manifest)
+
+    installed_refs: list[str] = []
+    skipped_refs: list[str] = []
+    installed_versions = installed_versions_map()
+    for ref in skill_refs:
+        ref_id = ref["id"]
+        if ref_id in installed_versions and (
+            not ref["version"] or installed_versions[ref_id] == ref["version"]
+        ):
+            installed_refs.append(ref_id)
+            continue
+        try:
+            await install_calibration_skill(db, ref_id)
+            installed_refs.append(ref_id)
+        except CalibrationSyncError:
+            # A referenced skill the user is not entitled to is skipped, not fatal.
+            logger.info("Persona %s skill ref %s not installed (not entitled).", cleaned_id, ref_id)
+            skipped_refs.append(ref_id)
+
+    await _upsert_persona_index(
+        db,
+        persona_id=cleaned_id,
+        version=version,
+        vendor=manifest.get("vendor") or item.get("vendor"),
+        label=str(item.get("label") or manifest.get("label") or cleaned_id),
+        skill_refs=skill_refs,
+        path=str(target),
+    )
+
+    return CalibrationPersonaInstallResult(
+        persona_id=cleaned_id,
+        version=version,
+        label=str(item.get("label") or manifest.get("label") or cleaned_id),
+        vendor=manifest.get("vendor") or item.get("vendor"),
+        path=str(target),
+        updated=not already_present,
+        installed_skill_refs=installed_refs,
+        skipped_skill_refs=skipped_refs,
+    )
+
+
+async def install_calibration_knowledge_pack(
+    db: AsyncIOMotorDatabase,
+    pack_id: str,
+) -> dict[str, Any]:
+    """Install a knowledge_pack catalog item by routing through the existing pack install path."""
+    from app.services.knowledge_pack_service import (
+        KnowledgePackError,
+        process_knowledge_pack_from_sync,
+    )
+
+    cleaned_id = (pack_id or "").strip()
+    if not cleaned_id:
+        raise CalibrationSyncError("packId is required.", status_code=400)
+
+    catalog = await fetch_calibration_catalog(db)
+    item = _catalog_item(catalog, cleaned_id, item_type=KNOWLEDGE_PACK_TYPE)
+    if item is None:
+        raise CalibrationSyncError(
+            f"Knowledge pack '{cleaned_id}' is not in the official blueprint catalog.",
+            status_code=404,
+        )
+    if not item.get("installable"):
+        reason = str(item.get("ineligibleReason") or "Not entitled under your current license.")
+        raise CalibrationSyncError(reason, status_code=403)
+
+    version = str(item.get("entitledVersion") or item.get("version") or "")
+    bundle_url = str(item.get("syncBundleUrl") or item.get("bundleUrl") or "")
+    content_hash = str((item.get("meta") or {}).get("contentHash") or "")
+    base = settings.nexxus_calibration_base_url.rstrip("/")
+    try:
+        outcome = await process_knowledge_pack_from_sync(
+            db,
+            knowledge_pack={
+                "id": cleaned_id,
+                "version": version,
+                "contentHash": content_hash,
+                "bundleUrl": bundle_url,
+            },
+            base_url=base,
+        )
+    except KnowledgePackError as exc:
+        raise CalibrationSyncError(str(exc), status_code=exc.status_code) from exc
+
+    return {
+        "packId": outcome.pack_id or cleaned_id,
+        "version": outcome.version or version,
+        "updated": outcome.updated,
+        "skipped": outcome.skipped,
+    }
+
+
 async def uninstall_calibration_skill(
     db: AsyncIOMotorDatabase,
     skill_id: str,
@@ -670,9 +1032,18 @@ async def sync_calibrations_from_studio(db: AsyncIOMotorDatabase) -> Calibration
         except KnowledgePackError as exc:
             raise CalibrationSyncError(str(exc), status_code=exc.status_code) from exc
 
+    # Prefer the contract entitledItems[] (typed: skill | persona | knowledge_pack);
+    # fall back to the legacy skills[] (untyped → skill) for back-compat.
+    entitled_items = _sync_entitled_items(payload)
+    skill_items = [item for item in entitled_items if _normalize_type(item.get("type")) == SKILL_TYPE]
+    persona_items = [item for item in entitled_items if _normalize_type(item.get("type")) == PERSONA_TYPE]
+    pack_items = [
+        item for item in entitled_items if _normalize_type(item.get("type")) == KNOWLEDGE_PACK_TYPE
+    ]
+
     updated = 0
     installed = 0
-    for skill in skills:
+    for skill in skill_items:
         skill_id = str(skill.get("id") or "")
         version = str(skill.get("version") or "")
         bundle_url = str(skill.get("bundleUrl") or "")
@@ -697,7 +1068,53 @@ async def sync_calibrations_from_studio(db: AsyncIOMotorDatabase) -> Calibration
         else:
             updated += 1
 
-    legacy_skills = skills if not knowledge_pack_meta else skills
+    personas_installed = 0
+    for persona in persona_items:
+        persona_id = str(persona.get("id") or "")
+        if not persona_id:
+            continue
+        try:
+            await install_calibration_persona(db, persona_id)
+            personas_installed += 1
+        except CalibrationSyncError:
+            logger.info("Persona %s skipped during bulk sync (not entitled or no bundle).", persona_id)
+            continue
+
+    # Knowledge packs listed in entitledItems[] route through the existing pack install path.
+    for pack in pack_items:
+        pack_id = str(pack.get("id") or "")
+        bundle_url = str(pack.get("bundleUrl") or "")
+        if not pack_id or not bundle_url:
+            continue
+        from app.services.knowledge_pack_service import (
+            KnowledgePackError,
+            process_knowledge_pack_from_sync,
+        )
+
+        try:
+            pack_outcome = await process_knowledge_pack_from_sync(
+                db,
+                knowledge_pack={
+                    "id": pack_id,
+                    "version": str(pack.get("version") or ""),
+                    "packageSignature": str(pack.get("packageSignature") or ""),
+                    "bundleUrl": bundle_url,
+                },
+                base_url=base,
+            )
+            if pack_outcome.updated:
+                knowledge_pack_updated = True
+            if pack_outcome.pack_id and not knowledge_pack_summary:
+                knowledge_pack_summary = {
+                    "id": pack_outcome.pack_id,
+                    "version": pack_outcome.version,
+                    "contentHash": pack_outcome.content_hash,
+                }
+        except KnowledgePackError:
+            logger.info("Knowledge pack %s skipped during bulk sync.", pack_id)
+            continue
+
+    legacy_skills = skills
 
     return CalibrationSyncResult(
         installed=installed,
@@ -709,4 +1126,6 @@ async def sync_calibrations_from_studio(db: AsyncIOMotorDatabase) -> Calibration
         knowledge_pack_skipped=knowledge_pack_skipped,
         stack_profile=stack_profile,
         legacy_skills=legacy_skills,
+        entitled_items=entitled_items,
+        personas_installed=personas_installed,
     )

@@ -15,7 +15,16 @@
         <h3 class="mk-name" :title="row.label">{{ row.label }}</h3>
         <span class="mk-scope">{{ row.vendorLabel }}<template v-if="row.product"> · {{ row.product }}</template></span>
       </div>
-      <Tag :value="tierLabel" :severity="tierSeverity" class="mk-tier" rounded />
+      <div class="mk-badges">
+        <Tag
+          :value="typeLabel"
+          :icon="typeIcon"
+          :severity="typeSeverity"
+          class="mk-type"
+          rounded
+        />
+        <Tag :value="tierLabel" :severity="tierSeverity" class="mk-tier" rounded />
+      </div>
     </header>
 
     <p class="mk-desc" :title="row.description || ''">
@@ -94,6 +103,7 @@ import { computed } from 'vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import {
+  artifactTypeLabel,
   blueprintTierLabel,
   blueprintTierSeverity,
   blueprintCanDownload,
@@ -102,6 +112,7 @@ import {
   blueprintStatusLabel,
   blueprintDownloadBlockedButtonLabel,
   blueprintDownloadBlockedLabel,
+  normalizeArtifactType,
 } from '../services/calibrationSync.js'
 
 const props = defineProps({
@@ -121,6 +132,19 @@ const vendorInitials = computed(() => {
     .slice(0, 2)
     .map((part) => part[0].toUpperCase())
     .join('')
+})
+
+const artifactType = computed(() => normalizeArtifactType(props.row.type))
+const typeLabel = computed(() => artifactTypeLabel(props.row.type))
+const typeIcon = computed(() => {
+  if (artifactType.value === 'persona') return 'pi pi-users'
+  if (artifactType.value === 'knowledge_pack') return 'pi pi-box'
+  return 'pi pi-bolt'
+})
+const typeSeverity = computed(() => {
+  if (artifactType.value === 'persona') return 'contrast'
+  if (artifactType.value === 'knowledge_pack') return 'info'
+  return 'secondary'
 })
 
 const tierLabel = computed(() => blueprintTierLabel(props.row))
@@ -237,6 +261,18 @@ html.app-dark .mk-card:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.mk-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.mk-type {
+  font-size: 0.625rem;
 }
 
 .mk-tier {

@@ -56,6 +56,48 @@ export async function installCalibrationSkill(skillId) {
   return data
 }
 
+export async function installCalibrationPersona(personaId) {
+  const { data } = await api.post(
+    `/copilot/calibrations/personas/${encodeURIComponent(personaId)}/install`
+  )
+  return data
+}
+
+export async function installCalibrationKnowledgePack(packId) {
+  const { data } = await api.post(
+    `/copilot/calibrations/knowledge-packs/${encodeURIComponent(packId)}/install`
+  )
+  return data
+}
+
+/** Artifact types served by the unified Blueprint Library. */
+export const ARTIFACT_TYPES = {
+  skill: 'skill',
+  persona: 'persona',
+  knowledge_pack: 'knowledge_pack',
+}
+
+export function normalizeArtifactType(type) {
+  const cleaned = String(type || 'skill')
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, '_')
+  return cleaned || 'skill'
+}
+
+export function artifactTypeLabel(type) {
+  const map = { skill: 'Skill', persona: 'Persona', knowledge_pack: 'Knowledge Pack' }
+  return map[normalizeArtifactType(type)] || 'Skill'
+}
+
+/** Install dispatch by artifact type — routes to the matching backend endpoint. */
+export function installCalibrationItem(row) {
+  const type = normalizeArtifactType(row?.type)
+  if (type === 'persona') return installCalibrationPersona(row.skillId)
+  if (type === 'knowledge_pack') return installCalibrationKnowledgePack(row.skillId)
+  return installCalibrationSkill(row.skillId)
+}
+
 export async function uninstallCalibrationSkill(skillId, version) {
   const params = version ? { version } : undefined
   const { data } = await api.delete(`/copilot/calibrations/${encodeURIComponent(skillId)}`, { params })
@@ -302,40 +344,62 @@ export function formatBlueprintUpdateSummary(summary) {
   return { severity: 'warn', message, detail }
 }
 
-/** Merge official catalog skills with local install state for the Studio UI. */
+/**
+ * Merge the official catalog with local install state for the Studio UI.
+ *
+ * Prefers the unified `items[]` (skills + personas + knowledge packs, frozen contract);
+ * falls back to the legacy skills-only `skills[]` when an older backend/scstudio omits
+ * `items[]`. Each row carries its `type` so the UI can badge/filter by artifact type.
+ */
 export function buildBlueprintLibraryRows(catalog) {
-  const skills = catalog?.skills || []
+  const rawItems =
+    Array.isArray(catalog?.items) && catalog.items.length ? catalog.items : catalog?.skills || []
   const installedBlueprints = catalog?.installedBlueprints || []
-  const skillById = Object.fromEntries(skills.map((skill) => [skill.id, skill]))
+  // Key catalog entries by (type, id); install state is skill-keyed (legacy by id).
+  const itemByKey = new Map()
+  for (const item of rawItems) {
+    const type = normalizeArtifactType(item.type)
+    itemByKey.set(`${type}::${item.id}`, item)
+  }
   const installById = Object.fromEntries(installedBlueprints.map((row) => [row.skillId, row]))
-  const ids = [...new Set([...skills.map((s) => s.id), ...installedBlueprints.map((b) => b.skillId)])].filter(Boolean)
 
-  return ids
-    .map((id) => {
-      const skill = skillById[id] || {}
-      const install = installById[id] || {}
-      const minTier = normalizeMinTier(skill.minTier)
-      const globalFreeSkill = Boolean(skill.globalFreeSkill)
-      const installable = Boolean(skill.installable)
-      const inCatalog = Boolean(skillById[id])
-      const entitledVersion = skill.entitledVersion || null
+  const keys = new Set(itemByKey.keys())
+  // Installed-only rows (no longer in catalog) are treated as skills.
+  for (const b of installedBlueprints) {
+    if (b.skillId) keys.add(`skill::${b.skillId}`)
+  }
+
+  return [...keys]
+    .map((key) => {
+      const item = itemByKey.get(key) || {}
+      const type = normalizeArtifactType(item.type || key.split('::')[0])
+      const id = item.id || key.split('::').slice(1).join('::')
+      // Install state only applies to skill-type rows (skills + persona skillRefs land here).
+      const install = type === 'skill' ? installById[id] || {} : {}
+      const minTier = normalizeMinTier(item.minTier)
+      const globalFreeSkill = Boolean(item.globalFree || item.globalFreeSkill)
+      const installable = Boolean(item.installable)
+      const inCatalog = itemByKey.has(key)
+      const entitledVersion = item.entitledVersion || null
       return enrichBlueprintRow({
+        type,
         skillId: id,
-        label: skill.label || install.label || id,
-        vendor: skill.vendor || install.vendor || '',
-        domains: skill.domains || [],
-        description: skill.description || '',
-        catalogVersion: skill.version || install.catalogVersion || '',
+        label: item.label || install.label || id,
+        vendor: item.vendor || install.vendor || '',
+        domains: item.domains || [],
+        description: item.description || '',
+        catalogVersion: item.version || install.catalogVersion || '',
         entitledVersion,
-        entitledViaSync: Boolean(skill.entitledViaSync),
+        entitledViaSync: Boolean(item.entitledViaSync),
         installedVersion: install.installedVersion || null,
         minTier,
         globalFreeSkill,
         installable,
-        ineligibleReason: skill.ineligibleReason || null,
+        ineligibleReason: item.ineligibleReason || null,
         installed: Boolean(install.installed),
         updateAvailable: Boolean(install.updateAvailable),
         inCatalog,
+        meta: item.meta || {},
       })
     })
     .sort((a, b) => a.label.localeCompare(b.label))

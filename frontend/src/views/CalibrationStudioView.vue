@@ -82,17 +82,17 @@
           <span class="stat-tile-label">Installed Skills</span>
         </span>
       </button>
-      <button type="button" class="stat-tile" @click="goTo('personas')">
+      <button type="button" class="stat-tile" @click="browseType('persona')">
         <span class="stat-tile-icon stat-persona"><i class="pi pi-users" /></span>
         <span class="stat-tile-body">
-          <span class="stat-tile-value">{{ installedPersonaCount }}</span>
-          <span class="stat-tile-label">Installed Personas</span>
+          <span class="stat-tile-value">{{ loading ? '—' : (catalogPersonaCount || installedPersonaCount) }}</span>
+          <span class="stat-tile-label">Personas</span>
         </span>
       </button>
-      <button type="button" class="stat-tile" @click="goTo('packs')">
+      <button type="button" class="stat-tile" @click="browseType('knowledge_pack')">
         <span class="stat-tile-icon stat-pack"><i class="pi pi-box" /></span>
         <span class="stat-tile-body">
-          <span class="stat-tile-value">{{ knowledgePackCount }}</span>
+          <span class="stat-tile-value">{{ loading ? '—' : (typeCounts.knowledge_pack || knowledgePackCount) }}</span>
           <span class="stat-tile-label">Knowledge Packs</span>
         </span>
       </button>
@@ -137,14 +137,14 @@
       </template>
     </SelectButton>
 
-    <!-- SKILLS MARKETPLACE -->
+    <!-- BLUEPRINT LIBRARY (skills + personas + knowledge packs) -->
     <template v-if="activeView === 'skills'">
       <div class="catalog-toolbar">
         <IconField class="catalog-search">
           <InputIcon class="pi pi-search" />
           <InputText
             v-model="searchQuery"
-            placeholder="Search skills by name, vendor, product, or domain…"
+            placeholder="Search by name, vendor, product, or domain…"
             class="w-full"
           />
         </IconField>
@@ -159,6 +159,16 @@
           aria-label="Quick filter"
         />
       </div>
+
+      <SelectButton
+        v-model="typeFilter"
+        :options="typeFilterOptions"
+        option-label="label"
+        option-value="value"
+        :allow-empty="false"
+        class="type-filter"
+        aria-label="Artifact type"
+      />
 
       <div class="catalog-filters">
         <Select
@@ -223,7 +233,7 @@
       <div v-else-if="filteredCount" class="catalog-grid">
         <MarketplaceSkillCard
           v-for="row in filteredRows"
-          :key="row.skillId"
+          :key="`${row.type || 'skill'}::${row.skillId}`"
           :row="row"
           :license-type="effectiveLicenseType"
           :installing="installingSkillId === row.skillId"
@@ -237,7 +247,7 @@
       <!-- Empty states -->
       <div v-else-if="blueprints.length" class="catalog-empty">
         <i class="pi pi-search catalog-empty-icon" />
-        <p class="catalog-empty-title m-0">No skills match your filters</p>
+        <p class="catalog-empty-title m-0">No blueprints match your filters</p>
         <p class="catalog-empty-copy m-0">Try a different search or clear the active filters.</p>
         <Button label="Clear filters" icon="pi pi-filter-slash" size="small" outlined @click="clearFilters" />
       </div>
@@ -297,9 +307,10 @@ import {
   fetchKnowledgePackStatus,
   filterBlueprintRows,
   formatBlueprintUpdateSummary,
-  installCalibrationSkill,
+  installCalibrationItem,
   licenseTypeLabel,
   licenseTierRank,
+  normalizeArtifactType,
   syncCalibrationsFromStudio,
   uninstallCalibrationSkill,
 } from '../services/calibrationSync.js'
@@ -324,6 +335,7 @@ const localLicenseType = ref('')
 const knowledgePackCount = ref(0)
 
 const activeView = ref('skills')
+const typeFilter = ref('all')
 const quickFilter = ref('all')
 const searchQuery = ref('')
 const vendorFilter = ref('')
@@ -381,10 +393,36 @@ const headlineLicenseSeverity = computed(() => {
 
 const installableCount = computed(() => blueprints.value.filter((row) => row.installable).length)
 const installedBlueprints = computed(() =>
-  blueprints.value.filter((row) => row.installed).sort((a, b) => a.label.localeCompare(b.label))
+  blueprints.value
+    .filter((row) => row.installed && normalizeArtifactType(row.type) === 'skill')
+    .sort((a, b) => a.label.localeCompare(b.label))
 )
-const installedPersonaCount = computed(() => JPILOT_ROLES.length)
+const catalogPersonaCount = computed(
+  () => blueprints.value.filter((row) => normalizeArtifactType(row.type) === 'persona').length
+)
+const installedPersonaCount = computed(() => catalogPersonaCount.value || JPILOT_ROLES.length)
 const updatesAvailable = computed(() => collectBlueprintUpdates(blueprints.value).updateCount)
+
+function rowsOfType(rows, type) {
+  if (!type || type === 'all') return rows
+  return rows.filter((row) => normalizeArtifactType(row.type) === type)
+}
+
+const typeCounts = computed(() => {
+  const counts = { all: blueprints.value.length, skill: 0, persona: 0, knowledge_pack: 0 }
+  for (const row of blueprints.value) {
+    const t = normalizeArtifactType(row.type)
+    if (counts[t] !== undefined) counts[t] += 1
+  }
+  return counts
+})
+
+const typeFilterOptions = computed(() => [
+  { label: `All (${typeCounts.value.all})`, value: 'all' },
+  { label: `Skills (${typeCounts.value.skill})`, value: 'skill' },
+  { label: `Personas (${typeCounts.value.persona})`, value: 'persona' },
+  { label: `Packs (${typeCounts.value.knowledge_pack})`, value: 'knowledge_pack' },
+])
 
 const filteredRows = computed(() => {
   let rows = filterBlueprintRows(blueprints.value, {
@@ -393,6 +431,7 @@ const filteredRows = computed(() => {
     product: productFilter.value,
     domain: domainFilter.value,
   })
+  rows = rowsOfType(rows, typeFilter.value)
   switch (quickFilter.value) {
     case 'installed':
       rows = rows.filter((row) => row.installed)
@@ -430,7 +469,8 @@ const domainOptions = computed(() => {
 const hasActiveFilters = computed(
   () =>
     Boolean(searchQuery.value.trim() || vendorFilter.value || productFilter.value || domainFilter.value) ||
-    quickFilter.value !== 'all'
+    quickFilter.value !== 'all' ||
+    typeFilter.value !== 'all'
 )
 
 const syncAllTooltip = computed(() => {
@@ -444,7 +484,16 @@ function toggleLicense(event) {
 
 function goTo(view, filter) {
   activeView.value = view
-  if (view === 'skills') quickFilter.value = filter || 'all'
+  if (view === 'skills') {
+    quickFilter.value = filter || 'all'
+  }
+}
+
+// Browse a single artifact type in the unified library grid.
+function browseType(type, filter) {
+  activeView.value = 'skills'
+  typeFilter.value = type || 'all'
+  quickFilter.value = filter || 'all'
 }
 
 function openDetails(row) {
@@ -463,6 +512,7 @@ function clearFilters() {
   productFilter.value = ''
   domainFilter.value = ''
   quickFilter.value = 'all'
+  typeFilter.value = 'all'
 }
 
 watch(vendorFilter, () => {
@@ -565,7 +615,7 @@ async function downloadSkill(row) {
   installingSkillId.value = row.skillId
   syncError.value = ''
   try {
-    const result = await installCalibrationSkill(row.skillId)
+    const result = await installCalibrationItem(row)
     toast.add({
       severity: 'success',
       summary: row.installed && row.updateAvailable ? 'Update complete' : 'Install complete',
@@ -853,6 +903,14 @@ onMounted(() => {
 }
 
 .quick-filter :deep(.p-togglebutton) {
+  font-size: 0.8125rem;
+}
+
+.type-filter {
+  align-self: flex-start;
+}
+
+.type-filter :deep(.p-togglebutton) {
   font-size: 0.8125rem;
 }
 

@@ -22,11 +22,23 @@ class KnowledgePackSummary(BaseModel):
     manifestUrl: str | None = None
 
 
+class SyncItem(BaseModel):
+    """Type-tagged entitled item returned by POST /calibrations/sync (frozen contract)."""
+
+    type: str = "skill"  # "skill" | "persona" | "knowledge_pack"
+    id: str
+    version: str = ""
+    packageSignature: str = ""
+    bundleUrl: str = ""
+
+
 class CalibrationSyncResponse(BaseModel):
     installed: int
     updated: int
     removed: int
     skills: list[dict] = Field(default_factory=list)
+    entitledItems: list[SyncItem] = Field(default_factory=list)
+    personasInstalled: int = 0
     message: str = ""
     knowledgePack: KnowledgePackSummary | None = None
     knowledgePackUpdated: bool = False
@@ -47,6 +59,33 @@ class CalibrationCatalogSkill(BaseModel):
     installable: bool = False
     ineligibleReason: str | None = None
     bundleUrl: str = ""
+    entitledVersion: str | None = None
+    entitledViaSync: bool = False
+    syncBundleUrl: str = ""
+
+
+class CatalogItem(BaseModel):
+    """Type-tagged catalog entry from POST /calibrations/catalog ``items[]`` (frozen contract).
+
+    Skills, personas and knowledge packs all flow through this shape. License gating
+    (``installable`` + ``ineligibleReason``) is computed by scstudio uniformly via
+    ``minTier`` + entitlements; jpilot mirrors the result and re-enriches via sync.
+    """
+
+    type: str = "skill"  # "skill" | "persona" | "knowledge_pack"
+    id: str
+    version: str = ""
+    label: str = ""
+    vendor: str = ""
+    domains: list[str] = Field(default_factory=list)
+    description: str = ""
+    minTier: str = "free"
+    globalFree: bool = False
+    installable: bool = False
+    ineligibleReason: str | None = None
+    bundleUrl: str = ""
+    meta: dict = Field(default_factory=dict)
+    # Sync-enrichment mirror (download source of truth, keyed by (type, id)).
     entitledVersion: str | None = None
     entitledViaSync: bool = False
     syncBundleUrl: str = ""
@@ -90,6 +129,7 @@ class CalibrationCatalogResponse(BaseModel):
     clientId: str | None = None
     entitlements: list[str] = Field(default_factory=list)
     skills: list[CalibrationCatalogSkill] = Field(default_factory=list)
+    items: list[CatalogItem] = Field(default_factory=list)
     installedBlueprints: list[CalibrationInstalledBlueprint] = Field(default_factory=list)
 
 

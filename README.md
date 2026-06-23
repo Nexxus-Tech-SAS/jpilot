@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.67` — Calibration Studio redesigned as a card-based marketplace: search-first catalog, a summary dashboard (installed skills / personas / knowledge packs / updates available), quick filters, and a skill details drawer — replacing the nested vendor→product→domain tree.
+**Current release:** `v0.68` — Calibration Studio now browses and downloads **skills, personas, and knowledge packs** from the scstudio Blueprint Library through one unified, license-gated catalog. A type filter and per-card badge distinguish the three artifact types; entitled items install (personas pull in their referenced skills, knowledge packs reuse the existing pack install path) while un-entitled items show a locked state with the reason. The contract is additive — a legacy scstudio that returns only `skills[]` still browses and installs skills exactly as before.
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -67,10 +67,18 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **NetScaler SDX (SSH)** — Operator and Analyst for SVM platform and VPX lifecycle with `search_sdx_cli_reference` memory gate (beta).
 - **F5 BIG-IP (SSH / TMSH)** — Operator, Analyst, and Architect (official F5 docs only); `f5_*` MCP tools and `search_f5_tmsh_reference` / `search_f5_documentation` (beta).
 - **Nexxus licensing** — Settings → **License**: enter a license code, import an offline `.lic` file, or sync with the Nexxus licensing API; installation fingerprint binding; encrypted payload validation; daily background sync and expiry enforcement; **activation gate** redirects unlicensed or expired installs to Settings → License before using the app.
-- **Stack Calibration Studio** — browse the full Nexxus blueprint library (vendor → product → domain), sync entitled skills, install or uninstall locally, check for catalog updates, and send redacted session feedback; skills inject into chat at runtime with blueprint-first matching.
+- **Stack Calibration Studio** — browse the full Nexxus Blueprint Library and download **skills, personas, and knowledge packs** through one license-gated catalog, install or uninstall locally, check for catalog updates, and send redacted session feedback; skills inject into chat at runtime with blueprint-first matching.
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.68
+
+| Area | Highlights |
+|------|------------|
+| **Calibration Studio — all artifact types** | The Blueprint Library now serves **skills, personas, and knowledge packs** through one unified, license-gated catalog. A type filter (All / Skills / Personas / Packs) and a per-card type badge let you browse each artifact type; entitled items download while un-entitled items show a locked state with `ineligibleReason`. |
+| **Install by type** | Knowledge-pack bundles route through the existing signed-pack install path. Personas register their manifest and ensure each referenced `skillRef` is installed (reusing the skill install path); un-entitled skill refs are skipped, not fatal. Skills are unchanged. |
+| **Additive contract / back-compat** | The catalog prefers the new `items[]` (all three types) and falls back to the legacy `skills[]`; sync prefers `entitledItems[]` and falls back to `skills[]`. Entitlement enrichment is keyed by `(type, id)` so a persona and a skill sharing an id never collide. A legacy scstudio that returns only `skills[]` still browses and installs skills exactly as before. |
 
 ## What's new in v0.66
 

@@ -13,6 +13,8 @@ from app.services.calibration_sync_service import (
     _enrich_catalog_skills_with_sync_entitlements,
     _extract_calpkg_bytes,
     _merge_studio_identity,
+    _sync_entitled_by_key,
+    _unified_catalog_items,
     fetch_calibration_catalog,
     install_calibration_skill,
     installed_versions_map,
@@ -46,6 +48,66 @@ def test_enrich_catalog_skills_with_sync_entitlements():
     assert enriched[0]["entitledViaSync"] is True
     assert enriched[0]["version"] == "0.1.1"
     assert enriched[0]["ineligibleReason"] is None
+
+
+def test_unified_catalog_items_prefers_items_over_skills():
+    payload = {
+        "items": [
+            {"type": "skill", "id": "skill-a", "version": "1.0.0"},
+            {"type": "persona", "id": "persona-x", "version": "2.0.0", "globalFree": True},
+            {"type": "knowledge_pack", "id": "pack-1", "version": "3.0.0", "meta": {"contentHash": "h"}},
+        ],
+        "skills": [{"id": "ignored-legacy", "version": "9.9.9"}],
+    }
+    items = _unified_catalog_items(payload)
+    by_id = {item["id"]: item for item in items}
+    assert set(by_id) == {"skill-a", "persona-x", "pack-1"}
+    # contract globalFree is mirrored onto the legacy globalFreeSkill alias for the UI
+    assert by_id["persona-x"]["type"] == "persona"
+    assert by_id["persona-x"]["globalFree"] is True
+    assert by_id["persona-x"]["globalFreeSkill"] is True
+    assert by_id["pack-1"]["meta"] == {"contentHash": "h"}
+
+
+def test_unified_catalog_items_falls_back_to_legacy_skills():
+    """An older scstudio returns only skills[] (no items[]) — still browse skills."""
+    payload = {
+        "skills": [
+            {"id": "legacy-skill", "version": "1.0.0", "globalFreeSkill": True},
+        ]
+    }
+    items = _unified_catalog_items(payload)
+    assert len(items) == 1
+    assert items[0]["type"] == "skill"
+    assert items[0]["id"] == "legacy-skill"
+    assert items[0]["globalFree"] is True
+
+
+def test_enrich_keys_by_type_and_id_no_collision():
+    """A persona and a skill sharing an id must not cross-enrich."""
+    catalog = [
+        {"type": "skill", "id": "shared-id", "version": "1.0.0", "installable": False},
+        {"type": "persona", "id": "shared-id", "version": "1.0.0", "installable": False},
+    ]
+    sync_payload = {
+        "entitledItems": [
+            {"type": "skill", "id": "shared-id", "version": "1.0.1", "bundleUrl": "u/skill"}
+        ]
+    }
+    enriched = _enrich_catalog_skills_with_sync_entitlements(catalog, sync_payload)
+    by_type = {item["type"]: item for item in enriched}
+    assert by_type["skill"]["installable"] is True
+    assert by_type["skill"]["entitledViaSync"] is True
+    # The persona with the same id stays gated — sync only entitled the skill.
+    assert by_type["persona"]["installable"] is False
+    assert by_type["persona"]["entitledViaSync"] is False
+
+
+def test_sync_entitled_by_key_falls_back_to_legacy_skills():
+    """Legacy sync skills[] (no entitledItems[]) are keyed as ('skill', id)."""
+    keyed = _sync_entitled_by_key({"skills": [{"id": "skill-a", "version": "1.0.0"}]})
+    assert ("skill", "skill-a") in keyed
+    assert keyed[("skill", "skill-a")]["version"] == "1.0.0"
 
 
 def test_merge_studio_identity_prefers_sync_license_and_client():

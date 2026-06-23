@@ -33,6 +33,7 @@ from app.schemas.calibration import (
     CalibrationSkillSummary,
     CalibrationSyncResponse,
     CalibrationUninstallResponse,
+    CatalogItem,
     KnowledgePackImportResponse,
     KnowledgePackPinRequest,
     KnowledgePackPinResponse,
@@ -41,6 +42,7 @@ from app.schemas.calibration import (
     KnowledgePackScheduleResponse,
     KnowledgePackStatusResponse,
     KnowledgePackSummary,
+    SyncItem,
 )
 from app.schemas.calibration_feedback import CalibrationFeedbackRequest, CalibrationFeedbackResponse
 from app.schemas.copilot import (
@@ -57,6 +59,8 @@ from app.config import settings
 from app.services.calibration_sync_service import (
     CalibrationSyncError,
     fetch_calibration_catalog,
+    install_calibration_knowledge_pack,
+    install_calibration_persona,
     install_calibration_skill,
     list_installed_skills,
     sync_calibrations_from_studio,
@@ -328,6 +332,7 @@ async def get_calibration_catalog(
         clientId=result.client_id,
         entitlements=result.entitlements,
         skills=[CalibrationCatalogSkill(**skill) for skill in result.skills],
+        items=[CatalogItem(**item) for item in (result.items or [])],
         installedBlueprints=[CalibrationInstalledBlueprint(**row) for row in result.installed_blueprints],
     )
 
@@ -353,11 +358,25 @@ async def sync_calibrations(
             manifestUrl=pack_payload.get("manifestUrl"),
         )
 
+    entitled_items = [
+        SyncItem(
+            type=str(item.get("type") or "skill"),
+            id=str(item.get("id") or ""),
+            version=str(item.get("version") or ""),
+            packageSignature=str(item.get("packageSignature") or ""),
+            bundleUrl=str(item.get("bundleUrl") or ""),
+        )
+        for item in (result.entitled_items or [])
+        if item.get("id")
+    ]
+
     return CalibrationSyncResponse(
         installed=result.installed,
         updated=result.updated,
         removed=result.removed,
         skills=result.skills,
+        entitledItems=entitled_items,
+        personasInstalled=result.personas_installed,
         knowledgePack=knowledge_pack_model,
         knowledgePackUpdated=result.knowledge_pack_updated,
         knowledgePackSkipped=result.knowledge_pack_skipped,
@@ -380,6 +399,8 @@ def _build_sync_message(result) -> str:
         parts.append(
             f"Synced {result.updated} updated and {result.installed} unchanged entitled skill(s) from Calibration Studio."
         )
+    if getattr(result, "personas_installed", 0):
+        parts.append(f"Installed {result.personas_installed} entitled persona(s).")
     if not parts:
         return "Calibration sync completed."
     return " ".join(parts)
@@ -490,6 +511,55 @@ async def install_calibration(
         path=result.path,
         updated=result.updated,
         message=f"Skill {result.label} ({result.version}) {action}.",
+    )
+
+
+@router.post("/calibrations/personas/{persona_id}/install", response_model=CalibrationInstallResponse)
+async def install_calibration_persona_route(
+    persona_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> CalibrationInstallResponse:
+    try:
+        result = await install_calibration_persona(db, persona_id)
+    except CalibrationSyncError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    action = "updated" if result.updated else "installed"
+    skill_note = ""
+    if result.installed_skill_refs:
+        skill_note = f" Included {len(result.installed_skill_refs)} referenced skill(s)."
+    if result.skipped_skill_refs:
+        skill_note += f" {len(result.skipped_skill_refs)} referenced skill(s) not entitled."
+    return CalibrationInstallResponse(
+        skillId=result.persona_id,
+        version=result.version,
+        label=result.label,
+        vendor=result.vendor,
+        path=result.path,
+        updated=result.updated,
+        message=f"Persona {result.label} ({result.version}) {action}.{skill_note}",
+    )
+
+
+@router.post("/calibrations/knowledge-packs/{pack_id}/install", response_model=CalibrationInstallResponse)
+async def install_calibration_knowledge_pack_route(
+    pack_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> CalibrationInstallResponse:
+    try:
+        result = await install_calibration_knowledge_pack(db, pack_id)
+    except CalibrationSyncError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    action = "skipped (already current)" if result.get("skipped") else ("updated" if result.get("updated") else "installed")
+    return CalibrationInstallResponse(
+        skillId=str(result.get("packId") or pack_id),
+        version=str(result.get("version") or ""),
+        label=str(result.get("packId") or pack_id),
+        vendor=None,
+        path="",
+        updated=bool(result.get("updated")),
+        message=f"Knowledge pack {result.get('packId') or pack_id} ({result.get('version') or '?'}) {action}.",
     )
 
 
