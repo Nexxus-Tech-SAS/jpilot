@@ -301,15 +301,38 @@ def read_update_status() -> UpdateStatusResponse:
     return UpdateStatusResponse(state="idle")
 
 
+# An in-progress update whose sentinel hasn't been touched in this long is treated as
+# stale (the host agent never picked it up, or died) so the single-flight lock recovers
+# instead of staying "in progress" forever.
+_STALE_LOCK_AFTER = dt.timedelta(minutes=20)
+
+
+def _lock_is_stale() -> bool:
+    """True if an in-progress update appears abandoned.
+
+    The host agent rewrites status.json as it progresses, so a fresh mtime means a live
+    update while a stale mtime (or a missing file) means nothing is processing it.
+    """
+    try:
+        status_path = _status_file()
+        if not status_path.is_file():
+            return True
+        mtime = dt.datetime.fromtimestamp(status_path.stat().st_mtime, dt.timezone.utc)
+        return dt.datetime.now(dt.timezone.utc) - mtime > _STALE_LOCK_AFTER
+    except OSError:
+        return True
+
+
 async def request_update() -> TriggerUpdateResponse:
     """
     Resolve the latest release tag via GitHub, write request.json and
     initialise status.json. Raises ValueError if already in-progress.
     Returns TriggerUpdateResponse (accepted=False) if already up to date.
     """
-    # Single-flight guard — check current status.
+    # Single-flight guard — block only if an update is genuinely in progress.
+    # A stale lock (host agent never picked it up / died) is allowed to be overridden.
     current_status = read_update_status()
-    if current_status.state in ("requested", "running"):
+    if current_status.state in ("requested", "running") and not _lock_is_stale():
         raise RuntimeError(
             f"An update is already in progress (state={current_status.state})."
         )
