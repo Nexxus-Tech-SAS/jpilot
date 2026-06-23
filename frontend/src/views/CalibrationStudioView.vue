@@ -1,429 +1,302 @@
 <template>
-  <div class="page">
+  <div class="studio">
     <ConfirmPopup />
 
-    <!-- Header card: title, license tier, entitlement counts, and actions -->
-    <div class="content-panel content-panel-padded summary-bar">
-      <div class="summary-heading">
-        <h1 class="summary-title m-0">Calibration Studio</h1>
-        <p class="summary-subtitle m-0">
-          Browse the full Nexxus blueprint library by vendor, product, and domain. Download is enabled
-          only for skills your license entitles.
+    <!-- Header: title + secondary license popover + catalog actions -->
+    <header class="studio-header">
+      <div class="studio-heading">
+        <h1 class="studio-title m-0">Calibration Studio</h1>
+        <p class="studio-subtitle m-0">
+          Discover, install, and manage Skills, Personas, and Knowledge Packs for JPilot.
         </p>
       </div>
 
-      <div class="summary-row">
-        <div class="summary-metrics">
-          <div class="summary-metric">
-            <span class="summary-metric-label">License tier</span>
-            <div class="summary-metric-tags">
-              <Tag :value="licenseType ? studioLicenseLabel : '—'" severity="secondary" />
-              <Tag
-                v-if="localLicenseType && localLicenseType !== licenseType"
-                :value="`JPilot: ${localLicenseLabel}`"
-                severity="warn"
-              />
+      <div class="studio-header-actions">
+        <Button
+          class="license-chip"
+          severity="secondary"
+          text
+          size="small"
+          icon="pi pi-verified"
+          :label="`${headlineLicenseLabel}`"
+          v-tooltip.bottom="'License & entitlements'"
+          @click="toggleLicense"
+        />
+        <Popover ref="licensePopover">
+          <div class="license-panel">
+            <div class="license-panel-row">
+              <span>License tier</span>
+              <Tag :value="headlineLicenseLabel" :severity="headlineLicenseSeverity" />
             </div>
+            <div class="license-panel-row">
+              <span>Entitled blueprints</span>
+              <strong>{{ installableCount }}</strong>
+            </div>
+            <div class="license-panel-row">
+              <span>Catalog total</span>
+              <strong>{{ blueprints.length }}</strong>
+            </div>
+            <p class="license-panel-note m-0">
+              Ent and Ent+ blueprints are listed but require a matching license to install.
+            </p>
+            <Button
+              label="Refresh entitlements"
+              icon="pi pi-refresh"
+              size="small"
+              outlined
+              class="w-full"
+              :loading="refreshingEntitlements"
+              @click="refreshEntitlements"
+            />
           </div>
-          <span class="summary-divider" aria-hidden="true" />
-          <div class="summary-metric">
-            <span class="summary-metric-label">Entitled</span>
-            <span class="summary-metric-number">{{ installableCount }}</span>
-          </div>
-          <div class="summary-metric">
-            <span class="summary-metric-label">Shown</span>
-            <span class="summary-metric-number">{{ filteredCount }}</span>
-          </div>
-          <div class="summary-metric">
-            <span class="summary-metric-label">Total</span>
-            <span class="summary-metric-number">{{ blueprints.length }}</span>
-          </div>
-        </div>
+        </Popover>
 
-        <div class="summary-actions">
-          <Button
-            :label="isMobile ? 'Refresh' : 'Refresh entitlements'"
-            icon="pi pi-refresh"
-            severity="secondary"
-            outlined
-            size="small"
-            :loading="refreshingEntitlements"
-            v-tooltip="'Sync license with Nexxus, then reload the blueprint catalog (use after a license change in Nexxus Admin)'"
-            @click="refreshEntitlements"
-          />
-          <Button
-            :label="isMobile ? 'Updates' : 'Check for updates'"
-            icon="pi pi-check-circle"
-            severity="secondary"
-            outlined
-            size="small"
-            :loading="checking"
-            v-tooltip="'Compare installed skills against the latest official catalog versions'"
-            @click="checkForUpdates"
-          />
-          <Button
-            :label="isMobile ? 'Sync' : 'Sync all entitled'"
-            icon="pi pi-sync"
-            size="small"
-            :loading="syncing"
-            :disabled="!installableCount"
-            v-tooltip="syncAllTooltip"
-            @click="runSyncAll"
-          />
-        </div>
+        <Button
+          :label="isMobile ? 'Updates' : 'Check updates'"
+          icon="pi pi-check-circle"
+          severity="secondary"
+          outlined
+          size="small"
+          :loading="checking"
+          v-tooltip.bottom="'Compare installed skills against the latest catalog versions'"
+          @click="checkForUpdates"
+        />
+        <Button
+          :label="isMobile ? 'Sync' : 'Sync all entitled'"
+          icon="pi pi-sync"
+          size="small"
+          :loading="syncing"
+          :disabled="!installableCount"
+          v-tooltip.bottom="syncAllTooltip"
+          @click="runSyncAll"
+        />
       </div>
-    </div>
+    </header>
 
-    <p
-      v-if="licenseType === 'free' || licenseType === 'early_access'"
-      class="summary-note m-0 mb-3"
-    >
-      Ent and Ent+ blueprints are listed but require a matching license to download.
-    </p>
+    <!-- Dashboard: compact summary cards -->
+    <section class="studio-stats">
+      <button type="button" class="stat-tile" @click="goTo('skills', 'installed')">
+        <span class="stat-tile-icon stat-skill"><i class="pi pi-bolt" /></span>
+        <span class="stat-tile-body">
+          <span class="stat-tile-value">{{ loading ? '—' : installedBlueprints.length }}</span>
+          <span class="stat-tile-label">Installed Skills</span>
+        </span>
+      </button>
+      <button type="button" class="stat-tile" @click="goTo('personas')">
+        <span class="stat-tile-icon stat-persona"><i class="pi pi-users" /></span>
+        <span class="stat-tile-body">
+          <span class="stat-tile-value">{{ installedPersonaCount }}</span>
+          <span class="stat-tile-label">Installed Personas</span>
+        </span>
+      </button>
+      <button type="button" class="stat-tile" @click="goTo('packs')">
+        <span class="stat-tile-icon stat-pack"><i class="pi pi-box" /></span>
+        <span class="stat-tile-body">
+          <span class="stat-tile-value">{{ knowledgePackCount }}</span>
+          <span class="stat-tile-label">Knowledge Packs</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        class="stat-tile"
+        :class="{ 'stat-tile-alert': updatesAvailable > 0 }"
+        @click="goTo('skills', 'updates')"
+      >
+        <span class="stat-tile-icon stat-update"><i class="pi pi-arrow-up" /></span>
+        <span class="stat-tile-body">
+          <span class="stat-tile-value">{{ loading ? '—' : updatesAvailable }}</span>
+          <span class="stat-tile-label">Updates Available</span>
+        </span>
+      </button>
+    </section>
 
-    <!-- Notifications: entitlement state, license mismatch, and sync/check results -->
+    <!-- Notifications -->
     <div class="studio-messages">
-      <Message v-if="tierOkBlockedMessage" severity="info" :closable="false">
-        {{ tierOkBlockedMessage }}
-      </Message>
-
-      <Message v-if="licenseMismatchMessage" severity="warn" :closable="false">
-        {{ licenseMismatchMessage }}
-      </Message>
-
       <Message v-if="checkMessage" :severity="checkSeverity" :closable="true" @close="clearCheckMessage">
         <div>{{ checkMessage }}</div>
         <ul v-if="checkDetails.length" class="check-details m-0 mt-2 pl-3">
           <li v-for="line in checkDetails" :key="line">{{ line }}</li>
         </ul>
-        <div v-if="showUpdatesOnly" class="mt-2">
-          <Button label="Show all blueprints" size="small" text @click="showUpdatesOnly = false" />
-        </div>
       </Message>
-
-      <Message v-if="syncMessage" severity="success" :closable="false">{{ syncMessage }}</Message>
       <Message v-if="syncError" severity="warn" :closable="false">{{ syncError }}</Message>
     </div>
 
-    <!-- Library: search, filters, and grouped blueprint tables -->
-    <div class="content-panel content-panel-padded library-panel">
-      <div class="library-toolbar flex flex-column lg:flex-row gap-3 mb-4">
-        <IconField class="library-search flex-1">
+    <!-- Asset type switch -->
+    <SelectButton
+      v-model="activeView"
+      :options="viewOptions"
+      option-label="label"
+      option-value="value"
+      :allow-empty="false"
+      class="view-switch"
+      aria-label="Content type"
+    >
+      <template #option="{ option }">
+        <i :class="option.icon" />
+        <span>{{ option.label }}</span>
+      </template>
+    </SelectButton>
+
+    <!-- SKILLS MARKETPLACE -->
+    <template v-if="activeView === 'skills'">
+      <div class="catalog-toolbar">
+        <IconField class="catalog-search">
           <InputIcon class="pi pi-search" />
           <InputText
             v-model="searchQuery"
-            placeholder="Search blueprints by name, skill id, vendor, product, or domain…"
+            placeholder="Search skills by name, vendor, product, or domain…"
             class="w-full"
           />
         </IconField>
-        <div class="library-filters flex flex-wrap gap-2">
-          <Select
-            v-model="vendorFilter"
-            :options="vendorOptions"
-            option-label="label"
-            option-value="value"
-            placeholder="All vendors"
-            show-clear
-            class="filter-select"
-          />
-          <Select
-            v-model="productFilter"
-            :options="productOptions"
-            option-label="label"
-            option-value="value"
-            placeholder="All products"
-            show-clear
-            class="filter-select"
-          />
-          <Select
-            v-model="domainFilter"
-            :options="domainOptions"
-            option-label="label"
-            option-value="value"
-            placeholder="All domains"
-            show-clear
-            class="filter-select"
-          />
-          <Button
-            v-if="hasActiveFilters"
-            label="Clear filters"
-            icon="pi pi-filter-slash"
-            severity="secondary"
-            text
-            @click="clearFilters"
-          />
+
+        <SelectButton
+          v-model="quickFilter"
+          :options="quickFilterOptions"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          class="quick-filter"
+          aria-label="Quick filter"
+        />
+      </div>
+
+      <div class="catalog-filters">
+        <Select
+          v-model="vendorFilter"
+          :options="vendorOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="All vendors"
+          show-clear
+          class="filter-select"
+        />
+        <Select
+          v-model="productFilter"
+          :options="productOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="All products"
+          show-clear
+          class="filter-select"
+        />
+        <Select
+          v-model="domainFilter"
+          :options="domainOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="All domains"
+          show-clear
+          class="filter-select"
+        />
+        <Button
+          v-if="hasActiveFilters"
+          label="Clear"
+          icon="pi pi-filter-slash"
+          severity="secondary"
+          text
+          size="small"
+          @click="clearFilters"
+        />
+        <span class="catalog-count">{{ filteredCount }} result{{ filteredCount === 1 ? '' : 's' }}</span>
+      </div>
+
+      <!-- Loading skeletons -->
+      <div v-if="loading" class="catalog-grid">
+        <div v-for="n in 8" :key="n" class="skeleton-card">
+          <div class="skeleton-card-head">
+            <Skeleton shape="circle" size="2.25rem" />
+            <div class="flex-1">
+              <Skeleton width="70%" height="0.9rem" class="mb-2" />
+              <Skeleton width="45%" height="0.7rem" />
+            </div>
+          </div>
+          <Skeleton width="100%" height="0.7rem" class="mt-2" />
+          <Skeleton width="85%" height="0.7rem" class="mt-2" />
+          <div class="skeleton-card-foot">
+            <Skeleton width="5rem" height="1.4rem" borderRadius="1rem" />
+            <Skeleton width="5rem" height="2rem" borderRadius="0.5rem" />
+          </div>
         </div>
       </div>
 
-      <div class="library-scroll">
-      <div v-if="loading" class="loading-copy text-color-secondary">Loading blueprint library…</div>
-
-      <template v-else-if="groupedLibrary.length">
-        <section
-          v-for="vendorGroup in groupedLibrary"
-          :key="vendorGroup.vendorKey"
-          class="vendor-group"
-          :class="{ 'vendor-group-open': isVendorOpen(vendorGroup.vendorKey) }"
-        >
-          <button
-            type="button"
-            class="group-header vendor-header"
-            :aria-expanded="isVendorOpen(vendorGroup.vendorKey)"
-            @click="toggleVendor(vendorGroup.vendorKey)"
-          >
-            <span class="vendor-header-title">
-              <i
-                class="pi pi-chevron-right vendor-chevron"
-                :class="{ 'vendor-chevron-open': isVendorOpen(vendorGroup.vendorKey) }"
-              />
-              <h3 class="group-title m-0">{{ vendorGroup.vendorLabel }}</h3>
-            </span>
-            <Tag :value="`${vendorGroup.count} blueprint${vendorGroup.count === 1 ? '' : 's'}`" severity="secondary" />
-          </button>
-
-          <Transition name="expand" @enter="onExpandEnter" @after-enter="onExpandAfterEnter" @leave="onExpandLeave">
-          <div v-show="isVendorOpen(vendorGroup.vendorKey)" class="vendor-body">
-          <section
-            v-for="productGroup in vendorGroup.products"
-            :key="`${vendorGroup.vendorKey}-${productGroup.product}`"
-            class="product-group"
-            :class="{ 'product-group-open': isProductOpen(vendorGroup.vendorKey, productGroup.product) }"
-          >
-            <button
-              type="button"
-              class="group-header product-header"
-              :aria-expanded="isProductOpen(vendorGroup.vendorKey, productGroup.product)"
-              @click="toggleProduct(vendorGroup.vendorKey, productGroup.product)"
-            >
-              <span class="vendor-header-title">
-                <i
-                  class="pi pi-chevron-right product-chevron"
-                  :class="{ 'vendor-chevron-open': isProductOpen(vendorGroup.vendorKey, productGroup.product) }"
-                />
-                <h4 class="group-subtitle m-0">{{ productGroup.product }}</h4>
-              </span>
-              <span class="group-count text-sm text-color-secondary">{{ productGroup.count }} blueprint{{ productGroup.count === 1 ? '' : 's' }}</span>
-            </button>
-
-            <Transition name="expand" @enter="onExpandEnter" @after-enter="onExpandAfterEnter" @leave="onExpandLeave">
-            <div v-show="isProductOpen(vendorGroup.vendorKey, productGroup.product)" class="product-body">
-            <section
-              v-for="domainGroup in productGroup.domains"
-              :key="`${vendorGroup.vendorKey}-${productGroup.product}-${domainGroup.domain}`"
-              class="domain-group"
-              :class="{ 'domain-group-open': isDomainOpen(vendorGroup.vendorKey, productGroup.product, domainGroup.domain) }"
-            >
-              <button
-                type="button"
-                class="group-header domain-header"
-                :aria-expanded="isDomainOpen(vendorGroup.vendorKey, productGroup.product, domainGroup.domain)"
-                @click="toggleDomain(vendorGroup.vendorKey, productGroup.product, domainGroup.domain)"
-              >
-                <span class="vendor-header-title">
-                  <i
-                    class="pi pi-chevron-right domain-chevron"
-                    :class="{ 'vendor-chevron-open': isDomainOpen(vendorGroup.vendorKey, productGroup.product, domainGroup.domain) }"
-                  />
-                  <span class="domain-label">{{ domainGroup.domainLabel }}</span>
-                </span>
-                <span class="group-count text-sm text-color-secondary">{{ domainGroup.items.length }} skill{{ domainGroup.items.length === 1 ? '' : 's' }}</span>
-              </button>
-
-              <Transition name="expand" @enter="onExpandEnter" @after-enter="onExpandAfterEnter" @leave="onExpandLeave">
-              <div v-show="isDomainOpen(vendorGroup.vendorKey, productGroup.product, domainGroup.domain)" class="domain-pane">
-              <DataTable
-                :value="domainGroup.items"
-                striped-rows
-                data-key="skillId"
-                class="blueprint-table"
-              >
-                <Column field="label" header="Skill">
-                  <template #body="{ data }">
-                    <div class="font-medium">{{ data.label }}</div>
-                    <code class="skill-id">{{ data.skillId }}</code>
-                    <p v-if="data.description" class="skill-desc m-0 mt-1">{{ data.description }}</p>
-                    <div v-if="data.domainLabels.length > 1" class="domain-tags mt-1">
-                      <Tag
-                        v-for="tag in data.domainLabels"
-                        :key="tag"
-                        :value="tag"
-                        severity="secondary"
-                        class="domain-tag"
-                      />
-                    </div>
-                  </template>
-                </Column>
-                <Column header="Min tier" style="width: 7.5rem">
-                  <template #body="{ data }">
-                    <span class="cell-label">Min tier</span>
-                    <div class="tier-cell">
-                      <Tag :value="blueprintTierLabel(data)" :severity="blueprintTierSeverity(data)" />
-                      <span
-                        class="current-tier-note"
-                        :class="{ 'current-tier-note-ok': blueprintTierRowNote(data, effectiveLicenseType) === 'Tier OK' }"
-                        :title="blueprintTierRowTooltip(data, effectiveLicenseType, effectiveLicenseLabel)"
-                      >
-                        You: {{ currentTierShortLabel }}
-                      </span>
-                      <span
-                        v-if="blueprintTierRowNote(data, effectiveLicenseType)"
-                        class="current-tier-match"
-                        :title="data.ineligibleReason || blueprintTierRowTooltip(data, effectiveLicenseType, effectiveLicenseLabel)"
-                      >
-                        {{ blueprintTierRowNote(data, effectiveLicenseType) }}
-                      </span>
-                    </div>
-                  </template>
-                </Column>
-                <Column header="Free global" style="width: 6rem">
-                  <template #body="{ data }">
-                    <span class="cell-label">Free global</span>
-                    <Tag
-                      :value="data.globalFreeSkill ? 'Yes' : 'No'"
-                      :severity="data.globalFreeSkill ? 'success' : 'secondary'"
-                    />
-                  </template>
-                </Column>
-                <Column header="Version" style="width: 9rem">
-                  <template #body="{ data }">
-                    <span class="cell-label">Version</span>
-                    <div class="version-cell">
-                      <span v-if="data.catalogVersion">catalog {{ data.catalogVersion }}</span>
-                      <span v-else class="text-color-secondary">—</span>
-                      <span
-                        v-if="data.entitledVersion && data.entitledVersion !== data.catalogVersion"
-                        class="installed-version"
-                      >
-                        download {{ data.entitledVersion }}
-                      </span>
-                      <span v-if="data.installedVersion" class="installed-version">
-                        installed {{ data.installedVersion }}
-                      </span>
-                    </div>
-                  </template>
-                </Column>
-                <Column header="Status" style="width: 9rem">
-                  <template #body="{ data }">
-                    <span class="cell-label">Status</span>
-                    <Tag
-                      v-tooltip="data.ineligibleReason || undefined"
-                      :value="statusLabel(data)"
-                      :severity="statusSeverity(data)"
-                    />
-                  </template>
-                </Column>
-                <Column header="Actions" style="width: 9rem">
-                  <template #body="{ data }">
-                    <span class="cell-label">Actions</span>
-                    <div class="action-cell">
-                      <Button
-                        v-if="canDownload(data)"
-                        :label="downloadLabel(data)"
-                        icon="pi pi-download"
-                        size="small"
-                        :loading="installingSkillId === data.skillId"
-                        @click="downloadSkill(data)"
-                      />
-                      <Tag
-                        v-else-if="blueprintIsLatestEntitled(data)"
-                        value="Up to date"
-                        severity="success"
-                        v-tooltip="blueprintCatalogAheadOfEntitlement(data)
-                          ? `Catalog ${data.catalogVersion} is not assigned via sync yet; ${data.entitledVersion} is the latest entitled version.`
-                          : undefined"
-                      />
-                      <Tag
-                        v-else-if="data.installed && !data.updateAvailable"
-                        value="Up to date"
-                        severity="success"
-                      />
-                      <Button
-                        v-else
-                        :label="blueprintDownloadBlockedButtonLabel(data, licenseType)"
-                        icon="pi pi-lock"
-                        size="small"
-                        severity="secondary"
-                        outlined
-                        disabled
-                        v-tooltip="blueprintDownloadBlockedLabel(data, licenseType)"
-                      />
-                      <Button
-                        v-if="data.installed"
-                        label="Uninstall"
-                        icon="pi pi-trash"
-                        size="small"
-                        severity="danger"
-                        text
-                        class="action-uninstall"
-                        :loading="uninstallingSkillId === data.skillId"
-                        v-tooltip="'Remove the local copy of this skill from JPilot'"
-                        @click="confirmUninstall(data, $event)"
-                      />
-                    </div>
-                  </template>
-                </Column>
-              </DataTable>
-              </div>
-              </Transition>
-            </section>
-            </div>
-            </Transition>
-          </section>
-          </div>
-          </Transition>
-        </section>
-      </template>
-
-      <p v-else-if="!loading && blueprints.length && !filteredCount" class="empty-copy m-0 mt-3">
-        No blueprints match your search or filters. Try clearing filters or broadening your search.
-      </p>
-
-      <p v-else-if="!loading && !blueprints.length" class="empty-copy m-0 mt-3">
-        No blueprints returned from the official catalog. Check connectivity to
-        <strong>{{ studioBaseUrl }}</strong>, then refresh the page.
-      </p>
+      <!-- Card grid -->
+      <div v-else-if="filteredCount" class="catalog-grid">
+        <MarketplaceSkillCard
+          v-for="row in filteredRows"
+          :key="row.skillId"
+          :row="row"
+          :license-type="effectiveLicenseType"
+          :installing="installingSkillId === row.skillId"
+          :uninstalling="uninstallingSkillId === row.skillId"
+          @open="openDetails"
+          @install="downloadSkill"
+          @uninstall="confirmUninstall"
+        />
       </div>
-    </div>
+
+      <!-- Empty states -->
+      <div v-else-if="blueprints.length" class="catalog-empty">
+        <i class="pi pi-search catalog-empty-icon" />
+        <p class="catalog-empty-title m-0">No skills match your filters</p>
+        <p class="catalog-empty-copy m-0">Try a different search or clear the active filters.</p>
+        <Button label="Clear filters" icon="pi pi-filter-slash" size="small" outlined @click="clearFilters" />
+      </div>
+
+      <div v-else class="catalog-empty">
+        <i class="pi pi-inbox catalog-empty-icon" />
+        <p class="catalog-empty-title m-0">No blueprints in the catalog</p>
+        <p class="catalog-empty-copy m-0">
+          Check connectivity to <strong>{{ studioBaseUrl }}</strong>, then refresh entitlements.
+        </p>
+      </div>
+    </template>
+
+    <CalibrationPersonaUpdatesPanel v-else-if="activeView === 'personas'" />
+    <CalibrationKnowledgePacksPanel v-else />
+
+    <BlueprintDetailsDrawer
+      v-model:visible="drawerVisible"
+      :row="selectedRow"
+      :license-type="effectiveLicenseType"
+      :installing="!!selectedRow && installingSkillId === selectedRow.skillId"
+      :uninstalling="!!selectedRow && uninstallingSkillId === selectedRow.skillId"
+      @install="downloadSkill"
+      @uninstall="confirmUninstall"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
-import Column from 'primevue/column'
 import ConfirmPopup from 'primevue/confirmpopup'
-import DataTable from 'primevue/datatable'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
+import Popover from 'primevue/popover'
 import Select from 'primevue/select'
+import SelectButton from 'primevue/selectbutton'
+import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import BlueprintDetailsDrawer from '../components/BlueprintDetailsDrawer.vue'
+import CalibrationKnowledgePacksPanel from '../components/CalibrationKnowledgePacksPanel.vue'
+import CalibrationPersonaUpdatesPanel from '../components/CalibrationPersonaUpdatesPanel.vue'
 import { CALIBRATION_STUDIO_BASE_URL } from '../config/calibrationStudio.js'
+import { JPILOT_ROLES } from '../config/jpilotRoles.js'
 import { getLicense } from '../services/system.js'
 import {
   blueprintFilterOptions,
-  blueprintDownloadBlockedButtonLabel,
-  blueprintDownloadBlockedLabel,
-  blueprintCatalogAheadOfEntitlement,
-  blueprintCanDownload,
   blueprintHasDownloadableUpdate,
-  blueprintIsLatestEntitled,
-  blueprintStatusLabel,
   blueprintTierLabel,
-  blueprintTierSeverity,
-  blueprintTierRowNote,
-  blueprintTierRowTooltip,
   buildBlueprintLibraryRows,
   collectBlueprintUpdates,
-  collectTierOkBlockedRows,
-  currentBlueprintTierLabel,
   fetchCalibrationCatalog,
+  fetchKnowledgePackStatus,
   filterBlueprintRows,
   formatBlueprintUpdateSummary,
-  groupBlueprintRows,
   installCalibrationSkill,
   licenseTypeLabel,
   licenseTierRank,
@@ -442,29 +315,40 @@ const syncing = ref(false)
 const checking = ref(false)
 const installingSkillId = ref('')
 const uninstallingSkillId = ref('')
-const syncMessage = ref('')
 const syncError = ref('')
 const checkMessage = ref('')
 const checkSeverity = ref('info')
 const checkDetails = ref([])
-const showUpdatesOnly = ref(false)
-const catalogUrl = ref('')
-const clientId = ref('')
-const hasLicenseCode = ref(false)
-const appFingerprint = ref('')
 const licenseType = ref('')
 const localLicenseType = ref('')
-const licenseEntitlementMismatch = ref(false)
-const studioAuthMissing = ref(false)
+const knowledgePackCount = ref(0)
+
+const activeView = ref('skills')
+const quickFilter = ref('all')
 const searchQuery = ref('')
 const vendorFilter = ref('')
 const productFilter = ref('')
 const domainFilter = ref('')
-const openVendors = ref(new Set())
-const openProducts = ref(new Set())
-const openDomains = ref(new Set())
 
-// Track narrow viewports so we can shorten labels and tighten layout on mobile.
+const drawerVisible = ref(false)
+const selectedRow = ref(null)
+const licensePopover = ref(null)
+
+const viewOptions = [
+  { label: 'Skills', value: 'skills', icon: 'pi pi-bolt' },
+  { label: 'Personas', value: 'personas', icon: 'pi pi-users' },
+  { label: 'Knowledge Packs', value: 'packs', icon: 'pi pi-box' },
+]
+
+const quickFilterOptions = [
+  { label: 'All', value: 'all' },
+  { label: 'Installed', value: 'installed' },
+  { label: 'Updates', value: 'updates' },
+  { label: 'Free', value: 'free' },
+  { label: 'Premium', value: 'premium' },
+]
+
+// Track narrow viewports to shorten labels.
 const isMobile = ref(false)
 let mobileMq = null
 function syncIsMobile(event) {
@@ -479,121 +363,28 @@ onUnmounted(() => {
   mobileMq?.removeEventListener('change', syncIsMobile)
 })
 
-function toggleInSet(setRef, key) {
-  const next = new Set(setRef.value)
-  if (next.has(key)) next.delete(key)
-  else next.add(key)
-  setRef.value = next
-}
-
-const productKey = (vendorKey, product) => `${vendorKey}::${product}`
-const domainKey = (vendorKey, product, domain) => `${vendorKey}::${product}::${domain}`
-
-// Animate height for expand/collapse (works for unknown content heights).
-function onExpandEnter(el) {
-  el.style.height = '0'
-  el.style.overflow = 'hidden'
-  void el.offsetHeight
-  el.style.transition = 'height 0.26s ease'
-  el.style.height = `${el.scrollHeight}px`
-}
-
-function onExpandAfterEnter(el) {
-  el.style.height = ''
-  el.style.overflow = ''
-  el.style.transition = ''
-}
-
-function onExpandLeave(el) {
-  el.style.height = `${el.scrollHeight}px`
-  el.style.overflow = 'hidden'
-  void el.offsetHeight
-  el.style.transition = 'height 0.26s ease'
-  el.style.height = '0'
-}
-
-function isVendorOpen(vendorKey) {
-  return openVendors.value.has(vendorKey)
-}
-function toggleVendor(vendorKey) {
-  toggleInSet(openVendors, vendorKey)
-}
-
-function isProductOpen(vendorKey, product) {
-  return openProducts.value.has(productKey(vendorKey, product))
-}
-function toggleProduct(vendorKey, product) {
-  toggleInSet(openProducts, productKey(vendorKey, product))
-}
-
-function isDomainOpen(vendorKey, product, domain) {
-  return openDomains.value.has(domainKey(vendorKey, product, domain))
-}
-function toggleDomain(vendorKey, product, domain) {
-  toggleInSet(openDomains, domainKey(vendorKey, product, domain))
-}
-
-const studioLicenseLabel = computed(() => licenseTypeLabel(licenseType.value))
-const localLicenseLabel = computed(() => licenseTypeLabel(localLicenseType.value))
 const effectiveLicenseType = computed(() => {
   const studio = licenseType.value
   const local = localLicenseType.value
   if (!local) return studio
   return licenseTierRank(local) > licenseTierRank(studio) ? local : studio
 })
-const effectiveLicenseLabel = computed(() => licenseTypeLabel(effectiveLicenseType.value))
-const currentTierShortLabel = computed(() => currentBlueprintTierLabel(effectiveLicenseType.value))
 
-const licenseMismatchMessage = computed(() => {
-  if (!licenseEntitlementMismatch.value) return ''
-  if (studioAuthMissing.value) {
-    return (
-      `JPilot shows ${localLicenseLabel.value}, but Calibration Studio still reports ${studioLicenseLabel.value}. ` +
-      'Add your license code under Settings → License and sync, then refresh this library.'
-    )
-  }
-  return (
-    `JPilot shows ${localLicenseLabel.value}, but Calibration Studio reports ${studioLicenseLabel.value} for blueprint downloads. ` +
-    'Try Settings → License → Sync. If entitlements stay blocked, contact Nexxus to assign blueprints to this installation.'
-  )
-})
-
-const tierOkBlockedMessage = computed(() => {
-  const blocked = collectTierOkBlockedRows(blueprints.value, effectiveLicenseType.value)
-  if (!blocked.length) return ''
-  const names = blocked.slice(0, 3).map((row) => row.label).join(', ')
-  const suffix = blocked.length > 3 ? ` and ${blocked.length - 3} more` : ''
-
-  if (!hasLicenseCode.value) {
-    const fpHint = appFingerprint.value
-      ? ` Installation ID: ${appFingerprint.value.slice(0, 12)}…`
-      : ''
-    return (
-      `Your Nexxus account may include ${effectiveLicenseLabel.value} blueprints such as ${names}${suffix}, ` +
-      'but this JPilot install is not linked to that license yet. Open Settings → License, enter the license code ' +
-      'from your activation email (or use Obtain license if you upgraded on nexxus-tech.com), then click ' +
-      `Refresh entitlements.${fpHint}`
-    )
-  }
-
-  const entitledHint =
-    entitledViaSyncCount.value > 0
-      ? ` ${entitledViaSyncCount.value} other blueprint(s) are already assigned to this install and can be downloaded.`
-      : ''
-
-  const installId = appFingerprint.value
-    ? ` Installation ID: ${appFingerprint.value}`
-    : ''
-
-  return (
-    `Your ${effectiveLicenseLabel.value} license is active on this JPilot install, but ${names}${suffix} ` +
-    `has not been assigned for download by Nexxus yet.${entitledHint} Share${installId} with your Nexxus admin ` +
-    'so they can enable this blueprint for your organization in Calibration Studio, then click Refresh entitlements.'
-  )
+const headlineLicenseType = computed(() => localLicenseType.value || licenseType.value)
+const headlineLicenseLabel = computed(() => licenseTypeLabel(headlineLicenseType.value))
+const headlineLicenseSeverity = computed(() => {
+  const rank = licenseTierRank(headlineLicenseType.value)
+  if (rank >= 3) return 'success'
+  if (rank === 2) return 'info'
+  return 'secondary'
 })
 
 const installableCount = computed(() => blueprints.value.filter((row) => row.installable).length)
-const entitledViaSyncCount = computed(() => blueprints.value.filter((row) => row.entitledViaSync).length)
+const installedBlueprints = computed(() =>
+  blueprints.value.filter((row) => row.installed).sort((a, b) => a.label.localeCompare(b.label))
+)
+const installedPersonaCount = computed(() => JPILOT_ROLES.length)
+const updatesAvailable = computed(() => collectBlueprintUpdates(blueprints.value).updateCount)
 
 const filteredRows = computed(() => {
   let rows = filterBlueprintRows(blueprints.value, {
@@ -602,40 +393,44 @@ const filteredRows = computed(() => {
     product: productFilter.value,
     domain: domainFilter.value,
   })
-  if (showUpdatesOnly.value) {
-    rows = rows.filter((row) => row.updateAvailable)
+  switch (quickFilter.value) {
+    case 'installed':
+      rows = rows.filter((row) => row.installed)
+      break
+    case 'updates':
+      rows = rows.filter((row) => row.installed && blueprintHasDownloadableUpdate(row))
+      break
+    case 'free':
+      rows = rows.filter((row) => blueprintTierLabel(row) === 'Free')
+      break
+    case 'premium':
+      rows = rows.filter((row) => blueprintTierLabel(row) !== 'Free')
+      break
   }
   return rows
 })
 
 const filteredCount = computed(() => filteredRows.value.length)
 
-const groupedLibrary = computed(() => groupBlueprintRows(filteredRows.value))
-
 const allFilterOptions = computed(() => blueprintFilterOptions(blueprints.value))
-
 const vendorOptions = computed(() => allFilterOptions.value.vendors)
-
 const productOptions = computed(() => {
   const scope = vendorFilter.value
     ? blueprints.value.filter((row) => row.vendorKey === vendorFilter.value)
     : blueprints.value
   return blueprintFilterOptions(scope).products
 })
-
 const domainOptions = computed(() => {
   let scope = blueprints.value
-  if (vendorFilter.value) {
-    scope = scope.filter((row) => row.vendorKey === vendorFilter.value)
-  }
-  if (productFilter.value) {
-    scope = scope.filter((row) => row.product === productFilter.value)
-  }
+  if (vendorFilter.value) scope = scope.filter((row) => row.vendorKey === vendorFilter.value)
+  if (productFilter.value) scope = scope.filter((row) => row.product === productFilter.value)
   return blueprintFilterOptions(scope).domains
 })
 
 const hasActiveFilters = computed(
-  () => Boolean(searchQuery.value.trim() || vendorFilter.value || productFilter.value || domainFilter.value)
+  () =>
+    Boolean(searchQuery.value.trim() || vendorFilter.value || productFilter.value || domainFilter.value) ||
+    quickFilter.value !== 'all'
 )
 
 const syncAllTooltip = computed(() => {
@@ -643,10 +438,23 @@ const syncAllTooltip = computed(() => {
   return `Download all ${installableCount.value} entitled blueprint(s) from the official catalog`
 })
 
+function toggleLicense(event) {
+  licensePopover.value?.toggle(event)
+}
+
+function goTo(view, filter) {
+  activeView.value = view
+  if (view === 'skills') quickFilter.value = filter || 'all'
+}
+
+function openDetails(row) {
+  selectedRow.value = row
+  drawerVisible.value = true
+}
+
 function clearCheckMessage() {
   checkMessage.value = ''
   checkDetails.value = []
-  showUpdatesOnly.value = false
 }
 
 function clearFilters() {
@@ -654,99 +462,35 @@ function clearFilters() {
   vendorFilter.value = ''
   productFilter.value = ''
   domainFilter.value = ''
-  showUpdatesOnly.value = false
+  quickFilter.value = 'all'
 }
 
 watch(vendorFilter, () => {
-  if (productFilter.value && !productOptions.value.some((option) => option.value === productFilter.value)) {
+  if (productFilter.value && !productOptions.value.some((o) => o.value === productFilter.value)) {
     productFilter.value = ''
   }
-  if (domainFilter.value && !domainOptions.value.some((option) => option.value === domainFilter.value)) {
+  if (domainFilter.value && !domainOptions.value.some((o) => o.value === domainFilter.value)) {
     domainFilter.value = ''
   }
 })
-
 watch(productFilter, () => {
-  if (domainFilter.value && !domainOptions.value.some((option) => option.value === domainFilter.value)) {
+  if (domainFilter.value && !domainOptions.value.some((o) => o.value === domainFilter.value)) {
     domainFilter.value = ''
   }
 })
 
-// While searching or filtering, expand every matching group so results are visible.
-watch([hasActiveFilters, groupedLibrary], ([active, groups]) => {
-  if (!active) return
-  const vendors = new Set()
-  const products = new Set()
-  const domains = new Set()
-  for (const group of groups) {
-    vendors.add(group.vendorKey)
-    for (const product of group.products) {
-      products.add(productKey(group.vendorKey, product.product))
-      for (const domain of product.domains) {
-        domains.add(domainKey(group.vendorKey, product.product, domain.domain))
-      }
-    }
-  }
-  openVendors.value = vendors
-  openProducts.value = products
-  openDomains.value = domains
-})
-
-function statusLabel(row) {
-  return blueprintStatusLabel(row, effectiveLicenseType.value)
-}
-
-function statusSeverity(row) {
-  if (blueprintIsLatestEntitled(row)) return 'success'
-  if (row.installable && row.installed && blueprintHasDownloadableUpdate(row)) return 'warn'
-  if (row.installable && row.installed) return 'success'
-  if (row.installable) return 'info'
-  if (row.installed && row.updateAvailable) return 'warn'
-  if (row.installed) return 'success'
-  if (row.inCatalog && !row.installable) return 'warn'
-  return 'secondary'
-}
-
-function canDownload(row) {
-  return blueprintCanDownload(row)
-}
-
-function downloadLabel(row) {
-  if (row.installed && row.updateAvailable) return 'Update'
-  return 'Download'
+// Keep the open drawer in sync with refreshed catalog data after install/uninstall.
+function refreshSelectedRow() {
+  if (!selectedRow.value) return
+  const next = blueprints.value.find((row) => row.skillId === selectedRow.value.skillId)
+  if (next) selectedRow.value = next
 }
 
 function applyCatalog(catalog) {
-  catalogUrl.value = catalog.catalogUrl || studioBaseUrl
-  clientId.value = catalog.clientId || ''
-  hasLicenseCode.value = Boolean(catalog.hasLicenseCode)
-  appFingerprint.value = catalog.appFingerprint || ''
   licenseType.value = catalog.licenseType || 'free'
   localLicenseType.value = catalog.localLicenseType || ''
-  licenseEntitlementMismatch.value = Boolean(catalog.licenseEntitlementMismatch)
-  studioAuthMissing.value = Boolean(catalog.studioAuthMissing)
   blueprints.value = buildBlueprintLibraryRows(catalog)
-}
-
-async function refreshEntitlements() {
-  refreshingEntitlements.value = true
-  syncMessage.value = ''
-  syncError.value = ''
-  try {
-    const license = await getLicense()
-    if (license.syncError) {
-      syncError.value = `License sync: ${license.syncError}`
-    }
-    await loadCatalog()
-    if (!syncError.value && license.licenseType && license.licenseType !== 'free') {
-      syncMessage.value = `License refreshed (${licenseTypeLabel(license.licenseType)}). Blueprint library updated.`
-    }
-  } catch (error) {
-    syncError.value =
-      error.response?.data?.detail || error.message || 'Could not refresh entitlements from Nexxus.'
-  } finally {
-    refreshingEntitlements.value = false
-  }
+  refreshSelectedRow()
 }
 
 async function loadCatalog() {
@@ -762,10 +506,42 @@ async function loadCatalog() {
   }
 }
 
+async function loadKnowledgePackCount() {
+  try {
+    const status = await fetchKnowledgePackStatus()
+    knowledgePackCount.value = status?.packId ? 1 : 0
+  } catch {
+    knowledgePackCount.value = 0
+  }
+}
+
+async function refreshEntitlements() {
+  refreshingEntitlements.value = true
+  syncError.value = ''
+  licensePopover.value?.hide()
+  try {
+    const license = await getLicense()
+    if (license.syncError) syncError.value = `License sync: ${license.syncError}`
+    await loadCatalog()
+    if (!syncError.value && license.licenseType && license.licenseType !== 'free') {
+      toast.add({
+        severity: 'success',
+        summary: 'License refreshed',
+        detail: `(${licenseTypeLabel(license.licenseType)}). Catalog updated.`,
+        life: 4000,
+      })
+    }
+  } catch (error) {
+    syncError.value =
+      error.response?.data?.detail || error.message || 'Could not refresh entitlements from Nexxus.'
+  } finally {
+    refreshingEntitlements.value = false
+  }
+}
+
 async function checkForUpdates() {
   checking.value = true
   syncError.value = ''
-  syncMessage.value = ''
   clearCheckMessage()
   try {
     applyCatalog(await fetchCalibrationCatalog())
@@ -775,7 +551,8 @@ async function checkForUpdates() {
     checkSeverity.value = result.severity
     checkDetails.value = result.detail
     if (summary.updateCount) {
-      showUpdatesOnly.value = true
+      activeView.value = 'skills'
+      quickFilter.value = 'updates'
     }
   } catch (error) {
     syncError.value = error.response?.data?.detail || error.message || 'Could not check for blueprint updates.'
@@ -785,23 +562,22 @@ async function checkForUpdates() {
 }
 
 async function downloadSkill(row) {
-  if (!canDownload(row)) return
   installingSkillId.value = row.skillId
   syncError.value = ''
   try {
     const result = await installCalibrationSkill(row.skillId)
     toast.add({
       severity: 'success',
-      summary: row.installed && row.updateAvailable ? 'Update complete' : 'Download complete',
-      detail: result.message || `Downloaded ${row.label}.`,
+      summary: row.installed && row.updateAvailable ? 'Update complete' : 'Install complete',
+      detail: result.message || `Installed ${row.label}.`,
       life: 4000,
     })
     applyCatalog(await fetchCalibrationCatalog())
   } catch (error) {
     toast.add({
       severity: 'error',
-      summary: 'Download failed',
-      detail: error.response?.data?.detail || error.message || 'Download failed.',
+      summary: 'Install failed',
+      detail: error.response?.data?.detail || error.message || 'Install failed.',
       life: 5000,
     })
   } finally {
@@ -809,7 +585,7 @@ async function downloadSkill(row) {
   }
 }
 
-function confirmUninstall(row, event) {
+function confirmUninstall(event, row) {
   if (!row.installed) return
   const versionHint = row.installedVersion ? ` (${row.installedVersion})` : ''
   confirm.require({
@@ -852,7 +628,6 @@ async function uninstallSkill(row) {
 
 async function runSyncAll() {
   syncing.value = true
-  syncMessage.value = ''
   syncError.value = ''
   try {
     try {
@@ -860,10 +635,13 @@ async function runSyncAll() {
     } catch (error) {
       syncError.value = error.response?.data?.detail || error.message || 'Could not refresh blueprint library.'
     }
-
     const result = await syncCalibrationsFromStudio()
-    syncMessage.value = result.message || 'Entitled blueprints synced.'
-
+    toast.add({
+      severity: 'success',
+      summary: 'Sync complete',
+      detail: result.message || 'Entitled blueprints synced.',
+      life: 4000,
+    })
     try {
       applyCatalog(await fetchCalibrationCatalog())
     } catch {
@@ -876,527 +654,339 @@ async function runSyncAll() {
   }
 }
 
-onMounted(refreshEntitlements)
+onMounted(() => {
+  refreshEntitlements()
+  loadKnowledgePackCount()
+})
 </script>
 
 <style scoped>
-.page {
-  padding: 0 0.5rem 1rem;
+.studio {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.5rem 0.5rem 1.5rem;
   width: 100%;
-  max-width: 100%;
-  /* MainLayout makes .route-page a full-height flex column (flex:1; min-height:0).
-     Keep the header + filters fixed and let only .library-scroll scroll. */
+  max-width: 1400px;
+  margin: 0 auto;
   min-height: 0;
 }
 
-/* Fixed (non-scrolling) regions */
-.summary-bar,
-.summary-note,
-.studio-messages {
-  flex: 0 0 auto;
-}
-
-/* Blueprint panel fills remaining height; its list scrolls internally */
-.library-panel {
-  flex: 1 1 auto;
-  min-height: 0;
+/* Header */
+.studio-header {
   display: flex;
-  flex-direction: column;
-}
-
-.library-toolbar {
-  flex: 0 0 auto;
-}
-
-.library-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  /* room so the scrollbar doesn't sit on top of the cards */
-  margin-right: -0.5rem;
-  padding-right: 0.5rem;
-}
-
-/* Header card: title, license tier, entitlement counts, and actions */
-.summary-bar {
-  display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 1rem;
-  margin: 0.5rem 0 0.75rem;
 }
 
-.summary-heading {
+.studio-heading {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
 }
 
-.summary-title {
-  font-size: 1.25rem;
+.studio-title {
+  font-size: 1.4rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--p-text-color);
 }
 
-.summary-subtitle {
+.studio-subtitle {
   font-size: 0.875rem;
   color: var(--p-text-muted-color);
-  max-width: 60rem;
+  max-width: 42rem;
 }
 
-.summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem 2rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--p-content-border-color);
-}
-
-.summary-actions {
+.studio-header-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  margin-left: auto;
 }
 
-.summary-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1.25rem 1.75rem;
+.license-chip {
+  font-weight: 600;
 }
 
-.summary-metric {
+.license-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.75rem;
+  width: 17rem;
 }
 
-.summary-metric-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+.license-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8125rem;
   color: var(--p-text-muted-color);
 }
 
-.summary-metric-tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
+.license-panel-row strong {
+  color: var(--p-text-color);
 }
 
-.summary-metric-number {
+.license-panel-note {
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color);
+  line-height: 1.4;
+}
+
+/* Dashboard tiles */
+.studio-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.stat-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1rem 1.15rem;
+  text-align: left;
+  background: var(--p-content-background);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: var(--content-radius);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.stat-tile:hover {
+  border-color: var(--p-primary-300);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.stat-tile-alert {
+  border-color: color-mix(in srgb, var(--p-orange-400) 55%, var(--p-content-border-color));
+}
+
+.stat-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: 0.7rem;
+  font-size: 1.1rem;
+}
+
+.stat-skill {
+  color: var(--p-primary-color);
+  background: color-mix(in srgb, var(--p-primary-color) 13%, transparent);
+}
+.stat-persona {
+  color: var(--p-purple-500, #8b5cf6);
+  background: color-mix(in srgb, var(--p-purple-500, #8b5cf6) 13%, transparent);
+}
+.stat-pack {
+  color: var(--p-teal-500, #14b8a6);
+  background: color-mix(in srgb, var(--p-teal-500, #14b8a6) 13%, transparent);
+}
+.stat-update {
+  color: var(--p-orange-500, #f97316);
+  background: color-mix(in srgb, var(--p-orange-500, #f97316) 13%, transparent);
+}
+
+.stat-tile-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stat-tile-value {
   font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.1;
   color: var(--p-text-color);
 }
 
-.summary-divider {
-  align-self: stretch;
-  width: 1px;
-  min-height: 2.25rem;
-  background: var(--p-content-border-color);
-}
-
-.summary-note {
-  font-size: 0.8125rem;
+.stat-tile-label {
+  font-size: 0.75rem;
   color: var(--p-text-muted-color);
-  padding-left: 0.25rem;
 }
 
-/* Notifications block */
+/* Notifications */
 .studio-messages {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
-
-.studio-messages:not(:empty) {
-  margin-bottom: 1rem;
-}
-
-.library-search {
-  min-width: 14rem;
-}
-
-.library-search :deep(.p-inputtext) {
-  width: 100%;
-}
-
-.filter-select {
-  min-width: 10rem;
-}
-
-.loading-copy {
-  font-size: 0.875rem;
-  padding: 1rem 0;
-}
-
-/* Collapsible vendor group */
-.vendor-group {
-  border: 1px solid var(--p-content-border-color);
-  border-radius: var(--content-radius);
-}
-
-.vendor-group + .vendor-group {
-  margin-top: 0.75rem;
-}
-
-.vendor-header {
-  width: 100%;
-  margin: 0;
-  padding: 0.875rem 1.25rem;
-  background: var(--p-content-background);
-  border: 0;
-  border-radius: var(--content-radius) var(--content-radius) 0 0;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.vendor-header:hover {
-  background: var(--p-content-hover-background, var(--p-highlight-background));
-}
-
-.vendor-group-open .vendor-header {
-  border-bottom: 1px solid var(--p-content-border-color);
-}
-
-.vendor-header-title {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.vendor-chevron {
-  font-size: 0.75rem;
-  color: var(--p-text-muted-color);
-  transition: transform 0.2s ease;
-}
-
-.vendor-chevron-open {
-  transform: rotate(90deg);
-}
-
-/* Animated collapse panes: border-box keeps padding from leaving a gap at height 0 */
-.vendor-body,
-.product-body,
-.domain-pane {
-  box-sizing: border-box;
-}
-
-.vendor-body {
-  padding: 0.75rem 1.25rem 1.25rem;
-}
-
-.product-group {
-  margin-top: 0.75rem;
-  margin-left: 0.5rem;
-  padding-left: 0.75rem;
-  border-left: 2px solid var(--p-content-border-color);
-}
-
-.product-group:first-child {
-  margin-top: 0;
-}
-
-.product-body {
-  padding: 0.25rem 0 0.5rem;
-}
-
-.domain-group {
-  margin-top: 0.5rem;
-}
-
-.group-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-/* Product & domain headers act as collapse toggles */
-.product-header,
-.domain-header {
-  width: 100%;
-  background: none;
-  border: 0;
-  padding: 0.35rem 0;
-  cursor: pointer;
-  text-align: left;
-}
-
-.product-header:hover .group-subtitle,
-.domain-header:hover .domain-label {
-  color: var(--p-primary-color);
-}
-
-.product-chevron,
-.domain-chevron {
-  font-size: 0.6875rem;
-  color: var(--p-text-muted-color);
-  transition: transform 0.2s ease;
-}
-
-.group-title {
-  font-size: 1.0625rem;
-  font-weight: 600;
-}
-
-.group-subtitle {
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.domain-label {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--p-text-muted-color);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.blueprint-table {
-  margin-bottom: 0.5rem;
-}
-
-.skill-id {
-  font-size: 0.75rem;
-  color: var(--p-text-muted-color);
-}
-
-/* Per-cell labels: only shown in the mobile stacked-card layout */
-.cell-label {
+.studio-messages:empty {
   display: none;
-}
-
-.skill-desc {
-  font-size: 0.8125rem;
-  color: var(--p-text-muted-color);
-}
-
-.domain-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-.domain-tag {
-  font-size: 0.6875rem;
-}
-
-.version-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  font-size: 0.8125rem;
-}
-
-.tier-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-}
-
-.current-tier-note {
-  color: var(--p-text-muted-color);
-  font-size: 0.6875rem;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.current-tier-note-ok {
-  color: var(--p-text-color);
-}
-
-.current-tier-match {
-  color: var(--p-orange-500);
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.action-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-}
-
-.action-uninstall {
-  padding-left: 0;
-}
-
-.installed-version {
-  color: var(--p-text-muted-color);
-  font-size: 0.75rem;
-}
-
-.empty-copy {
-  color: var(--p-text-muted-color);
-  font-size: 0.875rem;
 }
 
 .check-details {
   font-size: 0.8125rem;
-  color: var(--p-text-color);
 }
-
 .check-details li + li {
   margin-top: 0.25rem;
 }
 
+/* View switch */
+.view-switch :deep(.p-togglebutton) {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Catalog toolbar */
+.catalog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.catalog-search {
+  flex: 1 1 18rem;
+  min-width: 14rem;
+}
+.catalog-search :deep(.p-inputtext) {
+  width: 100%;
+}
+
+.quick-filter :deep(.p-togglebutton) {
+  font-size: 0.8125rem;
+}
+
+.catalog-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-select {
+  min-width: 9.5rem;
+}
+
+.catalog-count {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  color: var(--p-text-muted-color);
+}
+
+/* Card grid */
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 0.85rem;
+}
+
+/* Skeletons */
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.1rem 1.15rem;
+  background: var(--p-content-background);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: var(--content-radius);
+}
+
+.skeleton-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.skeleton-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1.1rem;
+}
+
+/* Empty state */
+.catalog-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
+  padding: 3rem 1.5rem;
+  border: 1px dashed var(--p-content-border-color);
+  border-radius: var(--content-radius);
+}
+
+.catalog-empty-icon {
+  font-size: 2.25rem;
+  color: var(--p-text-muted-color);
+  margin-bottom: 0.25rem;
+}
+
+.catalog-empty-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--p-text-color);
+}
+
+.catalog-empty-copy {
+  font-size: 0.8125rem;
+  color: var(--p-text-muted-color);
+  max-width: 28rem;
+}
+
 /* ---------- Mobile ---------- */
+@media (max-width: 900px) {
+  .studio-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 640px) {
-  .page {
-    padding: 0 0.25rem 0.75rem;
+  .studio {
+    padding: 0.25rem 0.25rem 1rem;
+    gap: 1rem;
   }
 
-  /* Tighter cards, hide low-value chrome */
-  .summary-bar,
-  .library-panel {
-    padding: 0.85rem 0.9rem;
+  .studio-header-actions {
+    width: 100%;
   }
 
-  .summary-bar {
-    gap: 0.75rem;
+  .stat-tile {
+    padding: 0.8rem 0.9rem;
+    gap: 0.6rem;
   }
 
-  .summary-subtitle {
-    display: none;
+  .stat-tile-icon {
+    width: 2.1rem;
+    height: 2.1rem;
+    font-size: 0.95rem;
   }
 
-  .summary-row {
-    gap: 0.75rem;
-  }
-
-  .summary-divider {
-    display: none;
-  }
-
-  .summary-metrics {
-    gap: 0.6rem 1.25rem;
-  }
-
-  .summary-metric-number {
+  .stat-tile-value {
     font-size: 1.25rem;
   }
 
-  /* Action buttons: all three in one row, shortened labels, evenly split */
-  .summary-actions {
+  .view-switch {
     width: 100%;
-    flex-wrap: nowrap;
-    gap: 0.4rem;
+    overflow-x: auto;
   }
 
-  .summary-actions :deep(.p-button) {
-    flex: 1 1 0;
-    min-width: 0;
-    justify-content: center;
+  .catalog-search {
+    flex-basis: 100%;
   }
 
-  .summary-actions :deep(.p-button-label) {
-    white-space: nowrap;
-  }
-
-  /* Filters share a single row; search stays on its own full-width line above */
-  .library-toolbar {
-    margin-bottom: 1rem !important;
-  }
-
-  .library-filters {
-    flex-wrap: nowrap;
-  }
-
-  .filter-select {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .library-search {
-    min-width: 0;
+  .quick-filter {
     width: 100%;
+    overflow-x: auto;
   }
 
-  /* Group headers: a little tighter */
-  .vendor-header {
-    padding: 0.75rem 0.9rem;
+  .catalog-count {
+    width: 100%;
+    margin-left: 0;
   }
 
-  .vendor-body {
-    padding: 0.6rem 0.9rem 0.9rem;
-  }
-
-  /* Blueprint rows become stacked, labeled cards instead of a squished table */
-  .blueprint-table :deep(.p-datatable-thead) {
-    display: none;
-  }
-
-  .blueprint-table :deep(.p-datatable-tbody) > tr {
-    display: block;
-    background: var(--p-content-background) !important;
-    border: 1px solid var(--p-content-border-color);
-    border-radius: 10px;
-    padding: 0.6rem 0.8rem;
-    margin-bottom: 0.6rem;
-  }
-
-  .blueprint-table :deep(.p-datatable-tbody) > tr > td {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    width: auto !important;
-    border: 0 !important;
-    padding: 0.3rem 0 !important;
-    text-align: right;
-  }
-
-  .cell-label {
-    display: inline-block;
-    flex-shrink: 0;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--p-text-muted-color);
-    text-align: left;
-    padding-top: 0.15rem;
-  }
-
-  /* Skill cell (first column) spans the full card width with no inline label */
-  .blueprint-table :deep(.p-datatable-tbody) > tr > td:first-child {
-    display: block;
-    text-align: left;
-    padding-bottom: 0.5rem !important;
-    margin-bottom: 0.35rem;
-    border-bottom: 1px solid var(--p-content-border-color) !important;
-  }
-
-  /* Tier / action sub-layouts read better right-aligned in card rows */
-  .tier-cell,
-  .action-cell {
-    align-items: flex-end;
-  }
-
-  .action-cell {
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .version-cell {
-    align-items: flex-end;
-    text-align: right;
+  .catalog-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

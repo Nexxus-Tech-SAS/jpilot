@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.66` — MongoDB database name defaults to `jpilot` across compose, installer, and API config (replacing legacy `nsagent` / `netscaler_copilot` defaults for fresh installs).
+**Current release:** `v0.67` — Calibration Studio redesigned as a card-based marketplace: search-first catalog, a summary dashboard (installed skills / personas / knowledge packs / updates available), quick filters, and a skill details drawer — replacing the nested vendor→product→domain tree.
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
