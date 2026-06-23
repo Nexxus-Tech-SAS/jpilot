@@ -133,6 +133,48 @@
           />
           <span v-if="lastCheckedLabel" class="checked-at">{{ lastCheckedLabel }}</span>
         </div>
+
+        <!-- Collapsible CLI tutorial: arm the host auto-updater -->
+        <div class="cli-tutorial-wrap">
+          <button type="button" class="tutorial-toggle" @click="toggleTutorial">
+            <i :class="tutorialOpen ? 'pi pi-chevron-down' : 'pi pi-chevron-right'" />
+            <span>Enable auto-updates from the CLI</span>
+            <span class="tutorial-toggle-hint">tutorial</span>
+          </button>
+
+          <transition name="tut-slide">
+            <div v-if="tutorialOpen" class="cli-tutorial">
+              <p class="section-copy">
+                Run this once on the server (where Docker runs) so the
+                <strong>Update</strong> button can rebuild the platform automatically:
+              </p>
+              <div class="terminal" title="Click to replay" @click="restartTyping">
+                <div class="terminal-bar">
+                  <span class="term-dot term-dot-r"></span>
+                  <span class="term-dot term-dot-y"></span>
+                  <span class="term-dot term-dot-g"></span>
+                  <span class="terminal-title">host shell</span>
+                </div>
+                <div class="terminal-body">
+                  <div
+                    v-for="(row, i) in renderedTutorialLines"
+                    :key="i"
+                    :class="['term-line', 'term-' + row.kind]"
+                  ><span v-if="row.kind === 'cmd'" class="term-prompt">$</span><span>{{ row.visible }}</span><span v-if="i === renderedTutorialLines.length - 1" class="term-cursor"></span></div>
+                </div>
+              </div>
+              <Button
+                label="Copy commands"
+                icon="pi pi-copy"
+                size="small"
+                severity="secondary"
+                outlined
+                class="mt-2"
+                @click="copyCommands(tutorialCommands)"
+              />
+            </div>
+          </transition>
+        </div>
       </div>
     </div>
 
@@ -328,6 +370,64 @@ async function copyCommands(text) {
   }
 }
 
+// ── CLI tutorial (typewriter terminal) ────────────────────────────────────
+const tutorialOpen = ref(false)
+const tutorialLines = [
+  { kind: 'comment', text: '# one-time: arm the host update agent' },
+  { kind: 'cmd', text: 'cd /opt/workspace/jpilot' },
+  { kind: 'cmd', text: 'sudo ./scripts/auto-updater.sh enable' },
+  { kind: 'out', text: '==> Cleaning any existing agent units...' },
+  { kind: 'out', text: '==> Auto-update ENABLED.' },
+  { kind: 'comment', text: '# done — the Update button now updates JPilot' }
+]
+const tutorialCommands = 'cd /opt/workspace/jpilot\nsudo ./scripts/auto-updater.sh enable'
+const tutorialTotalChars = tutorialLines.reduce((n, l) => n + l.text.length, 0)
+const typedChars = ref(0)
+let typingTimer = null
+
+const renderedTutorialLines = computed(() => {
+  let remaining = typedChars.value
+  const rows = []
+  for (const line of tutorialLines) {
+    const show = Math.min(line.text.length, Math.max(0, remaining))
+    rows.push({ kind: line.kind, visible: line.text.slice(0, show) })
+    remaining -= line.text.length
+    if (remaining <= 0) break
+  }
+  return rows
+})
+
+function stopTyping() {
+  if (typingTimer) {
+    clearTimeout(typingTimer)
+    typingTimer = null
+  }
+}
+
+function startTyping() {
+  stopTyping()
+  typedChars.value = 0
+  const tick = () => {
+    if (typedChars.value < tutorialTotalChars) {
+      typedChars.value += 1
+      typingTimer = setTimeout(tick, 26)
+    } else {
+      typingTimer = null
+    }
+  }
+  typingTimer = setTimeout(tick, 220)
+}
+
+function toggleTutorial() {
+  tutorialOpen.value = !tutorialOpen.value
+  if (tutorialOpen.value) startTyping()
+  else stopTyping()
+}
+
+function restartTyping() {
+  if (tutorialOpen.value) startTyping()
+}
+
 // ── One-click update ──────────────────────────────────────────────────────
 
 function confirmUpdate() {
@@ -407,7 +507,10 @@ function resetUpdateUi() {
 
 onMounted(() => runCheck(false))
 
-onUnmounted(() => stopPolling())
+onUnmounted(() => {
+  stopPolling()
+  stopTyping()
+})
 
 defineExpose({ refresh: () => runCheck(true) })
 </script>
@@ -433,6 +536,84 @@ defineExpose({ refresh: () => runCheck(true) })
 .section-copy code {
   font-size: 0.8125rem;
 }
+
+/* ── CLI tutorial ──────────────────────────────────────────────────────── */
+.tutorial-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  padding: 0.2rem 0;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--p-primary-color);
+  cursor: pointer;
+}
+.tutorial-toggle:hover { text-decoration: underline; }
+.tutorial-toggle-hint {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--p-text-muted-color);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+.cli-tutorial { margin-top: 0.75rem; }
+.terminal {
+  border-radius: 0.6rem;
+  overflow: hidden;
+  border: 1px solid #1f2937;
+  background: #0b1020;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  max-width: 36rem;
+}
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: #11182b;
+  border-bottom: 1px solid #1f2937;
+}
+.term-dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; }
+.term-dot-r { background: #ff5f56; }
+.term-dot-y { background: #ffbd2e; }
+.term-dot-g { background: #27c93f; }
+.terminal-title {
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: #7c8aa5;
+}
+.terminal-body {
+  padding: 0.85rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: #d6deeb;
+  min-height: 8rem;
+}
+.term-line { white-space: pre-wrap; word-break: break-word; }
+.term-comment { color: #5f7e97; }
+.term-out { color: #7ee787; }
+.term-prompt { color: #56d364; margin-right: 0.45rem; user-select: none; }
+.term-cursor {
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: #d6deeb;
+  animation: term-blink 1s steps(1) infinite;
+}
+@keyframes term-blink { 50% { opacity: 0; } }
+.tut-slide-enter-active,
+.tut-slide-leave-active { transition: opacity 0.18s ease, transform 0.18s ease; }
+.tut-slide-enter-from,
+.tut-slide-leave-to { opacity: 0; transform: translateY(-4px); }
 
 .release-link {
   margin-left: 0.35rem;
