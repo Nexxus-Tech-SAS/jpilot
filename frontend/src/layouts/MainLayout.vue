@@ -461,6 +461,9 @@ function isActive(item) {
   display: flex;
   gap: var(--app-shell-gap);
   padding: 1.5rem;
+  /* Clear the iOS status bar / notch in full-screen (iPad/PWA), where the
+     top status bar would otherwise overlap and cut off the content. */
+  padding-top: max(1.5rem, env(safe-area-inset-top, 0px));
   min-height: 100vh;
   align-items: flex-start;
   background: var(--p-surface-0);

@@ -1,0 +1,37 @@
+name: Release
+
+# Publishes a GitHub Release whenever a version tag (vX.Y[.Z]) is pushed, using the
+# built-in GITHUB_TOKEN (no personal access token required). This keeps GitHub's
+# "Latest release" — and the in-app update checker that reads it — in sync with the
+# tags pushed from `git tag vX.Y && git push origin vX.Y`.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub Release for the pushed tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; skipping."
+            exit 0
+          fi
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$tag" \
+            --generate-notes
