@@ -208,7 +208,8 @@ const allSections = [
     icon: 'pi pi-info-circle',
     group: 'system',
     description: 'Version information and available updates.',
-    component: UpdatesPanel
+    component: UpdatesPanel,
+    props: () => ({ isAdmin: isAdmin.value })
   },
   {
     key: 'license',
