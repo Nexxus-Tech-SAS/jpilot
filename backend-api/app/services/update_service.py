@@ -21,6 +21,10 @@ from app.schemas.system import (
 _VERSION_RE = re.compile(r"^\s*v?(?P<version>\d+(?:\.\d+)*)\s*$", re.IGNORECASE)
 _DEFAULT_REPO = "Nexxus-Tech-SAS/jpilot"
 _CACHE_TTL = dt.timedelta(hours=1)
+# Even a forced ("Check for updates" button) check reuses the cached result if the
+# last real check was this recent — stops the button from exhausting GitHub's
+# unauthenticated 60-requests/hour rate limit (which returns HTTP 403).
+_FORCE_MIN_INTERVAL = dt.timedelta(minutes=2)
 
 _version_paths = (
     Path("/usr/share/jpilot/VERSION"),
@@ -99,10 +103,16 @@ def _build_instructions(latest_tag: str | None) -> UpdateInstructions:
 
 
 def _github_headers() -> dict[str, str]:
-    return {
+    headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "JPilot-Update-Check",
     }
+    # Optional: set GITHUB_TOKEN (or GH_TOKEN) to raise the API rate limit from 60 to
+    # 5000 requests/hour and avoid the unauthenticated 403s.
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 def _pick_latest_semver_tag(tags: list[dict[str, Any]]) -> str | None:
@@ -197,13 +207,12 @@ async def _fetch_latest_version_info(repo: str) -> dict[str, Any]:
 
 async def check_for_updates(*, force: bool = False, repo: str = _DEFAULT_REPO) -> UpdateCheckResponse:
     now = dt.datetime.now(dt.timezone.utc)
-    if (
-        not force
-        and _cache["checked_at"] is not None
-        and _cache["payload"] is not None
-        and now - _cache["checked_at"] < _CACHE_TTL
-    ):
-        return _cache["payload"]
+    if _cache["checked_at"] is not None and _cache["payload"] is not None:
+        age = now - _cache["checked_at"]
+        # Serve cache on a normal check within TTL, or on a forced check that's
+        # within the throttle window (so the button can't hammer the rate limit).
+        if (not force and age < _CACHE_TTL) or (force and age < _FORCE_MIN_INTERVAL):
+            return _cache["payload"]
 
     current = _read_installed_version()
     display = _display_version(current)
