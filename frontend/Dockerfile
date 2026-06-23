@@ -1,9 +1,11 @@
+# syntax=docker/dockerfile:1
 FROM node:20-alpine AS base
 
 WORKDIR /app
 
-COPY frontend/package*.json ./
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 COPY frontend/ .
 COPY THIRD_PARTY_NOTICES.txt /usr/share/jpilot/THIRD_PARTY_NOTICES.txt
@@ -11,5 +13,4 @@ COPY THIRD_PARTY_NOTICES.txt /usr/share/jpilot/THIRD_PARTY_NOTICES.txt
 EXPOSE 5173
 
 FROM base AS dev
-# package.json is bind-mounted in dev; install so new deps (e.g. qrcode) land in node_modules
-CMD ["sh", "-c", "npm install && npm run dev"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]

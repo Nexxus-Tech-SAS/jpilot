@@ -1,9 +1,11 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim AS base
 
 WORKDIR /app
 
 COPY mcp-server/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 COPY mcp-server/ .
 COPY THIRD_PARTY_NOTICES.txt /usr/share/jpilot/THIRD_PARTY_NOTICES.txt

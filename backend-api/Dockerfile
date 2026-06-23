@@ -1,9 +1,11 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim AS base
 
 WORKDIR /app
 
 COPY backend-api/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 COPY backend-api/ .
 COPY VERSION /usr/share/jpilot/VERSION
