@@ -635,7 +635,7 @@
   
           <!-- About / updates -->
           <section v-if="activeSection === 'about'">
-            <UpdatesPanel @update-status="onUpdateStatus" />
+            <UpdatesPanel :is-admin="isAdmin" @update-status="onUpdateStatus" />
           </section>
 
           <!-- License -->

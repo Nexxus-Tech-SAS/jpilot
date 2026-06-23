@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import os
 import re
+import uuid
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from app.schemas.system import UpdateCheckResponse, UpdateInstructions, VersionResponse
+from app.schemas.system import (
+    TriggerUpdateResponse,
+    UpdateCheckResponse,
+    UpdateInstructions,
+    UpdateStatusResponse,
+    VersionResponse,
+)
 
 _VERSION_RE = re.compile(r"^\s*v?(?P<version>\d+(?:\.\d+)*)\s*$", re.IGNORECASE)
 _DEFAULT_REPO = "Nexxus-Tech-SAS/jpilot"
@@ -216,3 +225,129 @@ async def check_for_updates(*, force: bool = False, repo: str = _DEFAULT_REPO) -
     _cache["checked_at"] = now
     _cache["payload"] = payload
     return payload
+
+
+# ---------------------------------------------------------------------------
+# Self-update sentinel protocol
+# ---------------------------------------------------------------------------
+
+_UPDATE_DIR_ENV = "JPILOT_UPDATE_DIR"
+_DEFAULT_UPDATE_DIR = "/var/jpilot/update"
+
+_COMPOSE_MODE_PATH = Path(__file__).resolve().parents[3] / ".compose-mode"
+
+
+def _update_dir() -> Path:
+    """Return the shared sentinel directory (create if missing)."""
+    path = Path(os.environ.get(_UPDATE_DIR_ENV, _DEFAULT_UPDATE_DIR))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _request_file() -> Path:
+    return _update_dir() / "request.json"
+
+
+def _status_file() -> Path:
+    return _update_dir() / "status.json"
+
+
+def _read_compose_mode() -> str:
+    try:
+        if _COMPOSE_MODE_PATH.is_file():
+            return _COMPOSE_MODE_PATH.read_text(encoding="utf-8").strip() or "dev"
+    except OSError:
+        pass
+    return "dev"
+
+
+def read_update_status() -> UpdateStatusResponse:
+    """Read status.json from the sentinel dir; return idle defaults if absent."""
+    status_path = _status_file()
+    try:
+        if status_path.is_file():
+            raw = json.loads(status_path.read_text(encoding="utf-8"))
+            return UpdateStatusResponse(
+                state=raw.get("state", "idle"),
+                target_tag=raw.get("targetTag"),
+                started_at=raw.get("startedAt"),
+                finished_at=raw.get("finishedAt"),
+                progress=raw.get("progress", []),
+                error=raw.get("error"),
+            )
+    except (OSError, json.JSONDecodeError):
+        pass
+    return UpdateStatusResponse(state="idle")
+
+
+async def request_update() -> TriggerUpdateResponse:
+    """
+    Resolve the latest release tag via GitHub, write request.json and
+    initialise status.json. Raises ValueError if already in-progress.
+    Returns TriggerUpdateResponse (accepted=False) if already up to date.
+    """
+    # Single-flight guard — check current status.
+    current_status = read_update_status()
+    if current_status.state in ("requested", "running"):
+        raise RuntimeError(
+            f"An update is already in progress (state={current_status.state})."
+        )
+
+    # Resolve the latest release tag from GitHub (force bypass cache).
+    check = await check_for_updates(force=True)
+
+    if not check.update_available:
+        return TriggerUpdateResponse(
+            accepted=False,
+            message="Already up to date — no update was scheduled.",
+            status=current_status,
+        )
+
+    target_tag = check.latest_display_version or check.latest_version
+    if not target_tag:
+        return TriggerUpdateResponse(
+            accepted=False,
+            message="Could not determine the target release tag.",
+            status=current_status,
+        )
+
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+    nonce = uuid.uuid4().hex
+    mode = _read_compose_mode()
+
+    # Write request.json — the host agent watches this file.
+    request_payload = {
+        "nonce": nonce,
+        "requestedAt": now_iso,
+        "targetTag": target_tag,
+        "mode": mode,
+    }
+    _request_file().write_text(
+        json.dumps(request_payload, indent=2), encoding="utf-8"
+    )
+
+    # Initialise status.json so the frontend can poll immediately.
+    initial_status_payload = {
+        "state": "requested",
+        "targetTag": target_tag,
+        "startedAt": now_iso,
+        "finishedAt": None,
+        "progress": ["Update requested — waiting for host agent to pick up."],
+        "error": None,
+    }
+    _status_file().write_text(
+        json.dumps(initial_status_payload, indent=2), encoding="utf-8"
+    )
+
+    new_status = UpdateStatusResponse(
+        state="requested",
+        target_tag=target_tag,
+        started_at=now_iso,
+        progress=["Update requested — waiting for host agent to pick up."],
+    )
+
+    return TriggerUpdateResponse(
+        accepted=True,
+        message=f"Update to {target_tag} has been requested. The host agent will rebuild the stack shortly.",
+        status=new_status,
+    )

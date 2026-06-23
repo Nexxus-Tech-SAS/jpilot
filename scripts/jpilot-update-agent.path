@@ -1,0 +1,21 @@
+# JPilot update-agent path unit.
+#
+# Watches var/update/request.json inside the JPilot repository directory and
+# triggers jpilot-update-agent.service whenever that file is created or modified.
+#
+# INSTALL (as root):
+#   See install instructions in jpilot-update-agent.service.
+#
+[Unit]
+Description=JPilot update-request sentinel watcher
+Documentation=https://github.com/Nexxus-Tech-SAS/jpilot
+
+[Path]
+# PathExists fires when the file appears; PathModified covers re-writes.
+# Edit the path below to match your jpilot installation directory.
+PathExists=/opt/jpilot/var/update/request.json
+PathModified=/opt/jpilot/var/update/request.json
+Unit=jpilot-update-agent.service
+
+[Install]
+WantedBy=multi-user.target

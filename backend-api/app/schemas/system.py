@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 
@@ -32,3 +34,22 @@ class UpdateCheckResponse(BaseModel):
     checked_at: str
     check_error: str | None = None
     update_instructions: UpdateInstructions
+
+
+class UpdateStatusResponse(BaseModel):
+    """Current state of the host-side update agent."""
+
+    state: str = "idle"  # idle | requested | running | success | failed
+    target_tag: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    progress: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class TriggerUpdateResponse(BaseModel):
+    """Returned immediately after a trigger request is accepted."""
+
+    accepted: bool
+    message: str
+    status: UpdateStatusResponse

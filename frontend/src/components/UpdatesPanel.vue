@@ -53,18 +53,115 @@
           {{ updateInfo.check_error }} You can try again later.
         </Message>
 
+        <!-- One-click update button (admin only, shown when update is available) -->
+        <div
+          v-if="isAdmin && updateInfo?.update_available && !updateRunning && !updateDone"
+          class="flex gap-2 align-items-center flex-wrap"
+        >
+          <Button
+            :label="`Update to ${updateInfo.latest_display_version}`"
+            icon="pi pi-cloud-download"
+            size="small"
+            severity="warn"
+            :disabled="updateTriggered"
+            @click="confirmUpdate"
+          />
+          <span class="checked-at">Rebuilds the stack on the host — the app will briefly restart.</span>
+        </div>
+
+        <!-- Update progress panel -->
+        <div v-if="updateTriggered || updateRunning || updateDone" class="update-progress-panel">
+          <div class="flex align-items-center gap-2 mb-2">
+            <ProgressSpinner
+              v-if="updateRunning || (updateTriggered && !updateDone)"
+              style="width: 1.25rem; height: 1.25rem"
+            />
+            <span class="update-progress-title">
+              <template v-if="updateStatus?.state === 'success'">Update complete</template>
+              <template v-else-if="updateStatus?.state === 'failed'">Update failed</template>
+              <template v-else-if="updateStatus?.state === 'running'">Updating…</template>
+              <template v-else>Waiting for host agent…</template>
+            </span>
+          </div>
+
+          <Message
+            v-if="updateStatus?.state === 'success'"
+            severity="success"
+            :closable="false"
+            class="mb-2"
+          >
+            JPilot was updated to {{ updateStatus.target_tag }} successfully.
+          </Message>
+
+          <Message
+            v-if="updateStatus?.state === 'failed'"
+            severity="error"
+            :closable="false"
+            class="mb-2"
+          >
+            {{ updateStatus.error || 'Update failed — check host system logs.' }}
+          </Message>
+
+          <div v-if="updateStatus?.progress?.length" class="update-log">
+            <div
+              v-for="(line, i) in updateStatus.progress"
+              :key="i"
+              class="update-log-line"
+            >{{ line }}</div>
+          </div>
+
+          <div v-if="updateDone" class="mt-3">
+            <Button
+              label="Dismiss"
+              icon="pi pi-check"
+              size="small"
+              severity="secondary"
+              outlined
+              @click="resetUpdateUi"
+            />
+          </div>
+        </div>
+
         <div class="flex gap-2 flex-wrap">
           <Button
             label="Check for updates"
             icon="pi pi-refresh"
             size="small"
             :loading="checking"
+            :disabled="updateRunning"
             @click="runCheck(true)"
           />
           <span v-if="lastCheckedLabel" class="checked-at">{{ lastCheckedLabel }}</span>
         </div>
       </div>
     </div>
+
+    <!-- Confirm dialog -->
+    <Dialog
+      v-model:visible="showConfirmDialog"
+      modal
+      header="Confirm update"
+      :style="{ width: '28rem' }"
+    >
+      <p class="confirm-copy">
+        This will pull <strong>{{ updateInfo?.latest_display_version }}</strong> from GitHub
+        and rebuild the JPilot Docker stack on the host machine.
+        The app will be briefly unreachable while it restarts.
+      </p>
+      <p class="confirm-copy mt-2">
+        Your <code>.env</code> configuration and MongoDB data will be preserved.
+      </p>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined @click="showConfirmDialog = false" />
+        <Button
+          label="Update now"
+          icon="pi pi-cloud-download"
+          severity="warn"
+          :loading="triggerLoading"
+          @click="doTriggerUpdate"
+        />
+      </template>
+    </Dialog>
 
     <div
       v-if="updateInfo?.update_available"
@@ -155,20 +252,37 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import ChatMarkdown from './ChatMarkdown.vue'
 import { JPILOT_BETA } from '../config/product'
-import { checkForUpdates } from '../services/system'
+import { checkForUpdates, getUpdateStatus, triggerUpdate } from '../services/system'
+
+const props = defineProps({
+  isAdmin: {
+    type: Boolean,
+    default: false
+  }
+})
 
 const emit = defineEmits(['update-status'])
 
 const loading = ref(true)
 const checking = ref(false)
 const updateInfo = ref(null)
+
+// One-click update state
+const showConfirmDialog = ref(false)
+const triggerLoading = ref(false)
+const updateTriggered = ref(false)  // request sent, waiting for agent
+const updateRunning = ref(false)    // agent is running
+const updateDone = ref(false)       // success or failed
+const updateStatus = ref(null)
+let pollTimer = null
 
 const upgradeLinuxCommands = './scripts/upgrade.sh'
 const upgradeWindowsCommands = '.\\scripts\\upgrade.ps1'
@@ -214,7 +328,86 @@ async function copyCommands(text) {
   }
 }
 
+// ── One-click update ──────────────────────────────────────────────────────
+
+function confirmUpdate() {
+  showConfirmDialog.value = true
+}
+
+async function doTriggerUpdate() {
+  triggerLoading.value = true
+  try {
+    const result = await triggerUpdate()
+    showConfirmDialog.value = false
+    updateTriggered.value = true
+    updateStatus.value = result.status
+    startPolling()
+  } catch (err) {
+    showConfirmDialog.value = false
+    // 409 = already running; show that as the current status.
+    const detail = err.response?.data?.detail || 'Could not trigger update.'
+    updateTriggered.value = true
+    updateStatus.value = { state: 'failed', error: detail, progress: [] }
+    updateDone.value = true
+  } finally {
+    triggerLoading.value = false
+  }
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(pollStatus, 3000)
+}
+
+function stopPolling() {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+async function pollStatus() {
+  try {
+    const status = await getUpdateStatus()
+    updateStatus.value = status
+
+    const state = status.state
+    updateRunning.value = state === 'running'
+
+    if (state === 'success' || state === 'failed') {
+      stopPolling()
+      updateDone.value = true
+      updateRunning.value = false
+    }
+  } catch {
+    // Backend may be temporarily unreachable while the stack restarts.
+    // Keep retrying; append a note only if we haven't already.
+    if (updateStatus.value && !updateStatus.value._retrying) {
+      updateStatus.value = {
+        ...(updateStatus.value || {}),
+        _retrying: true,
+        progress: [
+          ...(updateStatus.value?.progress || []),
+          'Backend unreachable — waiting for stack to come back up…'
+        ]
+      }
+    }
+  }
+}
+
+function resetUpdateUi() {
+  stopPolling()
+  updateTriggered.value = false
+  updateRunning.value = false
+  updateDone.value = false
+  updateStatus.value = null
+  // Re-check version so the UI reflects the new installed version.
+  runCheck(true)
+}
+
 onMounted(() => runCheck(false))
+
+onUnmounted(() => stopPolling())
 
 defineExpose({ refresh: () => runCheck(true) })
 </script>
@@ -306,6 +499,46 @@ defineExpose({ refresh: () => runCheck(true) })
   display: inline-block;
   margin-top: 1rem;
   font-size: 0.8125rem;
+}
+
+/* ── One-click update ── */
+.update-progress-panel {
+  padding: 1rem 1.15rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--p-content-border-color);
+  background: var(--app-nested-surface, var(--p-surface-100));
+}
+
+.update-progress-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.update-log {
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Mono', monospace;
+  font-size: 0.78125rem;
+  line-height: 1.6;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--p-surface-950) 6%, transparent);
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+:global(.app-dark) .update-log {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.update-log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.confirm-copy {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--p-text-color);
 }
 
 .install-grid {

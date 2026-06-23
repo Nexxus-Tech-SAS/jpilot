@@ -1,0 +1,81 @@
+# JPilot update-agent service unit.
+#
+# Runs scripts/update-agent.sh as a one-shot job when triggered by the
+# jpilot-update-agent.path watcher.
+#
+# ─── INSTALL (run as root on the Docker host) ────────────────────────────────
+#
+#   1. Edit JPILOT_DIR below to match your installation path.
+#   2. Set User= to a host user who is in the 'docker' group (NOT root).
+#   3. Copy both unit files into systemd's unit directory:
+#
+#        JPILOT_DIR=/opt/jpilot    # adjust to your installation
+#        cp ${JPILOT_DIR}/scripts/jpilot-update-agent.service \
+#           /etc/systemd/system/jpilot-update-agent.service
+#        cp ${JPILOT_DIR}/scripts/jpilot-update-agent.path \
+#           /etc/systemd/system/jpilot-update-agent.path
+#
+#   4. Edit the installed copies to update JPILOT_DIR paths (PathExists/
+#      WorkingDirectory/ExecStart/EnvironmentFile as appropriate).
+#
+#   5. Reload systemd and enable:
+#
+#        systemctl daemon-reload
+#        systemctl enable --now jpilot-update-agent.path
+#
+#   6. Verify:
+#
+#        systemctl status jpilot-update-agent.path
+#        journalctl -u jpilot-update-agent.service -f
+#
+# ─── NON-SYSTEMD HOSTS ───────────────────────────────────────────────────────
+#
+#   On hosts without systemd (Docker Desktop, macOS, BSD) you can run the agent
+#   manually whenever you want to apply an update that the backend has requested:
+#
+#       cd /opt/jpilot
+#       sh scripts/update-agent.sh
+#
+#   Or watch the sentinel file yourself (e.g. with inotifywait or a cron loop):
+#
+#       while true; do
+#         [ -f /opt/jpilot/var/update/request.json ] && \
+#           sh /opt/jpilot/scripts/update-agent.sh
+#         sleep 5
+#       done
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=JPilot one-click self-update agent
+Documentation=https://github.com/Nexxus-Tech-SAS/jpilot
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Run as a non-root user who is a member of the 'docker' group.
+# Change this to the appropriate host user.
+User=jpilot
+Group=docker
+
+# Edit this path to match your JPilot installation directory.
+WorkingDirectory=/opt/jpilot
+
+# The update sentinel dir is bind-mounted at var/update inside the repo root.
+Environment=JPILOT_UPDATE_DIR=/opt/jpilot/var/update
+
+ExecStart=/bin/sh /opt/jpilot/scripts/update-agent.sh
+
+# Safety: do not restart automatically (each run is triggered by the path unit).
+Restart=no
+
+# Give the update plenty of time (build can take several minutes).
+TimeoutStartSec=600
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jpilot-update-agent
+
+[Install]
+WantedBy=multi-user.target

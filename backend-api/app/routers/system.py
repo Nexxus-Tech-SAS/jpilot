@@ -3,7 +3,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from app.dependencies import get_current_user, get_db, require_admin
 from app.schemas.jpilot_settings import JpilotSettingsResponse, JpilotSettingsUpdate, PortalConfigResponse
 from app.schemas.license import LicenseCodeUpdate, LicenseResponse
-from app.schemas.system import LicenseFingerprintResponse, UpdateCheckResponse, VersionResponse
+from app.schemas.system import (
+    LicenseFingerprintResponse,
+    TriggerUpdateResponse,
+    UpdateCheckResponse,
+    UpdateStatusResponse,
+    VersionResponse,
+)
 from app.services.jpilot_settings_service import get_jpilot_settings, get_portal_config, update_jpilot_settings
 from app.services.license_service import (
     get_installation_fingerprint,
@@ -13,7 +19,7 @@ from app.services.license_service import (
     save_license_code,
 )
 from app.services.license_sync_service import LicenseSyncError
-from app.services.update_service import check_for_updates, get_version_info
+from app.services.update_service import check_for_updates, get_version_info, read_update_status, request_update
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -51,6 +57,34 @@ async def read_update_check(
     _user=Depends(get_current_user),
 ) -> UpdateCheckResponse:
     return await check_for_updates(force=force)
+
+
+@router.post("/update", response_model=TriggerUpdateResponse)
+async def trigger_update(
+    _admin: dict = Depends(require_admin),
+) -> TriggerUpdateResponse:
+    """Trigger a one-click self-update (admin only).
+
+    Writes a sentinel file for the host-side systemd agent to pick up.
+    Returns HTTP 409 if an update is already in progress.
+    The body is intentionally empty — the target tag is resolved from GitHub,
+    never from the request.
+    """
+    try:
+        return await request_update()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get("/update/status", response_model=UpdateStatusResponse)
+async def get_update_status(
+    _user=Depends(get_current_user),
+) -> UpdateStatusResponse:
+    """Poll the current update state (readable by any authenticated user)."""
+    return read_update_status()
 
 
 @router.get("/license-fingerprint", response_model=LicenseFingerprintResponse)

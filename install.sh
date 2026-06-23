@@ -241,3 +241,44 @@ printf '  • Sign in with the admin account you created in the wizard.\n'
 printf '  • View logs with:   ./compose.sh logs -f\n'
 printf '  • Stop with:        ./compose.sh down\n'
 printf '\n'
+
+# ── Optional: install the one-click self-update agent (systemd hosts only) ──
+install_update_agent() {
+  _jpilot_dir="$(pwd)"
+  _service_src="${_jpilot_dir}/scripts/jpilot-update-agent.service"
+  _path_src="${_jpilot_dir}/scripts/jpilot-update-agent.path"
+  _service_dst="/etc/systemd/system/jpilot-update-agent.service"
+  _path_dst="/etc/systemd/system/jpilot-update-agent.path"
+
+  # Detect the non-root user running this script (may be sudo).
+  _run_user="${SUDO_USER:-$(id -un)}"
+
+  # Copy and patch the unit files with the real installation path and user.
+  sed "s|/opt/jpilot|${_jpilot_dir}|g; s|^User=jpilot|User=${_run_user}|" \
+    "${_service_src}" > "${_service_dst}"
+  sed "s|/opt/jpilot|${_jpilot_dir}|g" \
+    "${_path_src}" > "${_path_dst}"
+
+  systemctl daemon-reload
+  systemctl enable --now jpilot-update-agent.path
+
+  printf '  One-click update agent installed and enabled.\n'
+  printf '  The backend will signal it via var/update/request.json.\n'
+}
+
+printf '  ── One-click self-update agent (optional) ────────────────────────────\n'
+if ! command -v systemctl >/dev/null 2>&1; then
+  printf '  systemd not found — skipping automatic agent install.\n'
+  printf '  To enable one-click updates, run the agent manually:\n'
+  printf '      sh scripts/update-agent.sh\n'
+  printf '  See scripts/jpilot-update-agent.service for full instructions.\n'
+elif [ "$(id -u)" -ne 0 ]; then
+  printf '  Run this installer as root (or with sudo) to install the update agent.\n'
+  printf '  To install it manually later:\n'
+  printf '      sudo sh scripts/install-update-agent.sh   # (or follow service file comments)\n'
+else
+  printf '  Installing the systemd one-click update agent...\n'
+  install_update_agent || printf '  WARNING: agent install failed — see error above. Continuing.\n'
+fi
+printf '  ──────────────────────────────────────────────────────────────────────\n'
+printf '\n'

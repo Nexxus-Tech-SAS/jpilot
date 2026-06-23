@@ -50,6 +50,7 @@ services:
       - ./VERSION:/usr/share/jpilot/VERSION:ro
       - ${SSL_CERTS_PATH:-./nginx/ssl}:/var/jpilot/ssl:rw
       - jpilot-nginx-run:/var/run/jpilot:rw
+      - ./var/update:/var/jpilot/update
     environment:
       - NSAGENT_ENCRYPTION_KEY=${NSAGENT_ENCRYPTION_KEY}
       - NGINX_HOSTNAME=${NGINX_HOSTNAME:-jpilot.nexxus-tech.com}

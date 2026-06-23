@@ -42,3 +42,22 @@ export async function importOfflineLicense(file) {
   })
   return data
 }
+
+/**
+ * Trigger a one-click self-update (admin only).
+ * Returns a TriggerUpdateResponse: { accepted, message, status }.
+ * Throws an AxiosError with status 409 if an update is already running.
+ */
+export async function triggerUpdate() {
+  const { data } = await api.post('/system/update')
+  return data
+}
+
+/**
+ * Poll the current update status.
+ * Returns UpdateStatusResponse: { state, target_tag, progress[], error, started_at, finished_at }.
+ */
+export async function getUpdateStatus() {
+  const { data } = await api.get('/system/update/status')
+  return data
+}
