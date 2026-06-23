@@ -96,11 +96,17 @@
                 @update:model-value="onRolePickerChange"
               >
                 <template #option="slotProps">
-                  <i
-                    :class="slotProps.option.icon"
-                    v-tooltip.bottom="roleOptionTooltip(slotProps.option)"
-                    :aria-label="slotProps.option.label"
-                  />
+                  <span
+                    class="role-toggle-option"
+                    :class="{ 'role-toggle-option-persona': slotProps.option.isCustomPersona }"
+                    :style="{ '--role-option-accent': slotProps.option.accent }"
+                  >
+                    <i
+                      :class="slotProps.option.icon"
+                      v-tooltip.bottom="roleOptionTooltip(slotProps.option)"
+                      :aria-label="slotProps.option.label"
+                    />
+                  </span>
                 </template>
               </SelectButton>
               <div v-if="roleProviders.length" class="beta-header-model">
@@ -210,24 +216,52 @@
               <span class="beta-options-hint">Saved on this device until you delete them</span>
             </div>
 
-            <div v-if="showConversationSwitcher" class="beta-options-group">
+            <div v-if="showConversationSwitcher" class="beta-options-group beta-options-group-roles">
               <span class="beta-options-label">Role</span>
-              <SelectButton
-                :model-value="activeRolePickerId"
-                :options="roleOptions"
-                option-value="id"
-                data-key="id"
-                :allow-empty="false"
-                class="beta-role-toggle-mobile w-full"
-                :disabled="isGenerating"
-                aria-label="JPilot role"
-                @update:model-value="onRolePickerChange"
-              >
-                <template #option="slotProps">
-                  <i :class="slotProps.option.icon" :aria-label="slotProps.option.label" />
-                  <span class="beta-role-toggle-label">{{ slotProps.option.label }}</span>
-                </template>
-              </SelectButton>
+              <div class="beta-role-picker-mobile">
+                <div class="beta-role-picker-base" role="group" aria-label="JPilot role">
+                  <button
+                    v-for="role in baseRoleOptions"
+                    :key="role.id"
+                    type="button"
+                    class="beta-role-picker-btn"
+                    :class="{ 'beta-role-picker-btn-active': activeRolePickerId === role.id }"
+                    :style="{ '--role-option-accent': role.accent }"
+                    :disabled="isGenerating"
+                    :aria-label="role.label"
+                    :aria-pressed="activeRolePickerId === role.id"
+                    @click="onRolePickerChange(role.id)"
+                  >
+                    <span class="role-toggle-option">
+                      <i :class="role.icon" aria-hidden="true" />
+                    </span>
+                    <span class="beta-role-toggle-label">{{ role.label }}</span>
+                  </button>
+                </div>
+
+                <div v-if="customPersonaOptions.length" class="beta-role-picker-personas">
+                  <span class="beta-role-picker-personas-label">Personas</span>
+                  <div class="beta-role-picker-personas-grid" role="group" aria-label="Custom personas">
+                    <button
+                      v-for="persona in customPersonaOptions"
+                      :key="persona.id"
+                      type="button"
+                      class="beta-role-picker-btn beta-role-picker-btn-persona"
+                      :class="{ 'beta-role-picker-btn-active': activeRolePickerId === persona.id }"
+                      :style="{ '--role-option-accent': persona.accent }"
+                      :disabled="isGenerating"
+                      :aria-label="persona.label"
+                      :aria-pressed="activeRolePickerId === persona.id"
+                      @click="onRolePickerChange(persona.id)"
+                    >
+                      <span class="role-toggle-option role-toggle-option-persona">
+                        <i :class="persona.icon" aria-hidden="true" />
+                      </span>
+                      <span class="beta-role-toggle-label">{{ persona.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div v-if="showConversationSwitcher && webSearchAvailable" class="beta-options-group">
@@ -694,11 +728,17 @@
         @update:model-value="onRolePickerChange"
       >
         <template #option="slotProps">
-          <i
-            :class="slotProps.option.icon"
-            v-tooltip.bottom="roleOptionTooltip(slotProps.option)"
-            :aria-label="slotProps.option.label"
-          />
+          <span
+            class="role-toggle-option"
+            :class="{ 'role-toggle-option-persona': slotProps.option.isCustomPersona }"
+            :style="{ '--role-option-accent': slotProps.option.accent }"
+          >
+            <i
+              :class="slotProps.option.icon"
+              v-tooltip.bottom="roleOptionTooltip(slotProps.option)"
+              :aria-label="slotProps.option.label"
+            />
+          </span>
         </template>
       </SelectButton>
       <Select
@@ -1240,6 +1280,7 @@ import {
 } from '../stores/copilotChatRuns'
 import { notifyReplyReady } from '../services/chatNotifications'
 import {
+  CUSTOM_PERSONA_ACCENT,
   DEFAULT_JPILOT_ROLE,
   JPILOT_ROLES,
   getRoleById,
@@ -1517,12 +1558,15 @@ const roleOptions = computed(() => {
     suggestedPaneLabel: p.suggestedPaneLabel || p.label,
     handoffTarget: null,
     icon: 'pi pi-user',
-    accent: '#a855f7',
+    accent: CUSTOM_PERSONA_ACCENT,
     isCustomPersona: true,
     baseRole: p.baseRole
   }))
   return [...JPILOT_ROLES, ...customs]
 })
+
+const baseRoleOptions = computed(() => roleOptions.value.filter((role) => !role.isCustomPersona))
+const customPersonaOptions = computed(() => roleOptions.value.filter((role) => role.isCustomPersona))
 
 const activeRole = computed(() => {
   const opts = roleOptions.value
@@ -1680,13 +1724,7 @@ function isApplianceConnected() {
 }
 
 function roleOptionTooltip(role) {
-  const names = props.providers
-    .filter((provider) => providerSupportsRole(provider, role.id))
-    .map((provider) => provider.providerName)
-  const llmLine = names.length
-    ? `LLM: ${names.join(', ')}`
-    : 'No LLM assigned for this role'
-  return `${role.label} — ${llmLine}`
+  return role.label
 }
 
 function providerSupportsRole(provider, roleId) {
@@ -2605,8 +2643,27 @@ onUnmounted(() => {
   padding: 0.45rem 0.65rem;
 }
 
-.pane-role-toggle :deep(.p-togglebutton i) {
+.role-toggle-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.role-toggle-option-labeled {
+  gap: 0.35rem;
+}
+
+.pane-role-toggle :deep(.p-togglebutton .role-toggle-option i),
+.beta-role-toggle :deep(.p-togglebutton .role-toggle-option i) {
+  color: var(--role-option-accent);
   font-size: 1rem;
+}
+
+.pane-role-toggle :deep(.p-togglebutton:nth-child(4)),
+.beta-role-toggle :deep(.p-togglebutton:nth-child(4)) {
+  margin-left: 0.4rem;
+  padding-left: 0.65rem;
+  border-left: 2px solid #f59e0b;
 }
 
 .pane-select {
@@ -3352,8 +3409,109 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  width: min(22rem, 80vw);
+  width: min(22rem, 92vw);
   padding: 0.25rem;
+}
+
+.beta-options-group-roles {
+  gap: 0.65rem;
+}
+
+.beta-role-picker-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.beta-role-picker-base {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.beta-role-picker-personas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.65rem;
+  border-top: 2px solid #f59e0b;
+}
+
+.beta-role-picker-personas-label {
+  font-size: 0.6875rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #f59e0b;
+}
+
+.beta-role-picker-personas-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.beta-role-picker-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 4.25rem;
+  padding: 0.55rem 0.45rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--p-content-border-color);
+  background: var(--p-content-background);
+  color: var(--p-text-color);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.beta-role-picker-btn:hover:not(:disabled),
+.beta-role-picker-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--role-option-accent) 45%, var(--p-content-border-color));
+  outline: none;
+}
+
+.beta-role-picker-btn-active {
+  border-color: var(--role-option-accent);
+  background: color-mix(in srgb, var(--role-option-accent) 10%, var(--p-content-background));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--role-option-accent) 35%, transparent) inset;
+}
+
+.beta-role-picker-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.beta-role-picker-btn .role-toggle-option i {
+  color: var(--role-option-accent);
+  font-size: 1rem;
+}
+
+.beta-role-picker-btn .beta-role-toggle-label {
+  width: 100%;
+  text-align: center;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.beta-role-picker-btn-persona .beta-role-toggle-label {
+  color: var(--role-option-accent);
+}
+
+@media (max-width: 380px) {
+  .beta-role-picker-personas-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .beta-options-meta {
@@ -3961,13 +4119,6 @@ onUnmounted(() => {
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--p-text-muted-color);
-}
-
-.beta-role-toggle-mobile :deep(.p-togglebutton) {
-  flex: 1;
-  justify-content: center;
-  gap: 0.35rem;
-  padding: 0.55rem 0.65rem;
 }
 
 .beta-role-toggle-label {

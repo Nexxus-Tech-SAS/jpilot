@@ -9,7 +9,7 @@ export const JPILOT_ROLES = [
     suggestedPaneLabel: 'Plan',
     handoffTarget: 'operator',
     icon: 'pi pi-compass',
-    accent: '#6366f1'
+    accent: '#9333ea'
   },
   {
     id: 'operator',
@@ -19,7 +19,7 @@ export const JPILOT_ROLES = [
     suggestedPaneLabel: 'Operate',
     handoffTarget: null,
     icon: 'pi pi-cog',
-    accent: '#0ea5e9'
+    accent: '#2563eb'
   },
   {
     id: 'analyst',
@@ -32,6 +32,9 @@ export const JPILOT_ROLES = [
     accent: '#10b981'
   }
 ]
+
+/** Accent for installed custom personas in the role picker (distinct from base roles). */
+export const CUSTOM_PERSONA_ACCENT = '#f59e0b'
 
 export const DEFAULT_JPILOT_ROLE = 'operator'
 
