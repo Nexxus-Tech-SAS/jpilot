@@ -22,13 +22,19 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
+# Where the Docker Compose stack is run from. For a standalone JPilot install this
+# is the repo itself; for the unified Nexxus stack it's the parent dir whose
+# docker-compose.yml orchestrates jpilot + scstudio. The git checkout always happens
+# in the JPilot repo (ROOT); only the compose build/up uses COMPOSE_ROOT.
+COMPOSE_ROOT="${JPILOT_COMPOSE_ROOT:-${ROOT}}"
+
 UPDATE_DIR="${JPILOT_UPDATE_DIR:-${ROOT}/var/update}"
 REQUEST_FILE="${UPDATE_DIR}/request.json"
 STATUS_FILE="${UPDATE_DIR}/status.json"
 DRY_RUN="${DRY_RUN:-0}"
 
-COMPOSE_DEV="-f ${ROOT}/docker-compose.yml"
-COMPOSE_PROD="-f ${ROOT}/docker-compose.yml -f ${ROOT}/docker-compose.prod.yml"
+COMPOSE_DEV="-f ${COMPOSE_ROOT}/docker-compose.yml"
+COMPOSE_PROD="-f ${COMPOSE_ROOT}/docker-compose.yml -f ${COMPOSE_ROOT}/docker-compose.prod.yml"
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -201,6 +207,9 @@ run_update() {
     return 1
   fi
 
+  # Build/up runs from the compose root (the repo for standalone, the parent
+  # orchestration dir for the unified stack).
+  cd "$COMPOSE_ROOT"
   if [ "${MODE}" = "prod" ] || [ "${MODE}" = "production" ]; then
     COMPOSE_FLAGS="${COMPOSE_PROD}"
     append_progress "Rebuilding production stack..."

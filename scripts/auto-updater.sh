@@ -21,6 +21,19 @@ JPILOT_DIR=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 AGENT_SCRIPT="${JPILOT_DIR}/scripts/update-agent.sh"
 UPDATE_DIR="${JPILOT_DIR}/var/update"
 
+# Detect the Docker Compose root: a standalone JPilot install uses the repo itself;
+# the unified Nexxus stack is orchestrated by the parent dir's docker-compose.yml
+# (which runs jpilot + scstudio together). The agent rebuilds from this root.
+PARENT_DIR=$(CDPATH= cd -- "${JPILOT_DIR}/.." && pwd)
+if [ -f "${PARENT_DIR}/docker-compose.yml" ] && grep -q "jpilot" "${PARENT_DIR}/docker-compose.yml" 2>/dev/null; then
+  COMPOSE_ROOT="${PARENT_DIR}"
+  DEPLOY_MODE="unified"
+else
+  COMPOSE_ROOT="${JPILOT_DIR}"
+  DEPLOY_MODE="standalone"
+fi
+COMPOSE_ROOT="${JPILOT_COMPOSE_ROOT:-${COMPOSE_ROOT}}"
+
 SERVICE_NAME="jpilot-update-agent"
 SYSTEMD_DIR="/etc/systemd/system"
 PATH_UNIT="${SYSTEMD_DIR}/${SERVICE_NAME}.path"
@@ -87,6 +100,7 @@ User=${RUN_USER}
 Group=docker
 WorkingDirectory=${JPILOT_DIR}
 Environment=JPILOT_UPDATE_DIR=${UPDATE_DIR}
+Environment=JPILOT_COMPOSE_ROOT=${COMPOSE_ROOT}
 ExecStart=/bin/sh ${AGENT_SCRIPT}
 TimeoutStartSec=600
 Restart=no
@@ -144,6 +158,7 @@ status_auto_update() {
   fi
   echo "----------------------------------------------------------"
   echo " JPilot install : ${JPILOT_DIR}"
+  echo " Deployment     : ${DEPLOY_MODE} (compose root: ${COMPOSE_ROOT})"
   echo " Run-as user    : ${RUN_USER}"
   echo " Sentinel dir   : ${UPDATE_DIR}"
   echo " Auto-update    : ${state}"
