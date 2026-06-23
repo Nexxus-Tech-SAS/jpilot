@@ -53,3 +53,10 @@ class TriggerUpdateResponse(BaseModel):
     accepted: bool
     message: str
     status: UpdateStatusResponse
+
+
+class UpdateAgentResponse(BaseModel):
+    """Whether the host-side update watcher was armed via auto-updater.sh."""
+
+    armed: bool = False
+    marker_path: str | None = None

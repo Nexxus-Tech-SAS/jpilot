@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.81` — **JPilot chat role picker polish.** Role icons in the chat header use distinct colors (Architect purple, Operator blue, Analyst green; custom personas amber) with an amber separator before installed personas on desktop. Role tooltips show the role name only. On iPhone, the options menu (⋮) lays out roles in a 3-column grid and custom personas in a separate **Personas** section so multiple personas no longer cram into one tight row.
+**Current release:** `v0.82` — **Fix one-click Update on production.** Production compose now bind-mounts `var/update` into the backend so the host systemd agent receives update requests; About & updates warns when the agent is not armed or never picks up a request.
+
+**v0.81** — **JPilot chat role picker polish.** Role icons in the chat header use distinct colors (Architect purple, Operator blue, Analyst green; custom personas amber) with an amber separator before installed personas on desktop. Role tooltips show the role name only. On iPhone, the options menu (⋮) lays out roles in a 3-column grid and custom personas in a separate **Personas** section so multiple personas no longer cram into one tight row.
 
 **v0.80** — **CLI tutorial in About & updates.** The About & updates panel gains a collapsible **"Enable auto-updates from the CLI"** tutorial (hidden until clicked) that shows how to arm the host updater (`sudo ./scripts/auto-updater.sh enable`), rendered as a styled terminal with a **typewriter animation** that types the commands out (click to replay) plus a Copy button.
 

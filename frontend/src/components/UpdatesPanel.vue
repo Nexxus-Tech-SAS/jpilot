@@ -53,6 +53,17 @@
           {{ updateInfo.check_error }} You can try again later.
         </Message>
 
+        <Message
+          v-if="isAdmin && updateInfo?.update_available && agentStatusLoaded && !updateAgentArmed"
+          severity="warn"
+          :closable="false"
+        >
+          The host update agent is not armed on this server. Before using
+          <strong>Update</strong>, SSH to the Ubuntu host and run
+          <code>sudo ./scripts/auto-updater.sh enable</code> from your JPilot install directory.
+          Expand the CLI tutorial below for the exact steps.
+        </Message>
+
         <!-- One-click update button (admin only, shown when update is available) -->
         <div
           v-if="isAdmin && updateInfo?.update_available && !updateRunning && !updateDone"
@@ -100,6 +111,19 @@
             class="mb-2"
           >
             {{ updateStatus.error || 'Update failed — check host system logs.' }}
+          </Message>
+
+          <Message
+            v-if="agentStuck && updateStatus?.state === 'requested'"
+            severity="warn"
+            :closable="false"
+            class="mb-2"
+          >
+            The host agent never picked up this update. On the Ubuntu server, verify:
+            (1) <code>sudo ./scripts/auto-updater.sh status</code> shows ENABLED,
+            (2) production compose bind-mounts <code>./var/update:/var/jpilot/update</code>,
+            then re-run enable and try again. Check logs with
+            <code>sudo journalctl -u jpilot-update-agent.service -n 50</code>.
           </Message>
 
           <div v-if="updateStatus?.progress?.length" class="update-log">
@@ -302,7 +326,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import ChatMarkdown from './ChatMarkdown.vue'
 import { JPILOT_BETA } from '../config/product'
-import { checkForUpdates, getUpdateStatus, triggerUpdate } from '../services/system'
+import { checkForUpdates, getUpdateAgentStatus, getUpdateStatus, triggerUpdate } from '../services/system'
 
 const props = defineProps({
   isAdmin: {
@@ -324,8 +348,36 @@ const updateTriggered = ref(false)  // request sent, waiting for agent
 const updateRunning = ref(false)    // agent is running
 const updateDone = ref(false)       // success or failed
 const updateStatus = ref(null)
+const updateAgentArmed = ref(false)
+const agentStatusLoaded = ref(false)
+const agentStuck = ref(false)
 let pollTimer = null
+let pollAttempts = 0
 
+async function loadAgentStatus() {
+  try {
+    const status = await getUpdateAgentStatus()
+    updateAgentArmed.value = Boolean(status?.armed)
+  } catch {
+    updateAgentArmed.value = false
+  } finally {
+    agentStatusLoaded.value = true
+  }
+}
+
+async function resumeInProgressUpdate() {
+  try {
+    const status = await getUpdateStatus()
+    if (status.state === 'requested' || status.state === 'running') {
+      updateTriggered.value = true
+      updateStatus.value = status
+      updateRunning.value = status.state === 'running'
+      startPolling()
+    }
+  } catch {
+    // Ignore — panel still loads normally.
+  }
+}
 const upgradeLinuxCommands = './scripts/upgrade.sh'
 const upgradeWindowsCommands = '.\\scripts\\upgrade.ps1'
 
@@ -456,6 +508,8 @@ async function doTriggerUpdate() {
 
 function startPolling() {
   stopPolling()
+  pollAttempts = 0
+  agentStuck.value = false
   pollTimer = setInterval(pollStatus, 3000)
 }
 
@@ -467,12 +521,17 @@ function stopPolling() {
 }
 
 async function pollStatus() {
+  pollAttempts += 1
   try {
     const status = await getUpdateStatus()
     updateStatus.value = status
 
     const state = status.state
     updateRunning.value = state === 'running'
+
+    if (state === 'requested' && pollAttempts >= 15 && !updateAgentArmed.value) {
+      agentStuck.value = true
+    }
 
     if (state === 'success' || state === 'failed') {
       stopPolling()
@@ -501,11 +560,16 @@ function resetUpdateUi() {
   updateRunning.value = false
   updateDone.value = false
   updateStatus.value = null
+  agentStuck.value = false
+  pollAttempts = 0
   // Re-check version so the UI reflects the new installed version.
   runCheck(true)
+  loadAgentStatus()
 }
 
-onMounted(() => runCheck(false))
+onMounted(async () => {
+  await Promise.all([runCheck(false), loadAgentStatus(), resumeInProgressUpdate()])
+})
 
 onUnmounted(() => {
   stopPolling()

@@ -291,6 +291,20 @@ def _read_compose_mode() -> str:
     return "dev"
 
 
+def is_update_agent_armed() -> bool:
+    """True when auto-updater.sh has installed the host watcher (marker on shared volume)."""
+    marker = _update_dir() / ".agent-armed"
+    try:
+        return marker.is_file()
+    except OSError:
+        return False
+
+
+def get_update_agent_info() -> tuple[bool, str]:
+    marker = _update_dir() / ".agent-armed"
+    return is_update_agent_armed(), str(marker)
+
+
 def read_update_status() -> UpdateStatusResponse:
     """Read status.json from the sentinel dir; return idle defaults if absent."""
     status_path = _status_file()

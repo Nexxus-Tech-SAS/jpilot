@@ -6,6 +6,7 @@ from app.schemas.license import LicenseCodeUpdate, LicenseResponse
 from app.schemas.system import (
     LicenseFingerprintResponse,
     TriggerUpdateResponse,
+    UpdateAgentResponse,
     UpdateCheckResponse,
     UpdateStatusResponse,
     VersionResponse,
@@ -19,7 +20,13 @@ from app.services.license_service import (
     save_license_code,
 )
 from app.services.license_sync_service import LicenseSyncError
-from app.services.update_service import check_for_updates, get_version_info, read_update_status, request_update
+from app.services.update_service import (
+    check_for_updates,
+    get_update_agent_info,
+    get_version_info,
+    read_update_status,
+    request_update,
+)
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -85,6 +92,15 @@ async def get_update_status(
 ) -> UpdateStatusResponse:
     """Poll the current update state (readable by any authenticated user)."""
     return read_update_status()
+
+
+@router.get("/update/agent", response_model=UpdateAgentResponse)
+async def get_update_agent(
+    _user=Depends(get_current_user),
+) -> UpdateAgentResponse:
+    """Report whether the host update watcher is armed (auto-updater.sh enable)."""
+    armed, marker_path = get_update_agent_info()
+    return UpdateAgentResponse(armed=armed, marker_path=marker_path)
 
 
 @router.get("/license-fingerprint", response_model=LicenseFingerprintResponse)

@@ -24,8 +24,10 @@ services:
       target: prod
     volumes: !override
       - ./backend-api/app/resources:/app/app/resources:ro
+      - ./VERSION:/usr/share/jpilot/VERSION:ro
       - ${SSL_CERTS_PATH:-./nginx/ssl}:/var/jpilot/ssl:rw
       - jpilot-nginx-run:/var/run/jpilot:rw
+      - ./var/update:/var/jpilot/update
     environment:
       - SSL_CERTS_PATH=/var/jpilot/ssl
       - JPILOT_NGINX_RELOAD_SIGNAL=/var/run/jpilot/reload-nginx

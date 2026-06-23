@@ -61,3 +61,9 @@ export async function getUpdateStatus() {
   const { data } = await api.get('/system/update/status')
   return data
 }
+
+/** Whether auto-updater.sh enable was run on the host (systemd watcher armed). */
+export async function getUpdateAgentStatus() {
+  const { data } = await api.get('/system/update/agent')
+  return data
+}

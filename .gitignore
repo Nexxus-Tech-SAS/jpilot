@@ -53,3 +53,5 @@ mongodb_data/
 # Self-update sentinel runtime files (keep dir skeleton, ignore generated files)
 /var/update/request.json
 /var/update/status.json
+/var/update/.agent-armed
+/var/update/agent.log
