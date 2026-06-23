@@ -83,6 +83,21 @@ def _resolve_symlink(link: Path) -> Path | None:
     return target if target.is_dir() else None
 
 
+def remove_installed_pack(pack_id: str) -> str | None:
+    """Remove an installed knowledge pack from disk (all versions + symlinks).
+
+    Returns the removed current version (``""`` if unknown), or ``None`` when the
+    pack is not installed.
+    """
+    pack_dir = _pack_dir((pack_id or "").strip())
+    if not pack_dir.is_dir():
+        return None
+    current = _resolve_symlink(_current_link(pack_id))
+    version = current.name if current else ""
+    shutil.rmtree(pack_dir)
+    return version
+
+
 def _set_symlink(link: Path, target: Path) -> None:
     link.parent.mkdir(parents=True, exist_ok=True)
     if link.is_symlink() or link.exists():

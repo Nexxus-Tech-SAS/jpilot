@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -415,6 +416,7 @@ async def fetch_calibration_catalog(
         sync_payload = {}
     # Enrichment + gating apply uniformly across all types, keyed by (type, id).
     catalog_items = _enrich_catalog_skills_with_sync_entitlements(catalog_items, sync_payload)
+    _mark_installed_non_skill_items(catalog_items)
     catalog_skills = _skills_only(catalog_items)
     installed_rows = list_installed_skills()
     license_context = await get_license_context_for_studio(db)
@@ -464,10 +466,22 @@ class CalibrationUninstallResult:
 
 def _resolve_bundle_url(base: str, bundle_url: str) -> str:
     cleaned = (bundle_url or "").strip()
+    base = base.rstrip("/")
     if cleaned.startswith("http://") or cleaned.startswith("https://"):
-        return cleaned
+        # Bundles are always served by the configured Calibration host. Rebase the
+        # absolute URL's path onto `base` so downloads use the same reachable host
+        # as catalog/sync — the public hostname scstudio embeds may not be routable
+        # from this backend (e.g. inside Docker the public domain isn't reachable,
+        # only the internal service name is).
+        split = urlsplit(cleaned)
+        path = split.path or "/"
+        if split.query:
+            path = f"{path}?{split.query}"
+        if not path.startswith("/"):
+            path = f"/{path}"
+        return f"{base}{path}"
     path = cleaned if cleaned.startswith("/") else f"/{cleaned}"
-    return f"{base.rstrip('/')}{path}"
+    return f"{base}{path}"
 
 
 def _manifest_from_skill_dir(skill_dir: Path) -> dict[str, Any]:
@@ -637,6 +651,51 @@ async def install_calibration_skill(
 
 def _personas_root() -> Path:
     return PERSONAS_DIR
+
+
+def list_installed_personas() -> dict[str, str]:
+    """Map personaId -> installed version (latest on disk) for personas under PERSONAS_DIR."""
+    root = _personas_root()
+    installed: dict[str, str] = {}
+    if not root.is_dir():
+        return installed
+    for persona_dir in sorted(root.iterdir()):
+        if not persona_dir.is_dir():
+            continue
+        versions = [
+            v.name
+            for v in persona_dir.iterdir()
+            if v.is_dir() and (v / "manifest.json").is_file()
+        ]
+        if versions:
+            installed[persona_dir.name] = max(versions)
+    return installed
+
+
+def _mark_installed_non_skill_items(items: list[dict[str, Any]]) -> None:
+    """Set install state on persona/knowledge_pack catalog items (skills use installedBlueprints)."""
+    from app.services.knowledge_pack_service import get_installed_knowledge_pack_sync_state
+
+    installed_personas = list_installed_personas()
+    installed_pack = get_installed_knowledge_pack_sync_state() or {}
+    for item in items:
+        item_type = _normalize_type(item.get("type"))
+        if item_type == PERSONA_TYPE:
+            installed_version = installed_personas.get(str(item.get("id") or ""))
+        elif item_type == KNOWLEDGE_PACK_TYPE:
+            installed_version = (
+                str(installed_pack.get("version") or "")
+                if str(installed_pack.get("id") or "") == str(item.get("id") or "")
+                else None
+            )
+        else:
+            continue
+        catalog_version = str(item.get("version") or "")
+        item["installed"] = bool(installed_version)
+        item["installedVersion"] = installed_version or None
+        item["updateAvailable"] = bool(
+            installed_version and catalog_version and installed_version != catalog_version
+        )
 
 
 def _catalog_item(
@@ -946,6 +1005,80 @@ async def uninstall_calibration_skill(
         skill_id=cleaned_id,
         label=label,
         removed_versions=sorted(removed_versions),
+    )
+
+
+async def uninstall_calibration_persona(
+    db: AsyncIOMotorDatabase,
+    persona_id: str,
+    *,
+    version: str | None = None,
+) -> CalibrationUninstallResult:
+    cleaned_id = (persona_id or "").strip()
+    if not cleaned_id:
+        raise CalibrationSyncError("personaId is required.", status_code=400)
+    cleaned_version = (version or "").strip() or None
+
+    persona_dir = _personas_root() / _safe_segment(cleaned_id)
+    version_dirs = []
+    if persona_dir.is_dir():
+        version_dirs = [
+            d for d in persona_dir.iterdir()
+            if d.is_dir() and (d / "manifest.json").is_file()
+        ]
+    if cleaned_version:
+        version_dirs = [d for d in version_dirs if d.name == cleaned_version]
+
+    index_query: dict[str, Any] = {"personaId": cleaned_id}
+    if cleaned_version:
+        index_query["version"] = cleaned_version
+    index_doc = await db[PERSONA_COLLECTION].find_one(index_query)
+
+    if not version_dirs and not index_doc:
+        detail = (
+            f"Persona '{cleaned_id}' version '{cleaned_version}' is not installed locally."
+            if cleaned_version
+            else f"Persona '{cleaned_id}' is not installed locally."
+        )
+        raise CalibrationSyncError(detail, status_code=404)
+
+    label = str((index_doc or {}).get("label") or cleaned_id)
+    removed_versions: list[str] = []
+    for d in version_dirs:
+        shutil.rmtree(d)
+        removed_versions.append(d.name)
+    if persona_dir.is_dir() and not any(persona_dir.iterdir()):
+        persona_dir.rmdir()
+
+    await db[PERSONA_COLLECTION].delete_many(index_query)
+
+    return CalibrationUninstallResult(
+        skill_id=cleaned_id,
+        label=label,
+        removed_versions=sorted(removed_versions),
+    )
+
+
+async def uninstall_calibration_knowledge_pack(
+    db: AsyncIOMotorDatabase,
+    pack_id: str,
+) -> CalibrationUninstallResult:
+    from app.services.knowledge_pack_service import remove_installed_pack
+
+    cleaned_id = (pack_id or "").strip()
+    if not cleaned_id:
+        raise CalibrationSyncError("packId is required.", status_code=400)
+
+    removed_version = remove_installed_pack(cleaned_id)
+    if removed_version is None:
+        raise CalibrationSyncError(
+            f"Knowledge pack '{cleaned_id}' is not installed locally.",
+            status_code=404,
+        )
+    return CalibrationUninstallResult(
+        skill_id=cleaned_id,
+        label=cleaned_id,
+        removed_versions=[removed_version] if removed_version else [],
     )
 
 

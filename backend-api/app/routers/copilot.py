@@ -64,6 +64,8 @@ from app.services.calibration_sync_service import (
     install_calibration_skill,
     list_installed_skills,
     sync_calibrations_from_studio,
+    uninstall_calibration_knowledge_pack,
+    uninstall_calibration_persona,
     uninstall_calibration_skill,
 )
 from app.services.knowledge_pack_service import (
@@ -580,6 +582,45 @@ async def uninstall_calibration(
         label=result.label,
         removedVersions=result.removed_versions,
         message=f"Removed {result.label} ({removed}) from this installation.",
+    )
+
+
+@router.delete("/calibrations/personas/{persona_id}", response_model=CalibrationUninstallResponse)
+async def uninstall_calibration_persona_route(
+    persona_id: str,
+    version: str | None = None,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> CalibrationUninstallResponse:
+    try:
+        result = await uninstall_calibration_persona(db, persona_id, version=version)
+    except CalibrationSyncError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    removed = ", ".join(result.removed_versions) if result.removed_versions else "none"
+    return CalibrationUninstallResponse(
+        skillId=result.skill_id,
+        label=result.label,
+        removedVersions=result.removed_versions,
+        message=f"Removed persona {result.label} ({removed}) from this installation.",
+    )
+
+
+@router.delete("/calibrations/knowledge-packs/{pack_id}", response_model=CalibrationUninstallResponse)
+async def uninstall_calibration_knowledge_pack_route(
+    pack_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> CalibrationUninstallResponse:
+    try:
+        result = await uninstall_calibration_knowledge_pack(db, pack_id)
+    except CalibrationSyncError as exc:
+        raise HTTPException(status_code=exc.status_code or status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    removed = ", ".join(result.removed_versions) if result.removed_versions else "none"
+    return CalibrationUninstallResponse(
+        skillId=result.skill_id,
+        label=result.label,
+        removedVersions=result.removed_versions,
+        message=f"Removed knowledge pack {result.label} ({removed}) from this installation.",
     )
 
 

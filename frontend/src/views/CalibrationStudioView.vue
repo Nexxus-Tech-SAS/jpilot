@@ -112,12 +112,6 @@
 
     <!-- Notifications -->
     <div class="studio-messages">
-      <Message v-if="checkMessage" :severity="checkSeverity" :closable="true" @close="clearCheckMessage">
-        <div>{{ checkMessage }}</div>
-        <ul v-if="checkDetails.length" class="check-details m-0 mt-2 pl-3">
-          <li v-for="line in checkDetails" :key="line">{{ line }}</li>
-        </ul>
-      </Message>
       <Message v-if="syncError" severity="warn" :closable="false">{{ syncError }}</Message>
     </div>
 
@@ -291,6 +285,7 @@ import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import MarketplaceSkillCard from '../components/MarketplaceSkillCard.vue'
 import BlueprintDetailsDrawer from '../components/BlueprintDetailsDrawer.vue'
 import CalibrationKnowledgePacksPanel from '../components/CalibrationKnowledgePacksPanel.vue'
 import CalibrationPersonaUpdatesPanel from '../components/CalibrationPersonaUpdatesPanel.vue'
@@ -312,7 +307,7 @@ import {
   licenseTierRank,
   normalizeArtifactType,
   syncCalibrationsFromStudio,
-  uninstallCalibrationSkill,
+  uninstallCalibrationItem,
 } from '../services/calibrationSync.js'
 
 const confirm = useConfirm()
@@ -327,9 +322,6 @@ const checking = ref(false)
 const installingSkillId = ref('')
 const uninstallingSkillId = ref('')
 const syncError = ref('')
-const checkMessage = ref('')
-const checkSeverity = ref('info')
-const checkDetails = ref([])
 const licenseType = ref('')
 const localLicenseType = ref('')
 const knowledgePackCount = ref(0)
@@ -501,11 +493,6 @@ function openDetails(row) {
   drawerVisible.value = true
 }
 
-function clearCheckMessage() {
-  checkMessage.value = ''
-  checkDetails.value = []
-}
-
 function clearFilters() {
   searchQuery.value = ''
   vendorFilter.value = ''
@@ -592,14 +579,18 @@ async function refreshEntitlements() {
 async function checkForUpdates() {
   checking.value = true
   syncError.value = ''
-  clearCheckMessage()
   try {
     applyCatalog(await fetchCalibrationCatalog())
     const summary = collectBlueprintUpdates(blueprints.value)
     const result = formatBlueprintUpdateSummary(summary)
-    checkMessage.value = result.message
-    checkSeverity.value = result.severity
-    checkDetails.value = result.detail
+    // Discreet, transient feedback — the persistent indicator is the "Updates
+    // Available" tile, and switching to the Updates filter shows the affected cards.
+    toast.add({
+      severity: result.severity || 'info',
+      summary: summary.updateCount ? 'Updates available' : 'Up to date',
+      detail: result.message,
+      life: 6000,
+    })
     if (summary.updateCount) {
       activeView.value = 'skills'
       quickFilter.value = 'updates'
@@ -654,9 +645,8 @@ async function uninstallSkill(row) {
   if (!row.installed) return
   uninstallingSkillId.value = row.skillId
   syncError.value = ''
-  clearCheckMessage()
   try {
-    const result = await uninstallCalibrationSkill(row.skillId, row.installedVersion || undefined)
+    const result = await uninstallCalibrationItem(row)
     toast.add({
       severity: 'success',
       summary: 'Uninstalled',

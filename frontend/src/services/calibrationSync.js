@@ -104,6 +104,30 @@ export async function uninstallCalibrationSkill(skillId, version) {
   return data
 }
 
+export async function uninstallCalibrationPersona(personaId, version) {
+  const params = version ? { version } : undefined
+  const { data } = await api.delete(
+    `/copilot/calibrations/personas/${encodeURIComponent(personaId)}`,
+    { params }
+  )
+  return data
+}
+
+export async function uninstallCalibrationKnowledgePack(packId) {
+  const { data } = await api.delete(
+    `/copilot/calibrations/knowledge-packs/${encodeURIComponent(packId)}`
+  )
+  return data
+}
+
+/** Uninstall dispatch by artifact type — mirrors installCalibrationItem. */
+export function uninstallCalibrationItem(row) {
+  const type = normalizeArtifactType(row?.type)
+  if (type === 'persona') return uninstallCalibrationPersona(row.skillId, row.installedVersion || undefined)
+  if (type === 'knowledge_pack') return uninstallCalibrationKnowledgePack(row.skillId)
+  return uninstallCalibrationSkill(row.skillId, row.installedVersion || undefined)
+}
+
 /** Normalize minTier values from scstudio (`enterprise-pro` → `enterprise_pro`). */
 export function normalizeMinTier(minTier) {
   return String(minTier || 'free')
@@ -374,8 +398,16 @@ export function buildBlueprintLibraryRows(catalog) {
       const item = itemByKey.get(key) || {}
       const type = normalizeArtifactType(item.type || key.split('::')[0])
       const id = item.id || key.split('::').slice(1).join('::')
-      // Install state only applies to skill-type rows (skills + persona skillRefs land here).
-      const install = type === 'skill' ? installById[id] || {} : {}
+      // Skills carry install state via installedBlueprints; personas/packs carry it
+      // on the catalog item itself (marked server-side from on-disk install state).
+      const install =
+        type === 'skill'
+          ? installById[id] || {}
+          : {
+              installed: Boolean(item.installed),
+              installedVersion: item.installedVersion || null,
+              updateAvailable: Boolean(item.updateAvailable),
+            }
       const minTier = normalizeMinTier(item.minTier)
       const globalFreeSkill = Boolean(item.globalFree || item.globalFreeSkill)
       const installable = Boolean(item.installable)

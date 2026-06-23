@@ -89,6 +89,10 @@ class CatalogItem(BaseModel):
     entitledVersion: str | None = None
     entitledViaSync: bool = False
     syncBundleUrl: str = ""
+    # Local install state for non-skill types (skills carry it via installedBlueprints).
+    installed: bool = False
+    installedVersion: str | None = None
+    updateAvailable: bool = False
 
 
 class CalibrationInstalledBlueprint(BaseModel):

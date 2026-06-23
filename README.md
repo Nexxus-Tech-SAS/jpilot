@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.68` — Calibration Studio now browses and downloads **skills, personas, and knowledge packs** from the scstudio Blueprint Library through one unified, license-gated catalog. A type filter and per-card badge distinguish the three artifact types; entitled items install (personas pull in their referenced skills, knowledge packs reuse the existing pack install path) while un-entitled items show a locked state with the reason. The contract is additive — a legacy scstudio that returns only `skills[]` still browses and installs skills exactly as before.
+**Current release:** `v0.69` — Install **and uninstall** now work for all three artifact types, installed personas/packs are reflected as **Installed** in the catalog, and the update notice moved to a discreet toast. Calibration Studio browses and downloads **skills, personas, and knowledge packs** from the scstudio Blueprint Library through one unified, license-gated catalog. A type filter and per-card badge distinguish the three artifact types; entitled items install (personas pull in their referenced skills, knowledge packs reuse the existing pack install path) while un-entitled items show a locked state with the reason. The contract is additive — a legacy scstudio that returns only `skills[]` still browses and installs skills exactly as before.
 
 Bump the root [`VERSION`](VERSION) file when tagging a release so in-app update checks match GitHub.
 
@@ -71,6 +71,16 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.69
+
+| Area | Highlights |
+|------|------------|
+| **Catalog cards render** | Fixed `MarketplaceSkillCard` being used but never imported in `CalibrationStudioView`, which left the grid blank (counts showed, cards didn't). |
+| **Install works in all topologies** | Bundle downloads rebase onto `nexxus_calibration_base_url` instead of trusting the absolute public URL scstudio embeds, so installs work when the publisher is only reachable on an internal host (e.g. both apps in one Docker network). |
+| **Install state for personas & packs** | The backend marks persona/pack catalog items with on-disk `installed` / `installedVersion`, so the card flips to **Installed / Up to date** instead of always showing **Install**. |
+| **Uninstall by type** | `uninstallCalibrationItem` dispatches by artifact type; new `DELETE /calibrations/personas/{id}` and `DELETE /calibrations/knowledge-packs/{id}` remove the on-disk install (+ index record / symlinks). Previously uninstalling a persona errored as "skill not installed". |
+| **Discreet update notice** | The "Check updates" result moved from a persistent full-width banner to a transient toast; the persistent indicator is the existing **Updates Available** tile. |
 
 ## What's new in v0.68
 
