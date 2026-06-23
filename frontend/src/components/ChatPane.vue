@@ -87,7 +87,7 @@
           <div v-if="!showConversationSwitcher" class="beta-header-center">
             <div class="beta-header-center-stack">
               <SelectButton
-                v-model="session.role"
+                :model-value="activeRolePickerId"
                 :options="roleOptions"
                 option-value="id"
                 data-key="id"
@@ -95,6 +95,7 @@
                 class="beta-role-toggle"
                 :disabled="isGenerating"
                 aria-label="JPilot role"
+                @update:model-value="onRolePickerChange"
               >
                 <template #option="slotProps">
                   <i
@@ -214,7 +215,7 @@
             <div v-if="showConversationSwitcher" class="beta-options-group">
               <span class="beta-options-label">Role</span>
               <SelectButton
-                v-model="session.role"
+                :model-value="activeRolePickerId"
                 :options="roleOptions"
                 option-value="id"
                 data-key="id"
@@ -222,6 +223,7 @@
                 class="beta-role-toggle-mobile w-full"
                 :disabled="isGenerating"
                 aria-label="JPilot role"
+                @update:model-value="onRolePickerChange"
               >
                 <template #option="slotProps">
                   <i :class="slotProps.option.icon" :aria-label="slotProps.option.label" />
@@ -683,7 +685,7 @@
     <template v-else>
     <div class="pane-toolbar">
       <SelectButton
-        v-model="session.role"
+        :model-value="activeRolePickerId"
         :options="roleOptions"
         option-value="id"
         data-key="id"
@@ -691,6 +693,7 @@
         class="pane-role-toggle"
         :disabled="isGenerating"
         aria-label="JPilot role"
+        @update:model-value="onRolePickerChange"
       >
         <template #option="slotProps">
           <i
@@ -1207,7 +1210,8 @@ import {
   connectCopilotAppliance,
   fileToAttachment,
   getCopilotSettings,
-  listCopilotAppliances
+  listCopilotAppliances,
+  listCopilotRoles
 } from '../services/copilot'
 import { parseInputFormFromContent, resolveAssistantMessage } from '../utils/copilotForm'
 import { estimateSessionContextUsage } from '../utils/contextUsage'
@@ -1500,10 +1504,44 @@ function onGenerationEvent(event) {
 
 const configAccept = CONFIG_ACCEPT
 
+// Installed custom personas fetched from the API (empty until loaded).
+const installedPersonas = ref([])
+
 const ready = computed(() => roleProviders.value.length > 0)
-const roleOptions = JPILOT_ROLES
-const activeRole = computed(() => getRoleById(session.role))
-const roleNeedsAppliance = computed(() => roleRequiresAppliance(session.role))
+
+// Base roles combined with any installed custom personas for the picker.
+const roleOptions = computed(() => {
+  const customs = installedPersonas.value.map((p) => ({
+    id: p.id,
+    label: p.label,
+    description: p.description,
+    requiresAppliance: p.requiresAppliance,
+    suggestedPaneLabel: p.suggestedPaneLabel || p.label,
+    handoffTarget: null,
+    icon: 'pi pi-user',
+    accent: '#a855f7',
+    isCustomPersona: true,
+    baseRole: p.baseRole
+  }))
+  return [...JPILOT_ROLES, ...customs]
+})
+
+const activeRole = computed(() => {
+  const opts = roleOptions.value
+  const found = opts.find((r) => {
+    if (session.personaId && r.isCustomPersona) return r.id === session.personaId
+    return !r.isCustomPersona && r.id === session.role
+  })
+  return found || getRoleById(session.role)
+})
+
+const roleNeedsAppliance = computed(() => {
+  if (session.personaId) {
+    const persona = installedPersonas.value.find((p) => p.id === session.personaId)
+    if (persona) return persona.requiresAppliance
+  }
+  return roleRequiresAppliance(session.role)
+})
 const rolePlaceholder = computed(() => {
   if (activeRole.value.id === 'architect') {
     return 'Plan a deployment, change control window, new functionality, or ask architecture questions…'
@@ -1656,7 +1694,10 @@ function providerSupportsRole(provider, roleId) {
   if (!provider) return false
   const roles = provider.roles
   if (!Array.isArray(roles) || !roles.length) return true
-  return roles.includes(roleId)
+  // For custom persona ids, resolve to their base role for provider matching.
+  const persona = installedPersonas.value.find((p) => p.id === roleId)
+  const effectiveRoleId = persona ? persona.baseRole : roleId
+  return roles.includes(effectiveRoleId)
 }
 
 function pickProviderForRole(force = false) {
@@ -1696,6 +1737,24 @@ function pickApplianceForRole(force = false) {
   if (roleNeedsAppliance.value) {
     session.connectedAppliance = ''
   }
+}
+
+// The value shown in the role/persona picker: persona id when a custom persona is active,
+// otherwise the base role id.
+const activeRolePickerId = computed(() =>
+  session.personaId ? session.personaId : session.role
+)
+
+function onRolePickerChange(newId) {
+  const custom = installedPersonas.value.find((p) => p.id === newId)
+  if (custom) {
+    session.personaId = newId
+    session.role = custom.baseRole
+  } else {
+    session.personaId = null
+    session.role = newId
+  }
+  onRoleChange()
 }
 
 function onRoleChange() {
@@ -2233,6 +2292,7 @@ async function runChat(content, attachments, runOptions = {}) {
         attachments,
         settings: getCopilotSettings(),
         role: session.role || DEFAULT_JPILOT_ROLE,
+        personaId: session.personaId || undefined,
         applianceName: chatApplianceName() || undefined,
         providerId: session.providerId || undefined,
         webSearch: session.webSearch !== false,
@@ -2481,6 +2541,14 @@ onMounted(() => {
     })
     .catch(() => {
       calibrationFeedbackReady.value = true
+    })
+  // Load installed custom personas from the API (non-blocking).
+  listCopilotRoles()
+    .then((roles) => {
+      installedPersonas.value = (roles || []).filter((r) => r.isCustomPersona)
+    })
+    .catch(() => {
+      // Silently ignore — custom personas won't appear but base roles still work.
     })
 })
 

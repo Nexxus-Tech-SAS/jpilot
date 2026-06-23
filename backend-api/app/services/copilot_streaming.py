@@ -31,6 +31,7 @@ async def stream_copilot_chat_events(
     db: AsyncIOMotorDatabase,
     payload: ChatRequest,
     request: Request,
+    persona_system_prompt: str | None = None,
 ) -> AsyncIterator[str]:
     settings = payload.settings or DEFAULT_SETTINGS
     chat_role = normalize_role(payload.role)
@@ -60,6 +61,7 @@ async def stream_copilot_chat_events(
                 long_task_approved=payload.longTaskApproved,
                 design_document_context=payload.designDocumentContext,
                 include_design_revision=payload.includeDesignRevision,
+                persona_system_prompt=persona_system_prompt,
             )
         except Exception as exc:
             error_holder["error"] = exc

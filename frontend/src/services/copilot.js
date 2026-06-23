@@ -116,6 +116,11 @@ export async function listCopilotAppliances() {
   return data
 }
 
+export async function listCopilotRoles() {
+  const { data } = await api.get('/copilot/roles')
+  return data
+}
+
 export async function connectCopilotAppliance(applianceName) {
   const { data } = await api.post('/copilot/connect', { applianceName })
   return data

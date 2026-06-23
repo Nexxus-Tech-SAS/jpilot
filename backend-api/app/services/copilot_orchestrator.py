@@ -897,6 +897,7 @@ async def run_copilot_chat(
     long_task_approved: bool = False,
     design_document_context: str | None = None,
     include_design_revision: bool = False,
+    persona_system_prompt: str | None = None,
 ) -> ChatResponse:
     from app.services.copilot_service import set_web_search_allowed
 
@@ -963,6 +964,9 @@ async def run_copilot_chat(
             "Connect a supported appliance or use Architect role for planning."
         )
     system_prompt = build_system_prompt(chat_role, appliance_name, vendor=chat_vendor)
+    # Layer the custom persona's system prompt on top of the base role prompt.
+    if persona_system_prompt and persona_system_prompt.strip():
+        system_prompt = f"{system_prompt}\n\n## Custom Persona Instructions\n{persona_system_prompt.strip()}"
     system_prompt, blueprint_relevant, stack_calibration_reviewed = _apply_blueprint_context(
         system_prompt,
         user_message=user_message,

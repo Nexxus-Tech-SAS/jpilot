@@ -32,6 +32,8 @@ class CopilotRoleResponse(BaseModel):
     requiresAppliance: bool
     suggestedPaneLabel: str
     handoffTarget: str | None = None
+    baseRole: str | None = None
+    isCustomPersona: bool = False
 
 
 class DeploymentSubtask(BaseModel):
@@ -53,6 +55,7 @@ class ChatRequest(BaseModel):
     attachments: list[ChatAttachment] = []
     settings: CopilotSettings | None = None
     role: ChatRole = "operator"
+    personaId: str | None = None
     applianceName: str | None = None
     providerId: str | None = None
     webSearch: bool = True

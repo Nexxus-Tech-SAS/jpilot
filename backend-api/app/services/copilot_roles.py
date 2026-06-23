@@ -5,10 +5,15 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
 from app.services.prompt_loader import load_operator_design_implementation_suffix, load_role_prompt
 from app.services.vendor_registry import DEFAULT_VENDOR_ID, get_vendor_manifest
+
+PERSONA_COLLECTION = "stack_personas"
+
+_VALID_BASE_ROLES = {"architect", "operator", "analyst"}
 
 
 class JPilotRole(StrEnum):
@@ -223,3 +228,72 @@ def assert_tool_allowed_for_role(
             f"Tool '{name}' is not allowed for Analyst (read/diagnostic only). "
             "Use Operator role to apply changes."
         )
+
+
+class CustomPersonaInfo(BaseModel):
+    """Runtime info for an installed custom persona."""
+
+    personaId: str
+    label: str
+    baseRole: str
+    systemPrompt: str
+    objectives: list[str] = []
+
+
+async def resolve_custom_persona(
+    db: AsyncIOMotorDatabase,
+    persona_id: str | None,
+) -> CustomPersonaInfo | None:
+    """Return info for an installed custom persona, or None if not found / persona_id is unset.
+
+    The returned baseRole is guaranteed to be a valid JPilotRole value.
+    """
+    if not persona_id:
+        return None
+    cleaned = persona_id.strip()
+    if not cleaned:
+        return None
+
+    doc = await db[PERSONA_COLLECTION].find_one(
+        {"personaId": cleaned, "enabled": True},
+        sort=[("installedAt", -1)],
+    )
+    if doc is None:
+        return None
+
+    raw_base_role = str(doc.get("baseRole") or "").strip().lower()
+    if raw_base_role not in _VALID_BASE_ROLES:
+        raw_base_role = JPilotRole.OPERATOR.value  # safe fallback
+
+    behavior = doc.get("behavior") or {}
+    return CustomPersonaInfo(
+        personaId=cleaned,
+        label=str(doc.get("label") or cleaned),
+        baseRole=raw_base_role,
+        systemPrompt=str(behavior.get("systemPrompt") or ""),
+        objectives=list(behavior.get("objectives") or []),
+    )
+
+
+async def list_installed_personas(db: AsyncIOMotorDatabase) -> list[dict[str, Any]]:
+    """Return a list of enabled installed personas for the roles catalog."""
+    cursor = db[PERSONA_COLLECTION].find({"enabled": True}, sort=[("label", 1)])
+    results: list[dict[str, Any]] = []
+    async for doc in cursor:
+        raw_base_role = str(doc.get("baseRole") or "").strip().lower()
+        if raw_base_role not in _VALID_BASE_ROLES:
+            raw_base_role = JPilotRole.OPERATOR.value
+        behavior = doc.get("behavior") or {}
+        results.append(
+            {
+                "id": str(doc.get("personaId") or ""),
+                "label": str(doc.get("label") or doc.get("personaId") or ""),
+                "description": str(behavior.get("systemPrompt") or "")[:120] or f"Custom persona (base: {raw_base_role})",
+                "baseRole": raw_base_role,
+                "requiresAppliance": raw_base_role != JPilotRole.ARCHITECT.value,
+                "suggestedPaneLabel": str(doc.get("label") or "Custom"),
+                "handoffTarget": None,
+                "isCustomPersona": True,
+            }
+        )
+    return results

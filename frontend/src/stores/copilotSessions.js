@@ -12,6 +12,7 @@ function blankSession() {
     messages: [],
     input: '',
     role: 'operator',
+    personaId: null,
     connectedAppliance: '',
     applianceChoice: null,
     providerId: '',
@@ -42,6 +43,7 @@ function trimSessionsForStorage(sessions) {
     trimmed[id] = {
       input: session.input || '',
       role: session.role || 'operator',
+      personaId: session.personaId || null,
       connectedAppliance: session.connectedAppliance || '',
       applianceChoice: session.applianceChoice || null,
       providerId: session.providerId || '',

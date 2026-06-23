@@ -752,21 +752,28 @@ async def _upsert_persona_index(
     label: str | None,
     skill_refs: list[dict[str, str]],
     path: str,
+    base_role: str | None = None,
+    behavior: dict[str, Any] | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
+    set_fields: dict[str, Any] = {
+        "personaId": persona_id,
+        "version": version,
+        "vendor": vendor,
+        "label": label,
+        "skillRefs": skill_refs,
+        "enabled": True,
+        "path": path,
+        "updatedAt": now,
+    }
+    if base_role is not None:
+        set_fields["baseRole"] = base_role
+    if behavior is not None:
+        set_fields["behavior"] = behavior
     await db[PERSONA_COLLECTION].update_one(
         {"personaId": persona_id, "version": version},
         {
-            "$set": {
-                "personaId": persona_id,
-                "version": version,
-                "vendor": vendor,
-                "label": label,
-                "skillRefs": skill_refs,
-                "enabled": True,
-                "path": path,
-                "updatedAt": now,
-            },
+            "$set": set_fields,
             "$setOnInsert": {"installedAt": now},
         },
         upsert=True,
@@ -887,6 +894,19 @@ async def install_calibration_persona(
             logger.info("Persona %s skill ref %s not installed (not entitled).", cleaned_id, ref_id)
             skipped_refs.append(ref_id)
 
+    # Extract baseRole and behavior from the persona manifest (frozen contract fields).
+    base_role: str | None = manifest.get("baseRole") or None
+    behavior_raw = manifest.get("behavior")
+    behavior: dict[str, Any] | None = None
+    if isinstance(behavior_raw, dict):
+        behavior = {
+            "systemPrompt": str(behavior_raw.get("systemPrompt") or ""),
+            "objectives": list(behavior_raw.get("objectives") or []),
+            "expertiseLevel": behavior_raw.get("expertiseLevel"),
+            "reasoningStyle": behavior_raw.get("reasoningStyle"),
+            "communicationStyle": behavior_raw.get("communicationStyle"),
+        }
+
     await _upsert_persona_index(
         db,
         persona_id=cleaned_id,
@@ -895,6 +915,8 @@ async def install_calibration_persona(
         label=str(item.get("label") or manifest.get("label") or cleaned_id),
         skill_refs=skill_refs,
         path=str(target),
+        base_role=base_role,
+        behavior=behavior,
     )
 
     return CalibrationPersonaInstallResult(
