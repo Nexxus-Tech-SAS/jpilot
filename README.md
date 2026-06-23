@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.77` — **Update-check rate-limit hardening.** Forced "Check for updates" clicks now reuse the cached result for 2 minutes so the button can't exhaust GitHub's unauthenticated 60-req/hour API limit (the source of the HTTP 403 "try again later"); set `GITHUB_TOKEN`/`GH_TOKEN` to raise the limit to 5000/hr.
+**Current release:** `v0.78` — **`auto-updater.sh` — self-configuring update agent.** New `scripts/auto-updater.sh` installs/removes the systemd path+service units for the one-click self-update, **auto-detecting the install directory** (from the script's own location) and the docker-group user — no manual editing of unit files. It cleans any previously-installed agent first, and offers an interactive **enable / disable** menu (plus `enable|disable|status` CLI args). Run as root: `sudo ./scripts/auto-updater.sh`.
+
+**v0.77** — **Update-check rate-limit hardening.** Forced "Check for updates" clicks now reuse the cached result for 2 minutes so the button can't exhaust GitHub's unauthenticated 60-req/hour API limit (the source of the HTTP 403 "try again later"); set `GITHUB_TOKEN`/`GH_TOKEN` to raise the limit to 5000/hr.
 
 **v0.76** — **Self-update lock auto-recovers.** The single-flight lock no longer stays "in progress" forever if the host agent is absent or dies — a lock whose `status.json` hasn't been touched in 20 minutes is treated as stale and can be overridden.
 
