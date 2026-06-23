@@ -137,9 +137,9 @@
       :header="isEditing ? 'Edit AI Provider' : 'Add AI Provider'"
       modal
       append-to="body"
-      :style="{ width: 'min(32rem, 92vw)' }"
+      :style="{ width: 'min(32rem, 92vw)', maxHeight: '90dvh' }"
       :draggable="false"
-      :content-style="{ overflow: 'visible' }"
+      :content-style="{ overflowY: 'auto' }"
     >
       <div class="flex flex-column gap-3">
         <div class="flex flex-column gap-2">

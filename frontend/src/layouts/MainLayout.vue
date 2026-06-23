@@ -273,9 +273,7 @@ const fullscreenLabel = computed(() =>
 
 const fullscreenTooltip = computed(() => fullscreenLabel.value)
 
-const isImmersiveBetaChat = computed(
-  () => route.name === 'jpilot' || route.name === 'jpilot-beta'
-)
+const isImmersiveBetaChat = computed(() => route.name === 'jpilot')
 
 const updateBannerVisible = computed(() =>
   Boolean(updateInfo.value?.update_available) && !updateBannerDismissed.value
@@ -356,8 +354,7 @@ const mainNavGroups = [
     id: 'jpilot-chat',
     label: 'JPilot Chat',
     items: [
-      { label: 'Chat', path: '/jpilot', icon: 'pi pi-sparkles' },
-      { label: 'Chat Beta', path: '/jpilot/beta', icon: 'pi pi-sparkles', beta: true }
+      { label: 'Chat', path: '/jpilot', icon: 'pi pi-sparkles' }
     ]
   }
 ]
@@ -365,7 +362,7 @@ const mainNavGroups = [
 const bottomNavItems = [
   { label: 'Plans', path: '/plans', icon: 'pi pi-tags' },
   { label: 'Calibration Studio', path: '/calibration-studio', icon: 'pi pi-sliders-h' },
-  { label: 'Settings', path: '/settings-beta', icon: 'pi pi-cog' }
+  { label: 'Settings', path: '/settings', icon: 'pi pi-cog' }
 ]
 
 const userInitials = computed(() => {
@@ -487,10 +484,18 @@ function isActive(item) {
   position: sticky;
   top: 1.5rem;
   height: calc(100vh - 3rem);
+  box-shadow:
+    0 1px 2px rgba(2, 6, 23, 0.04),
+    0 10px 28px rgba(2, 6, 23, 0.08),
+    0 24px 48px rgba(2, 6, 23, 0.06);
 }
 
 :global(.app-dark) .sidebar-panel {
   background: var(--p-surface-900);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 12px 30px rgba(0, 0, 0, 0.4),
+    0 26px 52px rgba(0, 0, 0, 0.32);
 }
 
 .sidebar-nav {

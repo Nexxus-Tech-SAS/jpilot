@@ -138,6 +138,7 @@ const confirm = useConfirm()
 const route = useRoute()
 
 const chatNamespace = computed(() => route.meta.chatNamespace || 'main')
+// Keep the lab look/namespace; this flag drives the immersive lab styling.
 const showBetaLabel = computed(() => chatNamespace.value === 'lab')
 const chatStore = computed(() => getBetaChatStore(chatNamespace.value))
 const betaChatState = computed(() => chatStore.value.state)
@@ -491,38 +492,46 @@ watch(chatNamespace, () => {
   /* Lab: glass sidebar + conversation window */
   .beta-chat-layout-lab .beta-sidebar-card.content-panel {
     background: var(--beta-glass-sidebar-bg);
-    border-color: color-mix(in srgb, var(--p-content-border-color) 14%, transparent);
+    border-color: color-mix(in srgb, var(--p-content-border-color) 36%, transparent);
     backdrop-filter: blur(6px) saturate(120%);
     -webkit-backdrop-filter: blur(6px) saturate(120%);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.12),
-      0 12px 40px rgba(2, 6, 23, 0.04);
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 2px 4px rgba(2, 6, 23, 0.05),
+      0 14px 32px rgba(2, 6, 23, 0.1),
+      0 28px 56px rgba(2, 6, 23, 0.08);
   }
 
   :global(.app-dark) .beta-chat-layout-lab .beta-sidebar-card.content-panel {
     background: var(--beta-glass-sidebar-bg-dark);
-    border-color: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.09);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.03),
-      0 12px 40px rgba(0, 0, 0, 0.18);
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 2px 4px rgba(0, 0, 0, 0.28),
+      0 16px 36px rgba(0, 0, 0, 0.36),
+      0 30px 60px rgba(0, 0, 0, 0.3);
   }
 
   .beta-chat-layout-lab .beta-chat-card.content-panel {
     background: var(--beta-glass-panel-bg);
-    border-color: color-mix(in srgb, var(--p-content-border-color) 18%, transparent);
+    border-color: color-mix(in srgb, var(--p-content-border-color) 40%, transparent);
     backdrop-filter: blur(6px) saturate(120%);
     -webkit-backdrop-filter: blur(6px) saturate(120%);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.16),
-      0 12px 40px rgba(2, 6, 23, 0.05);
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 2px 4px rgba(2, 6, 23, 0.06),
+      0 14px 32px rgba(2, 6, 23, 0.12),
+      0 28px 56px rgba(2, 6, 23, 0.1);
   }
 
   :global(.app-dark) .beta-chat-layout-lab .beta-chat-card.content-panel {
     background: var(--beta-glass-panel-bg-dark);
-    border-color: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.03),
-      0 12px 40px rgba(0, 0, 0, 0.22);
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 2px 4px rgba(0, 0, 0, 0.3),
+      0 16px 36px rgba(0, 0, 0, 0.4),
+      0 30px 60px rgba(0, 0, 0, 0.32);
   }
 }
 
@@ -562,9 +571,12 @@ watch(chatNamespace, () => {
 }
 
 .beta-chat-workspace-split .beta-chat-card {
-  flex: 0 0 var(--beta-split-chat, 72%);
-  width: var(--beta-split-chat, 72%);
-  max-width: var(--beta-split-chat, 72%);
+  /* Grow to fill the remaining width so the editor sits flush at the right edge.
+     (Previously fixed at 72%, which left a dead ~5% strip since chat 72% +
+     editor 23% < 100%.) */
+  flex: 1 1 0;
+  width: auto;
+  max-width: none;
   min-width: 0;
   border-radius: var(--p-content-border-radius, var(--content-radius));
   overflow: hidden;

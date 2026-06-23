@@ -70,7 +70,6 @@
                   </template>
                   <template v-else>JPilot · {{ activeRole.label }}</template>
                 </span>
-                <span v-if="showBetaLabel" class="beta-lab-tag">Beta</span>
                 <span class="beta-subtitle">{{ betaStatusLine }}</span>
               </div>
             </div>
@@ -81,7 +80,6 @@
               <JPilot :size="34" />
             </RouterLink>
             <span class="beta-subtitle-compact">{{ activeRole.label }}</span>
-            <span v-if="showBetaLabel" class="beta-lab-tag beta-lab-tag-compact">Beta</span>
           </div>
 
           <div v-if="!showConversationSwitcher" class="beta-header-center">
@@ -1528,11 +1526,12 @@ const roleOptions = computed(() => {
 
 const activeRole = computed(() => {
   const opts = roleOptions.value
-  const found = opts.find((r) => {
-    if (session.personaId && r.isCustomPersona) return r.id === session.personaId
-    return !r.isCustomPersona && r.id === session.role
-  })
-  return found || getRoleById(session.role)
+  // A selected custom persona wins the title/identity over its base role.
+  if (session.personaId) {
+    const persona = opts.find((r) => r.isCustomPersona && r.id === session.personaId)
+    if (persona) return persona
+  }
+  return opts.find((r) => !r.isCustomPersona && r.id === session.role) || getRoleById(session.role)
 })
 
 const roleNeedsAppliance = computed(() => {

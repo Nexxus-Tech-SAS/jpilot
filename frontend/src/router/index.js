@@ -13,7 +13,6 @@ import DashboardView from '../views/DashboardView.vue'
 import LoginView from '../views/LoginView.vue'
 import LegalView from '../views/LegalView.vue'
 import AccountRecoveryView from '../views/AccountRecoveryView.vue'
-import SettingsView from '../views/SettingsView.vue'
 import SettingsBetaView from '../views/SettingsBetaView.vue'
 import PricingView from '../views/PricingView.vue'
 import CalibrationStudioView from '../views/CalibrationStudioView.vue'
@@ -55,15 +54,10 @@ const router = createRouter({
       meta: { requiresAuth: true },
       children: [
         { path: '', name: 'dashboard', component: DashboardView },
-        { path: 'jpilot', name: 'jpilot', component: CopilotBetaView, meta: { chatNamespace: 'main' } },
-        {
-          path: 'jpilot/beta',
-          name: 'jpilot-beta',
-          component: CopilotBetaView,
-          meta: { chatNamespace: 'lab' }
-        },
+        { path: 'jpilot', name: 'jpilot', component: CopilotBetaView, meta: { chatNamespace: 'lab' } },
+        { path: 'jpilot/beta', redirect: '/jpilot' },
         { path: 'copilot', redirect: '/jpilot' },
-        { path: 'copilot/beta', redirect: '/jpilot/beta' },
+        { path: 'copilot/beta', redirect: '/jpilot' },
         { path: 'appliances', redirect: (to) => ({ path: '/settings', query: { ...to.query, section: 'appliances' } }) },
         { path: 'netscalers', redirect: (to) => ({ path: '/settings', query: { ...to.query, section: 'appliances', tab: to.query.tab || 'inventory' } }) },
         { path: 'other-appliances', redirect: { path: '/settings', query: { section: 'appliances' } } },
@@ -76,8 +70,8 @@ const router = createRouter({
         { path: 'users', redirect: { path: '/settings', query: { section: 'users' } } },
         { path: 'plans', name: 'plans', component: PricingView },
         { path: 'calibration-studio', name: 'calibration-studio', component: CalibrationStudioView },
-        { path: 'settings', name: 'settings', component: SettingsView },
-        { path: 'settings-beta', name: 'settings-beta', component: SettingsBetaView }
+        { path: 'settings', name: 'settings', component: SettingsBetaView },
+        { path: 'settings-beta', redirect: '/settings' }
       ]
     }
   ]

@@ -10,7 +10,6 @@
       <img src="/jpilot-favicon.png" alt="JPilot" class="beta-sidebar-logo" />
       <span class="beta-sidebar-brand">JPilot</span>
       <span class="beta-sidebar-tagline">AI assistant for your appliances</span>
-      <span v-if="showBetaLabel" class="beta-sidebar-beta-tag">Beta</span>
     </div>
 
     <div class="beta-sidebar-body">

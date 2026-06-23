@@ -1,7 +1,7 @@
 <template>
   <div class="bw-root">
     <div class="bw-stage" :class="{ 'bw-stage-blueprints': panelView === 'blueprints' }">
-      <p class="bw-eyebrow">JPilot · Beta</p>
+      <p class="bw-eyebrow">JPilot</p>
       <h1 class="bw-greeting">{{ panelGreeting }}</h1>
       <p class="bw-subtitle">{{ panelSubtitle }}</p>
 
