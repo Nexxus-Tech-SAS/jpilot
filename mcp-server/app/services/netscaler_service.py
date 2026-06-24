@@ -1854,8 +1854,12 @@ async def _nitro_post_nsconfig_save(
         json={"nsconfig": {}},
         headers={**headers, "Content-Type": "application/json"},
     )
-    payload = response.json()
-    if response.status_code >= 400 or payload.get("errorcode", 0) != 0:
+    # NITRO returns 200/201 with an empty body on success; tolerate non-JSON bodies.
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {"message": response.text.strip()} if response.text.strip() else {}
+    if response.status_code >= 400 or payload.get("errorcode", 0) not in (0, None):
         message = payload.get("message") or _extract_error_message(response)
         raise ValueError(message or f"save ns config failed with HTTP {response.status_code}")
     return payload
@@ -1900,8 +1904,12 @@ async def add_ip_address(
             json=body,
             headers={**headers, "Content-Type": "application/json"},
         )
-        payload = response.json()
-        if response.status_code >= 400 or payload.get("errorcode", 0) != 0:
+        # NITRO returns 201 Created with an empty body on success; tolerate non-JSON bodies.
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {"message": response.text.strip()} if response.text.strip() else {}
+        if response.status_code >= 400 or payload.get("errorcode", 0) not in (0, None):
             message = payload.get("message") or _extract_error_message(response)
             raise ValueError(message or f"add ns ip failed with HTTP {response.status_code}")
 
