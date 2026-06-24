@@ -93,6 +93,7 @@ from app.services.copilot_orchestration import (
     build_deployment_subtasks,
     build_orchestration_runtime,
     build_progress_subtasks,
+    check_loop_breakers,
     continuation_for_tool_limit,
     deliverable_ready_from_content,
     deployment_write_complete,
@@ -104,8 +105,11 @@ from app.services.copilot_orchestration import (
 )
 from app.services.copilot_progress import QueueChatProgressReporter
 
-MAX_TOOL_ITERATIONS = 40
-MAX_TOOL_CONTINUATION_PHASES = 3
+# Tool-loop limits live on OrchestrationSettings (DEFAULT_MAX_TOOL_ITERATIONS /
+# DEFAULT_MAX_TOOL_CONTINUATION_PHASES, overridable via the orchestration settings doc) and
+# are read at runtime as runtime.max_tool_iterations / runtime.max_continuation_phases. The
+# former module-level MAX_TOOL_ITERATIONS=40 / MAX_TOOL_CONTINUATION_PHASES=3 constants were
+# dead (and the 3 disagreed with the real default of 4) — removed to keep one source of truth.
 
 TOOL_ITERATION_LIMIT_MESSAGE = "I reached the maximum number of tool calls. Please try a simpler request."
 
@@ -1498,6 +1502,9 @@ async def _run_openai_loop(
                     result = json.dumps({"success": False, "errorMessage": str(exc)})
 
                 tool_traces.append(ToolCallTrace(name=name, arguments=arguments, result=result))
+                loop_break = check_loop_breakers(runtime, name=name, arguments=arguments, result=result)
+                if loop_break is not None:
+                    return loop_break.message
                 tool_call_id = tool_call.get("id") or f"call_{len(tool_traces)}"
                 messages.append(
                     {
@@ -1692,6 +1699,9 @@ async def _run_gemini_loop(
                 if progress is not None:
                     await progress.tool_finished(name)
                 tool_traces.append(ToolCallTrace(name=name, arguments=arguments, result=result))
+                loop_break = check_loop_breakers(runtime, name=name, arguments=arguments, result=result)
+                if loop_break is not None:
+                    return loop_break.message
                 truncated = _dedupe_read_result(name, arguments, result, seen_reads, limits.max_tool_result_chars)
                 response_parts.append(
                     {
@@ -1883,6 +1893,9 @@ async def _run_anthropic_loop(
                 if progress is not None:
                     await progress.tool_finished(name)
                 tool_traces.append(ToolCallTrace(name=name, arguments=arguments, result=result))
+                loop_break = check_loop_breakers(runtime, name=name, arguments=arguments, result=result)
+                if loop_break is not None:
+                    return loop_break.message
                 tool_results.append(
                     {
                         "type": "tool_result",

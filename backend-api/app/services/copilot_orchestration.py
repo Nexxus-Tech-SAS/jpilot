@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import json
+from collections import deque
+from dataclasses import dataclass, field
 
 from app.schemas.copilot import DeploymentContinuation, DeploymentSubtask, ToolCallTrace
 from app.services.copilot_architect_discovery import extract_planning_intent
@@ -15,6 +18,12 @@ from app.services.copilot_roles import JPilotRole, normalize_role
 DEFAULT_MAX_TOOL_ITERATIONS = 40
 DEFAULT_MAX_TOOL_CONTINUATION_PHASES = 4
 DEFAULT_LONG_TASK_TOOL_THRESHOLD = 12
+
+# Loop-breaker thresholds (conservative defaults; admin-overridable via the settings doc).
+DEFAULT_REPEATED_FAILED_CALL_LIMIT = 2  # same (tool, args) failing this many times → stop
+DEFAULT_PER_TOOL_FAILURE_LIMIT = 3      # one tool failing this many times in a turn → stop
+DEFAULT_NO_PROGRESS_WINDOW = 5          # consecutive no-new-result steps → stop
+DEFAULT_NO_PROGRESS_FLOOR = 8           # ...but only once past this many tool rounds
 
 READ_ONLY_OPERATOR_TOOLS = frozenset(
     {
@@ -192,6 +201,10 @@ class OrchestrationSettings:
     max_continuation_phases: int = DEFAULT_MAX_TOOL_CONTINUATION_PHASES
     long_task_threshold: int = DEFAULT_LONG_TASK_TOOL_THRESHOLD
     prompt_before_long_tasks: bool = True
+    repeated_failed_call_limit: int = DEFAULT_REPEATED_FAILED_CALL_LIMIT
+    per_tool_failure_limit: int = DEFAULT_PER_TOOL_FAILURE_LIMIT
+    no_progress_window: int = DEFAULT_NO_PROGRESS_WINDOW
+    no_progress_floor: int = DEFAULT_NO_PROGRESS_FLOOR
 
 
 @dataclass
@@ -201,6 +214,11 @@ class OrchestrationRuntime:
     deployment_continuation: bool = False
     tool_rounds: int = 0
     pause: DeploymentContinuation | None = None
+    # Loop-breaker state (per turn).
+    recent_tool_calls: deque = field(default_factory=lambda: deque(maxlen=12))
+    tool_failure_counts: dict[str, int] = field(default_factory=dict)
+    iterations_without_progress: int = 0
+    seen_result_keys: set[str] = field(default_factory=set)
 
     @property
     def max_tool_iterations(self) -> int:
@@ -232,7 +250,154 @@ def orchestration_settings_from_document(document: dict | None) -> Orchestration
         ),
         long_task_threshold=int(document.get("longTaskToolThreshold", DEFAULT_LONG_TASK_TOOL_THRESHOLD)),
         prompt_before_long_tasks=bool(document.get("promptBeforeLongTasks", True)),
+        repeated_failed_call_limit=int(
+            document.get("repeatedFailedCallLimit", DEFAULT_REPEATED_FAILED_CALL_LIMIT)
+        ),
+        per_tool_failure_limit=int(document.get("perToolFailureLimit", DEFAULT_PER_TOOL_FAILURE_LIMIT)),
+        no_progress_window=int(document.get("noProgressWindow", DEFAULT_NO_PROGRESS_WINDOW)),
+        no_progress_floor=int(document.get("noProgressFloor", DEFAULT_NO_PROGRESS_FLOOR)),
     )
+
+
+@dataclass(frozen=True)
+class LoopBreak:
+    """A signal to stop the tool loop and hand control back to the user."""
+
+    reason: str  # repeated_failed_call | per_tool_failure | no_progress
+    message: str
+
+
+def tool_result_is_failure(result: str) -> bool:
+    """Best-effort: did this tool call fail? Plain-text/read output counts as success."""
+    try:
+        data = json.loads(result)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    if data.get("success") is False or data.get("commandFailed"):
+        return True
+    if data.get("exitStatus") not in (0, None):
+        return True
+    results = data.get("results")
+    if isinstance(results, list) and any(
+        isinstance(item, dict) and item.get("success") is False for item in results
+    ):
+        return True
+    return False
+
+
+def _args_hash(arguments: dict | None) -> str:
+    try:
+        return hashlib.sha1(
+            json.dumps(arguments or {}, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()[:12]
+    except (TypeError, ValueError):
+        return "?"
+
+
+def _extract_error_summary(result: str) -> str:
+    try:
+        data = json.loads(result)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    msg = data.get("errorMessage") or data.get("retryHint") or ""
+    if not msg and isinstance(data.get("results"), list):
+        failed = next(
+            (it for it in data["results"] if isinstance(it, dict) and it.get("success") is False),
+            None,
+        )
+        if failed:
+            msg = failed.get("errorMessage") or failed.get("retryHint") or ""
+    return str(msg)[:200]
+
+
+def _stuck_message(runtime: OrchestrationRuntime, *, reason: str, name: str, result: str) -> str:
+    if reason == "repeated_failed_call":
+        detail = f"`{name}` failed repeatedly with the same input"
+    elif reason == "per_tool_failure":
+        detail = f"`{name}` failed several times this turn"
+    else:
+        detail = f"the last {runtime.iterations_without_progress} steps produced no new result"
+    lines = [
+        "**I've paused — I appear to be stuck.**",
+        "",
+        f"After {runtime.tool_rounds} tool call(s), {detail}.",
+    ]
+    err = _extract_error_summary(result)
+    if err:
+        lines.append(f"Last error: {err}")
+    lines += [
+        "",
+        "Tell me how you'd like to proceed — provide the missing detail, correct the target, "
+        "or confirm a different approach — and I'll continue.",
+    ]
+    return "\n".join(lines)
+
+
+def check_loop_breakers(
+    runtime: OrchestrationRuntime,
+    *,
+    name: str,
+    arguments: dict | None,
+    result: str,
+) -> LoopBreak | None:
+    """Record a tool result; return a LoopBreak (stop-and-ask) when the model is stuck.
+
+    Conservative by design — only clear signals trip it: (a) the same call failing
+    identically, (b) one tool failing repeatedly in a turn, or (c) a stall that produced no
+    new result across a window of steps, and only well past a floor of tool rounds.
+    """
+    settings = runtime.settings
+    args_hash = _args_hash(arguments)
+    failed = tool_result_is_failure(result)
+
+    # Progress = a non-failed call that produced output not seen before this turn.
+    result_key = (
+        f"{name}|{args_hash}|"
+        f"{hashlib.sha1(result.encode('utf-8', 'replace')).hexdigest()[:12]}"
+    )
+    if not failed and result_key not in runtime.seen_result_keys:
+        runtime.iterations_without_progress = 0
+    else:
+        runtime.iterations_without_progress += 1
+    runtime.seen_result_keys.add(result_key)
+
+    runtime.recent_tool_calls.append((name, args_hash, not failed))
+    if failed:
+        runtime.tool_failure_counts[name] = runtime.tool_failure_counts.get(name, 0) + 1
+
+    # (a) Same (tool, args) failing identically.
+    if failed:
+        identical_fails = sum(
+            1 for (n, h, ok) in runtime.recent_tool_calls if n == name and h == args_hash and not ok
+        )
+        if identical_fails >= settings.repeated_failed_call_limit:
+            return LoopBreak(
+                "repeated_failed_call",
+                _stuck_message(runtime, reason="repeated_failed_call", name=name, result=result),
+            )
+
+    # (b) One tool failing repeatedly (any args) within the turn.
+    if runtime.tool_failure_counts.get(name, 0) >= settings.per_tool_failure_limit:
+        return LoopBreak(
+            "per_tool_failure",
+            _stuck_message(runtime, reason="per_tool_failure", name=name, result=result),
+        )
+
+    # (c) No-progress stall — only once well past the floor of tool rounds.
+    if (
+        runtime.tool_rounds >= settings.no_progress_floor
+        and runtime.iterations_without_progress >= settings.no_progress_window
+    ):
+        return LoopBreak(
+            "no_progress",
+            _stuck_message(runtime, reason="no_progress", name=name, result=result),
+        )
+
+    return None
 
 
 def is_deployment_resume_message(message: str) -> bool:
