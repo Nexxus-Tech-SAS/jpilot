@@ -334,9 +334,9 @@ function planCardHint(plan) {
     return 'Full platform while we refine the offering. See what’s included below.'
   }
   if (plan.id === 'enterprise') {
-    return 'Adds identity, scoped vendor personalization, ADC depth, and engineer-led rollout on top of Early Access.'
+    return 'Adds identity, scoped vendor personalization, premium blueprints, and engineer-led ADC programs on top of Early Access.'
   }
-  return 'Adds advanced WAF programs, Stack Calibration Studio, and on-demand expert support via Support Credits.'
+  return 'Adds Stack Calibration Studio customization, custom JPilot personas, advanced WAF programs, and on-demand expert support via Support Credits.'
 }
 
 onMounted(async () => {

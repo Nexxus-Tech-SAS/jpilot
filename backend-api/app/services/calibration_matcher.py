@@ -281,6 +281,12 @@ def resolve_blueprint_turn_context(
         if prompt:
             sections.append(prompt)
 
+        from app.services.knowledge_pack_runtime import _format_skill_intake
+
+        intake_block = _format_skill_intake(manifest)
+        if intake_block:
+            sections.append(intake_block)
+
         memory_hits = row.get("memoryHits") or []
         if memory_hits:
             formatted = _format_memory_hits(memory_hits)

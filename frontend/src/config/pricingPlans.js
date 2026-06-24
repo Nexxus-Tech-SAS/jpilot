@@ -19,7 +19,7 @@ export const PRICING_PLANS = [
     id: 'enterprise',
     name: 'Enterprise',
     shortName: 'Enterprise',
-    tagline: 'Identity, ADC depth, and guided rollout',
+    tagline: 'Identity, premium blueprints, and guided ADC rollout',
     priceLabel: null,
     priceDetail: 'Custom quote',
     highlighted: false,
@@ -31,7 +31,7 @@ export const PRICING_PLANS = [
     id: 'enterprise-pro',
     name: 'Enterprise Pro',
     shortName: 'Ent. Pro',
-    tagline: 'Advanced programs with on-demand expert support',
+    tagline: 'Customize personas & blueprints, with on-demand expert support',
     priceLabel: null,
     priceDetail: 'Support Credits included',
     highlighted: false,
@@ -63,6 +63,7 @@ export const PLAN_FEATURE_GROUPS = [
         footnoteId: 'llm-data-residency'
       },
       'JPilot copilot with MCP — Next-Gen API and SSH CLI',
+      'JPilot chat — Architect, Operator, and Analyst roles with appliance-aware tooling',
       'Diagnostics, SSL CSR tools, and admin user roles',
       'Encrypted appliance credentials — never sent to the LLM',
       'On-prem Docker — data stays in your network'
@@ -77,7 +78,7 @@ export const PLAN_FEATURE_GROUPS = [
       'SSO for JPilot — LDAP, Entra ID, Okta, or Google',
       'Custom infrastructure personalization — scope enabled vendor technologies to your environment (e.g., Cisco and Check Point only)',
       'Engineer-led WAF, GSLB, SSL, and CS/LB workflows across supported ADC platforms (e.g., NetScaler and F5 BIG-IP)',
-      'Expert Blueprint Library — download and customize copilot skills and memory modules from the Nexxus expert knowledge base',
+      'Premium Blueprint Library — browse and install entitled premium skills, knowledge packs, and standard persona bundles from Nexxus',
       'HA deployment, backup, and upgrade assistance',
       'Email and ticket support (business hours)'
     ]
@@ -89,7 +90,8 @@ export const PLAN_FEATURE_GROUPS = [
     minPlan: 'enterprise-pro',
     features: [
       'Advanced WAF programs — OWASP, bot management, tuning, security hardening, and security health checks (Support Credits)',
-      'Stack Calibration Studio — SME-led platform encoding of technology-specific standards, workflows, and operational knowledge (Support Credits)',
+      'Stack Calibration Studio — customize personas and blueprints; encode org-specific standards, workflows, and operational knowledge (Support Credits)',
+      'Custom JPilot personas — install specialized personas selectable in chat alongside Architect, Operator, and Analyst',
       'On-demand support via Support Credits — remote SME engineers when you need them',
       'Credits for migrations, production changes, and advanced implementations',
       'Dedicated architect and priority support channel',

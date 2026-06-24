@@ -2619,17 +2619,25 @@ onMounted(() => {
   document.addEventListener('visibilitychange', refreshInstalledPersonasOnVisible)
 })
 
-// Load the installed custom personas that back the role selector. Source of truth
-// is GET /copilot/roles, which the backend populates only with installed (enabled)
-// personas and prunes on uninstall — so this directly reflects install state.
+// Load the installed custom personas that back the role selector. The backend
+// lists only personas with bundles on disk and prunes orphan MongoDB index rows.
 function loadInstalledPersonas() {
   return listCopilotRoles()
     .then((roles) => {
       installedPersonas.value = (roles || []).filter((r) => r.isCustomPersona)
+      syncStalePersonaSelection()
     })
     .catch(() => {
       // Silently ignore — custom personas won't appear but base roles still work.
     })
+}
+
+function syncStalePersonaSelection() {
+  if (!session.personaId) return
+  const stillInstalled = installedPersonas.value.some((persona) => persona.id === session.personaId)
+  if (!stillInstalled) {
+    session.personaId = null
+  }
 }
 
 function refreshInstalledPersonasOnFocus() {

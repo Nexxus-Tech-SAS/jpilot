@@ -672,6 +672,66 @@ def list_installed_personas() -> dict[str, str]:
     return installed
 
 
+def get_installed_persona_bundle_path(persona_id: str, version: str | None = None) -> Path | None:
+    """Return the on-disk persona bundle directory, or None if not installed."""
+    cleaned_id = (persona_id or "").strip()
+    if not cleaned_id:
+        return None
+    persona_dir = _personas_root() / _safe_segment(cleaned_id)
+    if not persona_dir.is_dir():
+        return None
+    if version:
+        target = persona_dir / _safe_segment(version)
+        if target.is_dir() and (target / "manifest.json").is_file():
+            return target
+        return None
+    versions = [
+        v
+        for v in persona_dir.iterdir()
+        if v.is_dir() and (v / "manifest.json").is_file()
+    ]
+    if not versions:
+        return None
+    return max(versions, key=lambda entry: entry.name)
+
+
+def read_installed_persona_manifest(persona_id: str, version: str | None = None) -> dict[str, Any]:
+    """Load manifest.json for an installed persona bundle."""
+    bundle = get_installed_persona_bundle_path(persona_id, version)
+    if bundle is None:
+        return {}
+    return _manifest_from_skill_dir(bundle)
+
+
+async def prune_orphan_persona_index(db: AsyncIOMotorDatabase) -> int:
+    """Remove MongoDB persona index rows with no matching bundle on disk."""
+    on_disk = list_installed_personas()
+    to_delete: list[dict[str, Any]] = []
+    async for doc in db[PERSONA_COLLECTION].find({}):
+        persona_id = str(doc.get("personaId") or "").strip()
+        if not persona_id:
+            to_delete.append({"_id": doc["_id"]})
+            continue
+        disk_version = on_disk.get(persona_id)
+        if not disk_version:
+            to_delete.append({"personaId": persona_id})
+            continue
+        doc_version = str(doc.get("version") or "").strip()
+        if doc_version and doc_version != disk_version:
+            to_delete.append({"personaId": persona_id, "version": doc_version})
+
+    removed = 0
+    for query in to_delete:
+        if "_id" in query:
+            result = await db[PERSONA_COLLECTION].delete_one(query)
+        else:
+            result = await db[PERSONA_COLLECTION].delete_many(query)
+        removed += result.deleted_count
+    if removed:
+        logger.info("Pruned %s orphan persona index row(s).", removed)
+    return removed
+
+
 def _mark_installed_non_skill_items(items: list[dict[str, Any]]) -> None:
     """Set install state on persona/knowledge_pack catalog items (skills use installedBlueprints)."""
     from app.services.knowledge_pack_service import get_installed_knowledge_pack_sync_state

@@ -8,6 +8,11 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
+from app.services.calibration_sync_service import (
+    list_installed_personas as personas_installed_on_disk,
+    prune_orphan_persona_index,
+    read_installed_persona_manifest,
+)
 from app.services.prompt_loader import load_operator_design_implementation_suffix, load_role_prompt
 from app.services.vendor_registry import DEFAULT_VENDOR_ID, get_vendor_manifest
 
@@ -254,46 +259,80 @@ async def resolve_custom_persona(
     if not cleaned:
         return None
 
+    on_disk = personas_installed_on_disk()
+    disk_version = on_disk.get(cleaned)
+    if not disk_version:
+        return None
+
     doc = await db[PERSONA_COLLECTION].find_one(
+        {"personaId": cleaned, "enabled": True, "version": disk_version},
+    ) or await db[PERSONA_COLLECTION].find_one(
         {"personaId": cleaned, "enabled": True},
         sort=[("installedAt", -1)],
     )
-    if doc is None:
+    manifest = read_installed_persona_manifest(cleaned, disk_version)
+    if doc is None and not manifest:
         return None
 
-    raw_base_role = str(doc.get("baseRole") or "").strip().lower()
+    raw_base_role = str(
+        (doc or {}).get("baseRole") or manifest.get("baseRole") or ""
+    ).strip().lower()
     if raw_base_role not in _VALID_BASE_ROLES:
         raw_base_role = JPilotRole.OPERATOR.value  # safe fallback
 
-    behavior = doc.get("behavior") or {}
+    behavior = (doc or {}).get("behavior") or manifest.get("behavior") or {}
     return CustomPersonaInfo(
         personaId=cleaned,
-        label=str(doc.get("label") or cleaned),
+        label=str((doc or {}).get("label") or manifest.get("label") or cleaned),
         baseRole=raw_base_role,
         systemPrompt=str(behavior.get("systemPrompt") or ""),
         objectives=list(behavior.get("objectives") or []),
     )
 
 
+def _persona_catalog_entry(
+    persona_id: str,
+    *,
+    doc: dict[str, Any] | None,
+    manifest: dict[str, Any],
+) -> dict[str, Any]:
+    raw_base_role = str(
+        (doc or {}).get("baseRole") or manifest.get("baseRole") or ""
+    ).strip().lower()
+    if raw_base_role not in _VALID_BASE_ROLES:
+        raw_base_role = JPilotRole.OPERATOR.value
+    behavior = (doc or {}).get("behavior") or manifest.get("behavior") or {}
+    label = str((doc or {}).get("label") or manifest.get("label") or persona_id)
+    description_source = str(behavior.get("systemPrompt") or manifest.get("description") or "")
+    return {
+        "id": persona_id,
+        "label": label,
+        "description": description_source[:120] or f"Custom persona (base: {raw_base_role})",
+        "baseRole": raw_base_role,
+        "requiresAppliance": raw_base_role != JPilotRole.ARCHITECT.value,
+        "suggestedPaneLabel": label or "Custom",
+        "handoffTarget": None,
+        "isCustomPersona": True,
+    }
+
+
 async def list_installed_personas(db: AsyncIOMotorDatabase) -> list[dict[str, Any]]:
-    """Return a list of enabled installed personas for the roles catalog."""
-    cursor = db[PERSONA_COLLECTION].find({"enabled": True}, sort=[("label", 1)])
+    """Return custom personas installed on disk for the roles catalog."""
+    await prune_orphan_persona_index(db)
+    on_disk = personas_installed_on_disk()
     results: list[dict[str, Any]] = []
-    async for doc in cursor:
-        raw_base_role = str(doc.get("baseRole") or "").strip().lower()
-        if raw_base_role not in _VALID_BASE_ROLES:
-            raw_base_role = JPilotRole.OPERATOR.value
-        behavior = doc.get("behavior") or {}
-        results.append(
-            {
-                "id": str(doc.get("personaId") or ""),
-                "label": str(doc.get("label") or doc.get("personaId") or ""),
-                "description": str(behavior.get("systemPrompt") or "")[:120] or f"Custom persona (base: {raw_base_role})",
-                "baseRole": raw_base_role,
-                "requiresAppliance": raw_base_role != JPilotRole.ARCHITECT.value,
-                "suggestedPaneLabel": str(doc.get("label") or "Custom"),
-                "handoffTarget": None,
-                "isCustomPersona": True,
-            }
+    for persona_id in sorted(on_disk):
+        if persona_id in _VALID_BASE_ROLES:
+            continue
+        disk_version = on_disk[persona_id]
+        manifest = read_installed_persona_manifest(persona_id, disk_version)
+        if not manifest:
+            continue
+        doc = await db[PERSONA_COLLECTION].find_one(
+            {"personaId": persona_id, "enabled": True, "version": disk_version},
+        ) or await db[PERSONA_COLLECTION].find_one(
+            {"personaId": persona_id, "enabled": True},
+            sort=[("installedAt", -1)],
         )
+        results.append(_persona_catalog_entry(persona_id, doc=doc, manifest=manifest))
     return results
