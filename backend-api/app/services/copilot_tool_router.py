@@ -659,3 +659,33 @@ def route_copilot_tools(
 
     selected = [tool for tool in enabled_tools if tool["name"] in selected_names]
     return selected or enabled_tools
+
+
+# ---------------------------------------------------------------------------
+# Intent helpers for blueprint suggestion gating.
+# ---------------------------------------------------------------------------
+
+_DEDICATED_INTENT_PACKS = frozenset(
+    {
+        "lb_config",
+        "cs_config",
+        "rewrite_config",
+        "responder_config",
+        "logs",
+        "config_search",
+        "ha_failover",
+    }
+)
+
+
+def has_dedicated_config_or_read_intent(user_message: str, role: str) -> bool:
+    """Return True when the message maps to a dedicated config/read pack for operator/analyst.
+
+    Used to gate blueprint suggestion cards for operator and analyst roles: only surface
+    a suggestion when the user is clearly asking about a specific NetScaler object/domain
+    (not a generic question).
+    """
+    if role == "architect":
+        return False
+    packs = classify_tool_packs(user_message, role=role, vendor="netscaler")
+    return bool(packs & _DEDICATED_INTENT_PACKS)

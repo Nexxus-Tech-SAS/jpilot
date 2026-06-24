@@ -19,7 +19,7 @@ if not logger.handlers:
     logger.addHandler(_handler)
     logger.propagate = False
 
-from app.schemas.copilot import ChatResponse, ChatAttachment, CopilotSettings, DeploymentContinuation, ToolCallTrace
+from app.schemas.copilot import BlueprintSuggestion, ChatResponse, ChatAttachment, CopilotSettings, DeploymentContinuation, ToolCallTrace
 from app.services.copilot_attachment_service import (
     build_anthropic_user_content,
     build_gemini_user_parts,
@@ -73,13 +73,15 @@ from app.services.copilot_roles import (
     normalize_role,
     role_requires_appliance,
 )
-from app.services.copilot_tool_router import route_copilot_tools
+from app.services.copilot_tool_router import has_dedicated_config_or_read_intent, route_copilot_tools
 from app.services.copilot_vendors import copilot_vendor_is_supported
 from app.services.vendor_registry import resolve_chat_vendor
 from app.services.encryption_service import decrypt_value
 
 from app.services.calibration_matcher import (
     BLUEPRINT_FIRST_NUDGE,
+    find_relaxed_blueprint_candidate,
+    has_installed_skills_for_chat,
     resolve_blueprint_turn_context,
 )
 from app.services.calibration_sync_service import list_installed_skills
@@ -324,23 +326,32 @@ def _apply_blueprint_context(
     user_message: str,
     role: str,
     vendor: str | None,
-) -> tuple[str, bool, bool]:
+) -> tuple[str, bool, bool, dict | None]:
+    """Return (system_prompt, blueprint_relevant, stack_calibration_reviewed, relaxed_candidate).
+
+    ``relaxed_candidate`` is a dict with keys {skillId, label, summary, confidence}
+    when the strict match missed but a secondary/relaxed match found a plausible candidate
+    AND no blueprints were silently injected.  It is ``None`` otherwise.
+    """
     from app.services.knowledge_pack_runtime import resolve_knowledge_pack_turn_context
     from app.services.knowledge_pack_service import get_active_pack_dir
 
+    effective_vendor = vendor or "netscaler"
     if get_active_pack_dir():
         ctx, _tool_policy = resolve_knowledge_pack_turn_context(
             user_message=user_message,
             role=role,
-            vendor=vendor or "netscaler",
+            vendor=effective_vendor,
         )
     else:
+        installed = list_installed_skills()
         ctx = resolve_blueprint_turn_context(
             user_message=user_message,
             role=role,
-            vendor=vendor or "netscaler",
-            installed=list_installed_skills(),
+            vendor=effective_vendor,
+            installed=installed,
         )
+
     if ctx.injection_block:
         system_prompt = f"{system_prompt}\n\n{ctx.injection_block}"
     if ctx.relevant:
@@ -348,7 +359,20 @@ def _apply_blueprint_context(
     reviewed = ctx.stack_calibration_reviewed
     if ctx.relevant and ctx.injection_block:
         reviewed = True
-    return system_prompt, ctx.relevant, reviewed
+
+    # When strict match missed, probe for a relaxed suggestion candidate.
+    relaxed_candidate: dict | None = None
+    if not ctx.relevant and not get_active_pack_dir():
+        _eff_installed = list_installed_skills()
+        if has_installed_skills_for_chat(role=role, vendor=effective_vendor, installed=_eff_installed):
+            relaxed_candidate = find_relaxed_blueprint_candidate(
+                user_message=user_message,
+                role=role,
+                vendor=effective_vendor,
+                installed=_eff_installed,
+            )
+
+    return system_prompt, ctx.relevant, reviewed, relaxed_candidate
 
 
 def _append_skill_calibration(
@@ -358,7 +382,7 @@ def _append_skill_calibration(
     role: str,
     vendor: str | None,
 ) -> str:
-    prompt, _, _ = _apply_blueprint_context(
+    prompt, _, _, _ = _apply_blueprint_context(
         system_prompt,
         user_message=user_message,
         role=role,
@@ -812,6 +836,51 @@ def _extract_prior_dedicated_plan(history: list[dict]) -> tuple[str, dict] | Non
 # ---------------------------------------------------------------------------
 
 
+def _build_blueprint_suggestion(
+    relaxed_candidate: dict | None,
+    *,
+    role: str,
+    chat_role: "JPilotRole",
+    history: list[dict],
+    user_message: str,
+) -> "BlueprintSuggestion | None":
+    """Build a BlueprintSuggestion from a relaxed candidate if gating conditions are met.
+
+    Gating:
+    - architect: only at conversation start (no planning-form submissions in history yet).
+    - operator/analyst: only when the user message maps to a dedicated config/read intent.
+    - Never surfaces when strict blueprint already injected (relaxed_candidate is None then).
+    """
+    if not relaxed_candidate:
+        return None
+
+    if chat_role == JPilotRole.ARCHITECT:
+        from app.services.copilot_architect_discovery import count_planning_form_submissions
+
+        # Build a combined conversation text from history to count prior form submissions.
+        conv_parts = [m.get("content") or "" for m in (history or []) if m.get("role") == "assistant"]
+        conv_text = "\n".join(conv_parts)
+        if count_planning_form_submissions(conv_text) > 0:
+            # Not at conversation start — don't nag after discovery has begun.
+            return None
+        apply_prompt = f"Start from the {relaxed_candidate['label']} blueprint"
+    elif chat_role in (JPilotRole.OPERATOR, JPilotRole.ANALYST):
+        if not has_dedicated_config_or_read_intent(user_message, role):
+            return None
+        apply_prompt = f"Apply the {relaxed_candidate['label']} blueprint to this request"
+    else:
+        return None
+
+    return BlueprintSuggestion(
+        skillId=relaxed_candidate["skillId"],
+        label=relaxed_candidate["label"],
+        summary=relaxed_candidate["summary"],
+        confidence=relaxed_candidate["confidence"],
+        action="apply",
+        applyPrompt=apply_prompt,
+    )
+
+
 def _finalize_chat_response(
     content: str,
     *,
@@ -822,6 +891,7 @@ def _finalize_chat_response(
     user_message: str = "",
     role: str | None = None,
     deployment_continuation: DeploymentContinuation | None = None,
+    blueprint_suggestion: BlueprintSuggestion | None = None,
 ) -> ChatResponse:
     if normalize_role(role) == JPilotRole.ARCHITECT:
         content = sanitize_architect_reply(content)
@@ -840,6 +910,7 @@ def _finalize_chat_response(
         toolCalls=tool_traces,
         inputForm=to_response_input_form(input_form),
         deploymentContinuation=deployment_continuation,
+        blueprintSuggestion=blueprint_suggestion,
     )
 
 
@@ -1128,7 +1199,7 @@ async def run_copilot_chat(
     # Layer the custom persona's system prompt on top of the base role prompt.
     if persona_system_prompt and persona_system_prompt.strip():
         system_prompt = f"{system_prompt}\n\n## Custom Persona Instructions\n{persona_system_prompt.strip()}"
-    system_prompt, blueprint_relevant, stack_calibration_reviewed = _apply_blueprint_context(
+    system_prompt, blueprint_relevant, stack_calibration_reviewed, relaxed_blueprint_candidate = _apply_blueprint_context(
         system_prompt,
         user_message=user_message,
         role=chat_role.value,
@@ -1511,6 +1582,13 @@ async def run_copilot_chat(
             deliverable_ready=deliverable_ready_from_content(content),
         )
 
+    blueprint_suggestion = _build_blueprint_suggestion(
+        relaxed_blueprint_candidate,
+        role=chat_role.value,
+        chat_role=chat_role,
+        history=history,
+        user_message=user_message,
+    )
     return _finalize_chat_response(
         content,
         provider_name=provider["providerName"],
@@ -1520,6 +1598,7 @@ async def run_copilot_chat(
         user_message=user_message,
         role=chat_role.value,
         deployment_continuation=orchestration.pause,
+        blueprint_suggestion=blueprint_suggestion,
     )
 
 

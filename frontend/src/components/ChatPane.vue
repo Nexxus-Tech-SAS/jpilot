@@ -531,6 +531,13 @@
                       @click="resumeDeployment"
                     />
                   </div>
+                  <ChatBlueprintSuggestion
+                    v-if="msg.blueprintSuggestion && !msg.blueprintSuggestionDismissed && !isGenerating"
+                    :suggestion="msg.blueprintSuggestion"
+                    :disabled="isGenerating"
+                    @apply="applyBlueprintSuggestion(msg)"
+                    @skip="dismissBlueprintSuggestion(msg)"
+                  />
                   <ChatToolTrace v-if="msg.toolCalls?.length" :tools="msg.toolCalls" />
                   <p class="beta-message-time">
                     <span
@@ -1044,6 +1051,13 @@
                 @click="resumeDeployment"
               />
             </div>
+            <ChatBlueprintSuggestion
+              v-if="msg.blueprintSuggestion && !msg.blueprintSuggestionDismissed && !isGenerating"
+              :suggestion="msg.blueprintSuggestion"
+              :disabled="isGenerating"
+              @apply="applyBlueprintSuggestion(msg)"
+              @skip="dismissBlueprintSuggestion(msg)"
+            />
             <ChatToolTrace v-if="msg.toolCalls?.length" :tools="msg.toolCalls" />
             <p
               v-if="msg.role === 'assistant' && formatMessageGenerationStats(msg.generationStats)"
@@ -1241,6 +1255,7 @@ import AskJpilotCommandMenu from './AskJpilotCommandMenu.vue'
 import BetaWelcome from './BetaWelcome.vue'
 import ChatMarkdown from './ChatMarkdown.vue'
 import ChatToolTrace from './ChatToolTrace.vue'
+import ChatBlueprintSuggestion from './ChatBlueprintSuggestion.vue'
 import ChatDeploymentSubtasks from './ChatDeploymentSubtasks.vue'
 import TriArcLoader from './TriArcLoader.vue'
 import { isDeploymentContinueMessage, messageNeedsDeploymentContinuation } from '../utils/deploymentContinuation'
@@ -2402,7 +2417,9 @@ async function runChat(content, attachments, runOptions = {}) {
       generationStats: lastGenerationStats,
       deploymentContinuation: data.deploymentContinuation || null,
       deploymentSubtasks: data.deploymentContinuation?.subtasks || liveDeploymentSubtasks.value,
-      progressTitle: liveProgressTitle.value
+      progressTitle: liveProgressTitle.value,
+      blueprintSuggestion: data.blueprintSuggestion || null,
+      blueprintSuggestionDismissed: false
     })
   } catch (error) {
     if (session.designDocument) {
@@ -2480,6 +2497,17 @@ async function submitConfigForm(values, messageIndex) {
   } finally {
     submittingFormIndex.value = null
   }
+}
+
+function dismissBlueprintSuggestion(msg) {
+  msg.blueprintSuggestionDismissed = true
+}
+
+async function applyBlueprintSuggestion(msg) {
+  if (isGenerating.value || !msg.blueprintSuggestion) return
+  msg.blueprintSuggestionDismissed = true
+  const prompt = msg.blueprintSuggestion.applyPrompt
+  await sendMessage(prompt, null, { skipRoleInference: true })
 }
 
 async function resumeDeployment() {
