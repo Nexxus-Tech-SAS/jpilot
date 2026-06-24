@@ -411,9 +411,10 @@ def classify_tool_packs(
             "search the config",
             "grep the config",
             "find in running config",
-            "running config for",
-            "search running config",
+            "running config",
             "search config",
+            "grep config",
+            "find in the config",
         ),
     ):
         _dedicated_config_packs.add("config_search")
