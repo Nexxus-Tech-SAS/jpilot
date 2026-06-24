@@ -655,6 +655,41 @@ def _truncate_tool_result(result: str, max_chars: int) -> str:
     return result[:max_chars] + "\n...[truncated for context]"
 
 
+# Idempotent read tools: calling them again with identical args yields identical data, so an
+# exact in-turn duplicate can be collapsed to a pointer without losing information (the prior
+# result is still in the conversation). Never includes writes/searches/diagnostics.
+_DEDUP_READ_TOOLS = frozenset(
+    {
+        "netscaler_get_system_info",
+        "netscaler_test_connection",
+        "netscaler_list_applications",
+        "netscaler_list_virtual_servers",
+        "netscaler_list_virtual_ips",
+        "netscaler_list_ip_addresses",
+        "netscaler_list_service_status",
+        "netscaler_nextgen_get",
+        "netscaler_list_inventory",
+    }
+)
+
+
+def _dedupe_read_result(
+    name: str,
+    arguments: dict[str, Any],
+    result: str,
+    seen: dict[str, str],
+    max_chars: int,
+) -> str:
+    """Truncate a tool result; collapse an exact in-turn duplicate of an idempotent read to a
+    short pointer so the same payload isn't re-fed to the model on repeated identical calls."""
+    if name in _DEDUP_READ_TOOLS:
+        key = f"{name}|{json.dumps(arguments, sort_keys=True, default=str)}"
+        if seen.get(key) == result:
+            return f"[identical to the earlier `{name}` result in this turn — see above]"
+        seen[key] = result
+    return _truncate_tool_result(result, max_chars)
+
+
 def _finalize_chat_response(
     content: str,
     *,
@@ -1356,6 +1391,7 @@ async def _run_openai_loop(
     cli_memory_reviewed = False
     blueprint_reviewed = stack_calibration_reviewed
     progress_ctx = _progress_context(history, user_message, attachments)
+    seen_reads: dict[str, str] = {}  # in-turn idempotent-read dedup (8e)
 
     for continuation_phase in range(runtime.max_continuation_phases + 1):
         if continuation_phase > 0:
@@ -1467,7 +1503,7 @@ async def _run_openai_loop(
                     {
                         "role": "tool",
                         "tool_call_id": tool_call_id,
-                        "content": _truncate_tool_result(result, limits.max_tool_result_chars),
+                        "content": _dedupe_read_result(name, arguments, result, seen_reads, limits.max_tool_result_chars),
                     }
                 )
                 retry_hint = build_tool_retry_hint(
@@ -1558,6 +1594,7 @@ async def _run_gemini_loop(
     cli_memory_reviewed = False
     blueprint_reviewed = stack_calibration_reviewed
     progress_ctx = _progress_context(history, user_message, attachments)
+    seen_reads: dict[str, str] = {}  # in-turn idempotent-read dedup (8e)
 
     for continuation_phase in range(runtime.max_continuation_phases + 1):
         if continuation_phase > 0:
@@ -1655,7 +1692,7 @@ async def _run_gemini_loop(
                 if progress is not None:
                     await progress.tool_finished(name)
                 tool_traces.append(ToolCallTrace(name=name, arguments=arguments, result=result))
-                truncated = _truncate_tool_result(result, limits.max_tool_result_chars)
+                truncated = _dedupe_read_result(name, arguments, result, seen_reads, limits.max_tool_result_chars)
                 response_parts.append(
                     {
                         "functionResponse": {
@@ -1750,6 +1787,7 @@ async def _run_anthropic_loop(
     cli_memory_reviewed = False
     blueprint_reviewed = stack_calibration_reviewed
     progress_ctx = _progress_context(history, user_message, attachments)
+    seen_reads: dict[str, str] = {}  # in-turn idempotent-read dedup (8e)
 
     for continuation_phase in range(runtime.max_continuation_phases + 1):
         if continuation_phase > 0:
@@ -1849,7 +1887,7 @@ async def _run_anthropic_loop(
                     {
                         "type": "tool_result",
                         "tool_use_id": tool_use["id"],
-                        "content": _truncate_tool_result(result, limits.max_tool_result_chars),
+                        "content": _dedupe_read_result(name, arguments, result, seen_reads, limits.max_tool_result_chars),
                     }
                 )
                 retry_hint = build_tool_retry_hint(

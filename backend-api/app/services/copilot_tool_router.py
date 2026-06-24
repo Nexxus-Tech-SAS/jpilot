@@ -160,10 +160,18 @@ def classify_tool_packs(
     if has_installed_skills_for_chat(role=role, vendor=vendor):
         packs.add("stack_calibration")
 
+    # Precise single-intent reads route tightly (core_read + the one read tool), not the
+    # whole read pack — fewer, more precise tools per turn. Keep blueprint tools if present.
     if vendor == "netscaler" and role != "architect" and detect_service_status_request(user_message):
-        return packs | {"service_status"}
+        tight = {"core_read", "service_status"}
+        if "stack_calibration" in packs:
+            tight.add("stack_calibration")
+        return tight
     if vendor == "netscaler" and role != "architect" and detect_ip_inventory_request(user_message):
-        return packs | {"ip_inventory"}
+        tight = {"core_read", "ip_inventory"}
+        if "stack_calibration" in packs:
+            tight.add("stack_calibration")
+        return tight
 
     if role == "architect" and vendor == "netscaler":
         architect_packs: set[str] = set()
@@ -398,12 +406,14 @@ def route_copilot_tools(
     if vendor != "netscaler":
         return enabled_tools
 
-    if should_use_full_tool_set(user_message, role):
-        return enabled_tools
-
     packs = classify_tool_packs(
         user_message, role=role, attachment_names=attachment_names, vendor=vendor
     )
+    # Precise single-intent reads route tightly even for comma-heavy phrasing; only fall
+    # back to the full tool set for genuinely ambiguous/multi-step requests.
+    precise_intent = bool(packs & {"ip_inventory", "service_status"})
+    if not precise_intent and should_use_full_tool_set(user_message, role):
+        return enabled_tools
     allowed_names = pack_tool_names(packs, vendor=vendor)
     enabled_names = {tool["name"] for tool in enabled_tools}
     selected_names = allowed_names & enabled_names

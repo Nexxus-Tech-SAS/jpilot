@@ -140,7 +140,7 @@ COPILOT_TOOLS = [
         "name": "netscaler_nextgen_get",
         "description": (
             "Read-only GET against a NetScaler Next-Gen API path on an appliance "
-            "(e.g. applications, applications/{name}). Use after searching the official guide."
+            "(e.g. applications, applications/{name})."
         ),
         "parameters": {
             "type": "object",
@@ -161,7 +161,6 @@ COPILOT_TOOLS = [
         "name": "netscaler_create_application",
         "description": (
             "Create a NetScaler Next-Gen application via POST /applications. "
-            "Use after search_netscaler_nextgen_api confirms AddApplication payload from memory file. "
             "Not for classic add lb vserver — this is the Next-Gen application-centric API."
         ),
         "parameters": {
@@ -193,8 +192,7 @@ COPILOT_TOOLS = [
         "name": "netscaler_add_ip_address",
         "description": (
             "Add a classic NetScaler IP (VIP, SNIP, or NSIP) on the appliance. "
-            "Equivalent to: add ns ip <ip> <netmask> -type VIP. "
-            "Use after search_netscaler_cli_reference confirms syntax from netscaler_adc_cli_memory.md."
+            "Equivalent to: add ns ip <ip> <netmask> -type VIP."
         ),
         "parameters": {
             "type": "object",
@@ -228,11 +226,9 @@ COPILOT_TOOLS = [
         "name": "netscaler_ssh_run_command",
         "description": (
             "Run a read-only NetScaler CLI command via SSH (show/stat/get) or a connectivity "
-            "troubleshooting command (ping, ping6, traceroute, traceroute6). "
-            "Use only after search_netscaler_cli_reference returns a recommendedCommands entry "
-            "and only run that exact command (or documented alias). ping is automatically bounded "
-            "with a packet count. If success is false, read retryHint/suggestedCommand and retry — "
-            "do not answer the user yet."
+            "troubleshooting command (ping, ping6, traceroute, traceroute6). ping is automatically "
+            "bounded with a packet count. If success is false, read retryHint/suggestedCommand and "
+            "retry — do not answer the user yet."
         ),
         "parameters": {
             "type": "object",
@@ -258,8 +254,7 @@ COPILOT_TOOLS = [
         "description": (
             "Run ANY NetScaler classic CLI command via SSH — including configuration writes "
             "(add, set, bind, unbind, enable, disable, rm, clear, save, ...) plus show/stat/get. "
-            "Use ONLY after search_netscaler_cli_reference confirms the exact syntax from "
-            "netscaler_adc_cli_memory.md — never invent CLI syntax. "
+            "Verify unfamiliar syntax via search_netscaler_cli_reference first. "
             "Run 'save ns config' afterwards to persist classic configuration. "
             "Destructive commands (rm, clear, delete, reboot, shutdown, disable, unbind, flush, reset, "
             "unset, kill, force) are blocked until the user has agreed and you pass confirmed=true. "
@@ -293,7 +288,7 @@ COPILOT_TOOLS = [
         "description": (
             "Run a sequence of NetScaler classic CLI commands via SSH in order — preferred for multi-step "
             "LB setup (add lb vserver, add serviceGroup, bind serviceGroup, bind lb vserver, save ns config). "
-            "Use ONLY after search_netscaler_cli_reference confirms exact syntax. "
+            "Verify unfamiliar syntax via search_netscaler_cli_reference first. "
             "Stops on first failure; read results[] for each command output. "
             "Destructive commands in the list require confirmed=true."
         ),
@@ -327,8 +322,7 @@ COPILOT_TOOLS = [
             "Perform any NetScaler Next-Gen API request (GET, POST, PUT, DELETE) against a path "
             "relative to /mgmt/api/nextgen/v1/, with an optional JSON body. "
             "Use for creating/updating/deleting applications, certificates, routes, config_sets, etc. "
-            "Use ONLY after search_netscaler_nextgen_api confirms the endpoint and payload from "
-            "netscaler_nextgen_api_memory.md. "
+            "Verify unfamiliar endpoints/payloads via search_netscaler_nextgen_api first. "
             "DELETE requests and disable/uninstall actions are blocked until the user has agreed and "
             "you pass confirmed=true."
         ),
@@ -710,7 +704,7 @@ CISCO_COPILOT_TOOLS = [
         "name": "cisco_run_cli_command",
         "description": (
             "Run a single Cisco IOS/XE command over SSH. "
-            "Use ONLY after search_cisco_cli_reference confirms syntax from memory."
+            "Verify unfamiliar syntax via search_cisco_cli_reference first."
         ),
         "parameters": {
             "type": "object",
@@ -730,7 +724,7 @@ CISCO_COPILOT_TOOLS = [
         "name": "cisco_run_cli_commands",
         "description": (
             "Run ordered Cisco IOS/XE commands over SSH. "
-            "Use ONLY after search_cisco_cli_reference confirms syntax."
+            "Verify unfamiliar syntax via search_cisco_cli_reference first."
         ),
         "parameters": {
             "type": "object",
@@ -777,7 +771,7 @@ F5_COPILOT_TOOLS = [
         "name": "f5_run_tmsh_command",
         "description": (
             "Run a single F5 TMSH configuration command over SSH. "
-            "Use ONLY after search_f5_tmsh_reference confirms syntax from memory."
+            "Verify unfamiliar syntax via search_f5_tmsh_reference first."
         ),
         "parameters": {
             "type": "object",
@@ -797,7 +791,7 @@ F5_COPILOT_TOOLS = [
         "name": "f5_run_tmsh_commands",
         "description": (
             "Run ordered F5 TMSH commands over SSH. "
-            "Use ONLY after search_f5_tmsh_reference confirms syntax."
+            "Verify unfamiliar syntax via search_f5_tmsh_reference first."
         ),
         "parameters": {
             "type": "object",
@@ -844,7 +838,7 @@ SDX_COPILOT_TOOLS = [
         "name": "sdx_run_cli_command",
         "description": (
             "Run a single NetScaler SDX SVM CLI command over SSH. "
-            "Use ONLY after search_sdx_cli_reference confirms syntax from memory."
+            "Verify unfamiliar syntax via search_sdx_cli_reference first."
         ),
         "parameters": {
             "type": "object",
@@ -864,7 +858,7 @@ SDX_COPILOT_TOOLS = [
         "name": "sdx_run_cli_commands",
         "description": (
             "Run ordered NetScaler SDX SVM CLI commands over SSH. "
-            "Use ONLY after search_sdx_cli_reference confirms syntax."
+            "Verify unfamiliar syntax via search_sdx_cli_reference first."
         ),
         "parameters": {
             "type": "object",
@@ -1571,10 +1565,19 @@ async def chat_anthropic(
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
     }
+    # Prompt caching (ephemeral, GA — no beta header): mark the system block cacheable.
+    # The breakpoint on the system block caches `tools + system` together (render order is
+    # tools -> system -> messages). The big win is across a single turn's tool-loop
+    # iterations, which re-send the same system + tools every round (5-min TTL covers a turn).
+    system_payload = (
+        [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        if system
+        else system
+    )
     payload = {
         "model": model,
         "max_tokens": 4096,
-        "system": system,
+        "system": system_payload,
         "messages": messages,
         "tools": tools,
     }
