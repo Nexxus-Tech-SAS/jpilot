@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600&display=swap');
+
+/* Set --ink to your foreground colour (defaults to currentColor here). */
+:root {
+  --ink: currentColor;
+}
+
+/* 26 Term-OS — terminal cursor */
+.ld-cursor {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.1em;
+}
+
+.ld-cursor::after {
+  content: "▍";
+  animation: blinkc 1s steps(2) infinite;
+}
+
+@keyframes blinkc {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ld-cursor::after {
+    animation: none;
+  }
+}

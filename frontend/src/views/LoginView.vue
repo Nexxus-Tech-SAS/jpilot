@@ -9,17 +9,17 @@
       class="login-panel"
       v-animateonscroll="{ enterClass: 'anim-panel-in' }"
     >
-      <div v-if="serverVersion" class="login-panel-tags">
-        <span class="login-meta-tag login-meta-version">{{ serverVersion }}</span>
+      <div class="login-panel-header">
+        <span class="login-meta-tag login-meta-edition">Early Access</span>
+        <span v-if="serverVersion" class="login-meta-tag login-meta-version">{{ serverVersion }}</span>
       </div>
 
       <div
         class="login-brand flex flex-column align-items-center mb-5"
         v-animateonscroll="{ enterClass: 'anim-rise anim-delay-1' }"
       >
-        <JPilot :size="73" />
-        <h1 class="login-title m-0 mt-3">JPilot</h1>
-        <span class="login-meta-tag login-meta-edition mt-2">Early Access</span>
+        <TriArcLoader class="login-logo" />
+        <h1 class="ld-cursor login-cursor-title m-0 mt-3">JPilot</h1>
         <p class="login-subtitle m-0 mt-2">
           {{ status?.passkeyRequired ? 'Sign in with your passkey' : 'Sign in to manage your platform' }}
         </p>
@@ -97,16 +97,17 @@
           </label>
         </div>
 
-        <Button
+        <button
           v-if="status?.passkeyRequired"
           type="button"
-          label="Sign in with passkey"
-          icon="pi pi-shield"
-          class="w-full"
-          :loading="loadingPasskey && passkeyMode === 'local'"
+          class="btn fx-95 fx-71 login-action-btn"
           :disabled="!agreed || loadingPasskey"
           @click="handlePasskeyLogin(false)"
-        />
+        >
+          <span class="btn-label">
+            {{ loadingPasskey && passkeyMode === 'local' ? 'Signing in…' : 'Sign in with passkey' }}
+          </span>
+        </button>
 
         <div
           v-if="status?.passkeyRequired"
@@ -132,28 +133,26 @@
               The scannable QR code opens when you start phone sign-in below.
             </p>
           </div>
-          <Button
+          <button
             type="button"
-            label="Show QR code"
-            icon="pi pi-qrcode"
-            class="w-full"
-            severity="secondary"
-            outlined
-            :loading="loadingPasskey && passkeyMode === 'cross-device'"
+            class="btn fx-95 fx-71 login-action-btn"
             :disabled="!agreed || loadingPasskey"
             @click="handlePasskeyLogin(true)"
-          />
+          >
+            <span class="btn-label">
+              {{ loadingPasskey && passkeyMode === 'cross-device' ? 'Opening…' : 'Show QR code' }}
+            </span>
+          </button>
         </div>
 
-        <Button
+        <button
           v-else
           type="submit"
-          label="Sign in"
-          icon="pi pi-sign-in"
-          class="w-full"
-          :loading="loading"
-          :disabled="!agreed"
-        />
+          class="btn fx-95 fx-71 login-action-btn"
+          :disabled="!agreed || loading"
+        >
+          <span class="btn-label">{{ loading ? 'Signing in…' : 'Sign in' }}</span>
+        </button>
 
         <template v-if="status?.passkeyRequired">
           <small class="field-hint text-center">
@@ -187,17 +186,16 @@
           <div class="login-divider">
             <span>optional</span>
           </div>
-          <Button
+          <button
             type="button"
-            label="Sign in with passkey"
-            icon="pi pi-shield"
-            class="w-full"
-            severity="secondary"
-            outlined
-            :loading="loadingPasskey"
-            :disabled="!agreed"
+            class="btn fx-95 fx-71 login-action-btn"
+            :disabled="!agreed || loadingPasskey"
             @click="handlePasskeyLogin(false)"
-          />
+          >
+            <span class="btn-label">
+              {{ loadingPasskey ? 'Signing in…' : 'Sign in with passkey' }}
+            </span>
+          </button>
           <small class="field-hint text-center">
             Available after you register a passkey in Settings.
           </small>
@@ -220,13 +218,12 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Password from 'primevue/password'
+import TriArcLoader from '../components/TriArcLoader.vue'
 import ConstellationCanvas from '../components/ConstellationCanvas.vue'
-import JPilot from '../components/JPilot.vue'
 import api from '../services/api'
 import { setAuth } from '../services/auth'
 import { getSystemVersion } from '../services/system'
@@ -489,22 +486,32 @@ async function handlePasskeyLogin(preferCrossDevice = false) {
     0 0 48px color-mix(in srgb, var(--p-primary-color) 28%, transparent);
 }
 
-.login-title {
-  font-size: 1.375rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+.login-cursor-title {
+  color: var(--p-primary-color);
 }
 
-.login-panel-tags {
+.login-logo {
+  color: var(--p-primary-color);
+}
+
+.login-action-btn {
+  width: 100%;
+  --bink: var(--p-primary-color);
+  --secondary: var(--p-text-color);
+  --surface: var(--p-content-background);
+  --bsurf: var(--p-content-background);
+}
+
+.login-panel-header {
   position: absolute;
   top: 0.875rem;
+  left: 0.875rem;
   right: 0.875rem;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.375rem;
   flex-wrap: wrap;
-  max-width: calc(100% - 1.75rem);
 }
 
 .login-meta-tag {

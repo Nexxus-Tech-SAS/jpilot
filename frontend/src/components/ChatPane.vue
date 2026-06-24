@@ -63,12 +63,9 @@
               </div>
               <div class="beta-header-copy">
                 <span class="beta-title">
-                  <template v-if="showBetaLabel">
-                    <span class="beta-title-brand">JPilot</span>
-                    <span class="beta-title-sep" aria-hidden="true"> · </span>
-                    <span class="beta-title-role">{{ activeRole.label }}</span>
-                  </template>
-                  <template v-else>JPilot · {{ activeRole.label }}</template>
+                  <span class="beta-title-brand">JPilot</span>
+                  <span class="beta-title-sep" aria-hidden="true"> · </span>
+                  <span class="ld-cursor beta-title-role-cursor">{{ activeRole.label }}</span>
                 </span>
                 <span class="beta-subtitle">{{ betaStatusLine }}</span>
               </div>
@@ -77,14 +74,14 @@
 
           <div v-if="showConversationSwitcher" class="beta-header-mobile-title">
             <RouterLink to="/" class="beta-header-logo-link" aria-label="JPilot home">
-              <JPilot :size="44" />
+              <TriArcLoader class="beta-header-trio-logo" />
             </RouterLink>
             <span
               class="beta-subtitle-compact beta-role-chip"
               :style="{ '--role-chip-accent': activeRole.accent }"
             >
               <i :class="activeRole.icon" class="beta-role-chip-icon" aria-hidden="true" />
-              {{ activeRole.label }}
+              <div class="ld-cursor beta-role-chip-label">{{ activeRole.label }}</div>
             </span>
           </div>
 
@@ -1245,7 +1242,7 @@ import BetaWelcome from './BetaWelcome.vue'
 import ChatMarkdown from './ChatMarkdown.vue'
 import ChatToolTrace from './ChatToolTrace.vue'
 import ChatDeploymentSubtasks from './ChatDeploymentSubtasks.vue'
-import JPilot from './JPilot.vue'
+import TriArcLoader from './TriArcLoader.vue'
 import { isDeploymentContinueMessage, messageNeedsDeploymentContinuation } from '../utils/deploymentContinuation'
 import { streamCopilotChat } from '../services/copilotStream'
 import { formatCopilotError, isChatAbortError, isProviderQuotaError } from '../utils/chatErrors'
@@ -3374,8 +3371,16 @@ onUnmounted(() => {
   color: var(--p-text-muted-color);
 }
 
-.chat-pane-lab .beta-title-role {
+.beta-title-role-cursor {
+  display: inline;
+  font-size: 1rem;
   color: var(--p-text-color);
+  text-transform: capitalize;
+  vertical-align: baseline;
+}
+
+.chat-pane-lab .beta-title-role-cursor {
+  font-size: 0.95rem;
 }
 
 .chat-pane-lab .beta-subtitle {
@@ -4200,8 +4205,10 @@ onUnmounted(() => {
   line-height: 0;
 }
 
-.beta-header-logo-link :deep(.jpilot-logo) {
-  display: block;
+.beta-header-trio-logo {
+  color: var(--p-primary-color);
+  transform: scale(calc(44 / 56));
+  transform-origin: center center;
 }
 
 .beta-title-compact {
@@ -4224,13 +4231,15 @@ onUnmounted(() => {
   gap: 0.3rem;
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
-  font-size: 0.6875rem;
-  font-weight: 650;
-  letter-spacing: 0.01em;
   white-space: nowrap;
   color: var(--role-chip-accent, var(--p-text-muted-color));
   background: color-mix(in srgb, var(--role-chip-accent, var(--p-primary-color)) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--role-chip-accent, var(--p-primary-color)) 28%, transparent);
+}
+
+.beta-role-chip-label {
+  font-size: 0.8125rem;
+  text-transform: capitalize;
 }
 
 .beta-role-chip-icon {

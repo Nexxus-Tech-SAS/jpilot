@@ -1,0 +1,61 @@
+/* Set --ink to your foreground colour (defaults to currentColor here). */
+:root {
+  --ink: currentColor;
+}
+
+/* 45 Atomik — orbiting electron arcs */
+.ld-atom {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+.ld-atom::before {
+  content: "";
+  position: absolute;
+  inset: 46%;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.ld-atom i {
+  position: absolute;
+  inset: 4px;
+  border: 2px solid transparent;
+  border-top-color: var(--ink);
+  border-radius: 50%;
+}
+
+.ld-atom i:nth-child(1) {
+  animation: atom-a 1.1s linear infinite;
+}
+
+.ld-atom i:nth-child(2) {
+  animation: atom-b 1.5s linear infinite;
+  opacity: 0.6;
+}
+
+@keyframes atom-a {
+  from {
+    transform: scaleX(0.5) rotate(0);
+  }
+  to {
+    transform: scaleX(0.5) rotate(360deg);
+  }
+}
+
+@keyframes atom-b {
+  from {
+    transform: rotate(72deg) scaleX(0.5) rotate(0);
+  }
+  to {
+    transform: rotate(72deg) scaleX(0.5) rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ld-atom i:nth-child(1),
+  .ld-atom i:nth-child(2) {
+    animation: none;
+  }
+}

@@ -7,8 +7,8 @@
     }"
   >
     <div v-if="variant !== 'drawer'" class="beta-sidebar-profile">
-      <img src="/jpilot-favicon.png" alt="JPilot" class="beta-sidebar-logo" />
-      <span class="beta-sidebar-brand">JPilot</span>
+      <TriArcLoader class="beta-sidebar-logo" />
+      <div class="ld-cursor beta-sidebar-brand">JPilot</div>
       <span class="beta-sidebar-tagline">AI assistant for your appliances</span>
     </div>
 
@@ -61,6 +61,7 @@ import Button from 'primevue/button'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
+import TriArcLoader from './TriArcLoader.vue'
 import BetaChatPaneCard from './BetaChatPaneCard.vue'
 
 const props = defineProps({
@@ -112,28 +113,22 @@ const filteredPanes = computed(() => {
 }
 
 .beta-sidebar-logo {
-  width: 6rem;
-  height: 6rem;
-  border-radius: 999px;
-  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.12);
+  color: var(--p-primary-color);
+  flex-shrink: 0;
 }
 
 .beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-logo {
-  width: 2.75rem;
-  height: 2.75rem;
-  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.08);
+  transform: scale(0.79);
+  transform-origin: center top;
 }
 
 .beta-sidebar-brand {
   margin-top: 1.25rem;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--p-text-color);
+  color: var(--p-primary-color);
 }
 
 .beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-brand {
   margin-top: 0.5rem;
-  font-size: 1rem;
 }
 
 .beta-sidebar-tagline {
@@ -253,8 +248,8 @@ const filteredPanes = computed(() => {
   }
 
   .beta-sidebar:not(.beta-sidebar-drawer) .beta-sidebar-logo {
-    width: 4.5rem;
-    height: 4.5rem;
+    transform: scale(1.29);
+    transform-origin: center top;
   }
 
   .beta-sidebar:not(.beta-sidebar-drawer) .beta-sidebar-list {

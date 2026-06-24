@@ -13,7 +13,7 @@
       </div>
 
       <RouterLink to="/" class="mobile-topbar-logo" @click="closeMobileNav">
-        <JPilot :size="36" />
+        <TriArcLoader class="nav-trio-logo nav-trio-logo-topbar" />
       </RouterLink>
 
       <div class="mobile-topbar-side mobile-topbar-end">
@@ -29,7 +29,9 @@
     </header>
 
     <aside class="sidebar-panel desktop-sidebar flex flex-column">
-      <JPilot />
+      <div class="nav-trio-logo-wrap">
+        <TriArcLoader class="nav-trio-logo nav-trio-logo-sidebar" />
+      </div>
 
       <nav class="sidebar-nav flex-1 flex flex-column align-items-center py-5">
         <template v-for="group in mainNavGroups" :key="group.id">
@@ -113,8 +115,8 @@
       <div class="mobile-nav">
         <div class="mobile-nav-header">
           <div class="mobile-nav-brand">
-            <JPilot :size="40" />
-            <span class="mobile-nav-title">JPilot</span>
+            <TriArcLoader class="nav-trio-logo nav-trio-logo-drawer" />
+            <div class="ld-cursor mobile-nav-title">JPilot</div>
           </div>
           <button
             type="button"
@@ -241,7 +243,7 @@ import Menu from 'primevue/menu'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import Toast from 'primevue/toast'
-import JPilot from '../components/JPilot.vue'
+import TriArcLoader from '../components/TriArcLoader.vue'
 import { NEXXUS_TECH } from '../config/nexxusTech'
 import api from '../services/api'
 import { clearAuth, getStoredUser } from '../services/auth'
@@ -493,6 +495,31 @@ function isActive(item) {
     0 24px 48px rgba(2, 6, 23, 0.06);
 }
 
+.nav-trio-logo-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.nav-trio-logo {
+  color: var(--p-primary-color);
+  flex-shrink: 0;
+}
+
+.nav-trio-logo-sidebar {
+  transform: scale(calc(52 / 56));
+  transform-origin: center center;
+}
+
+.nav-trio-logo-topbar {
+  transform: scale(calc(36 / 56));
+  transform-origin: center center;
+}
+
+.nav-trio-logo-drawer {
+  transform: scale(calc(40 / 56));
+  transform-origin: center center;
+}
+
 :global(.app-dark) .sidebar-panel {
   background: var(--p-surface-900);
   box-shadow:
@@ -733,9 +760,7 @@ function isActive(item) {
 
 .mobile-nav-title {
   font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--p-text-color);
+  color: var(--p-primary-color);
 }
 
 .mobile-nav-close {

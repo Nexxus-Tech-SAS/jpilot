@@ -85,7 +85,7 @@
       class="beta-chats-drawer"
     >
       <div class="beta-chats-drawer-head">
-        <span class="beta-chats-drawer-title">Chats</span>
+        <div class="ld-cursor beta-chats-drawer-title">Chats</div>
         <button type="button" class="beta-chats-drawer-close" aria-label="Close chats" @click="mobileChatsOpen = false">
           <i class="pi pi-times" />
         </button>
@@ -693,9 +693,7 @@ watch(chatNamespace, () => {
 }
 
 .beta-chats-drawer-title {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  color: var(--p-primary-color);
 }
 
 .beta-chats-drawer-close {
