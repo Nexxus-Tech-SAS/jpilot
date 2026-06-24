@@ -20,6 +20,15 @@ PERSONA_COLLECTION = "stack_personas"
 
 _VALID_BASE_ROLES = {"architect", "operator", "analyst"}
 
+# User-facing capability label for each base role. Personas (built-in or custom)
+# surface this so users understand what a persona can/can't do without the role
+# itself being separately selectable.
+PERSONA_CAPABILITY = {
+    "architect": "Plan-only",
+    "operator": "Full control",
+    "analyst": "Read-only",
+}
+
 
 class JPilotRole(StrEnum):
     ARCHITECT = "architect"
@@ -129,6 +138,12 @@ def role_requires_appliance(role: JPilotRole | str | None) -> bool:
     return parsed != JPilotRole.ARCHITECT
 
 
+def capability_for_role(role: JPilotRole | str | None) -> str:
+    """Human-facing capability label derived from the (base) role."""
+    parsed = role if isinstance(role, JPilotRole) else normalize_role(role if isinstance(role, str) else None)
+    return PERSONA_CAPABILITY.get(parsed.value, "")
+
+
 def get_role_catalog() -> list[dict[str, Any]]:
     return [item.model_dump() for item in ROLE_CATALOG]
 
@@ -236,13 +251,15 @@ def assert_tool_allowed_for_role(
 
 
 class CustomPersonaInfo(BaseModel):
-    """Runtime info for an installed custom persona."""
+    """Runtime info for a resolved persona (built-in or installed custom)."""
 
     personaId: str
     label: str
     baseRole: str
     systemPrompt: str
     objectives: list[str] = []
+    kind: str = "custom"
+    capability: str = ""
 
 
 async def resolve_custom_persona(
@@ -287,6 +304,8 @@ async def resolve_custom_persona(
         baseRole=raw_base_role,
         systemPrompt=str(behavior.get("systemPrompt") or ""),
         objectives=list(behavior.get("objectives") or []),
+        kind="custom",
+        capability=capability_for_role(raw_base_role),
     )
 
 
@@ -313,6 +332,8 @@ def _persona_catalog_entry(
         "suggestedPaneLabel": label or "Custom",
         "handoffTarget": None,
         "isCustomPersona": True,
+        "kind": "custom",
+        "capability": capability_for_role(raw_base_role),
     }
 
 
@@ -336,3 +357,82 @@ async def list_installed_personas(db: AsyncIOMotorDatabase) -> list[dict[str, An
         )
         results.append(_persona_catalog_entry(persona_id, doc=doc, manifest=manifest))
     return results
+
+
+def builtin_personas() -> list[dict[str, Any]]:
+    """The three base roles, presented as built-in personas (persona-first model).
+
+    These live in the same unified list as installed custom personas. They have no
+    custom systemPrompt overlay and their baseRole equals their identity.
+    """
+    personas: list[dict[str, Any]] = []
+    for item in ROLE_CATALOG:
+        role_id = str(item.id)
+        personas.append(
+            {
+                "id": role_id,
+                "label": item.label,
+                "description": item.description,
+                "requiresAppliance": item.requiresAppliance,
+                "suggestedPaneLabel": item.suggestedPaneLabel,
+                "handoffTarget": item.handoffTarget,
+                "baseRole": role_id,
+                "isCustomPersona": False,
+                "kind": "builtin",
+                "capability": capability_for_role(role_id),
+            }
+        )
+    return personas
+
+
+async def list_all_personas(db: AsyncIOMotorDatabase) -> list[dict[str, Any]]:
+    """Unified persona list: built-in base-role personas + installed custom personas.
+
+    Custom personas whose id collides with a base role are skipped by
+    ``list_installed_personas`` so a custom persona can never shadow a built-in.
+    """
+    return builtin_personas() + await list_installed_personas(db)
+
+
+def _builtin_persona_info(role: str | None) -> CustomPersonaInfo:
+    """Build runtime info for a built-in (base-role) persona with an empty overlay."""
+    parsed = normalize_role(role)
+    info = next((r for r in ROLE_CATALOG if str(r.id) == parsed.value), None)
+    return CustomPersonaInfo(
+        personaId=parsed.value,
+        label=info.label if info else parsed.value.capitalize(),
+        baseRole=parsed.value,
+        systemPrompt="",
+        objectives=[],
+        kind="builtin",
+        capability=capability_for_role(parsed.value),
+    )
+
+
+async def resolve_persona(
+    db: AsyncIOMotorDatabase,
+    persona_id: str | None,
+    fallback_role: str | None = None,
+) -> CustomPersonaInfo:
+    """Resolve any persona id to runtime info. Never returns ``None``.
+
+    - Empty/None or a built-in base-role id → the built-in persona for that role
+      (defaulting to OPERATOR), with an empty overlay.
+    - A custom persona id → delegates to :func:`resolve_custom_persona`.
+    - A custom id that is no longer installed (uninstalled / orphan-pruned) →
+      graceful fallback to the built-in of ``fallback_role`` (else the default role),
+      so a turn never fails on a stale persona selection.
+    """
+    cleaned = (persona_id or "").strip()
+    if not cleaned:
+        # No persona id (legacy client / empty) → use the provided role, else default.
+        return _builtin_persona_info(fallback_role or DEFAULT_ROLE.value)
+    if cleaned.lower() in _VALID_BASE_ROLES:
+        return _builtin_persona_info(cleaned)
+
+    custom = await resolve_custom_persona(db, cleaned)
+    if custom is not None:
+        return custom
+
+    # Stale/removed custom persona → fall back to the built-in of the legacy role.
+    return _builtin_persona_info(fallback_role)

@@ -215,6 +215,17 @@ def format_lb_removal_response(
     return "\n".join(lines)
 
 
+def format_lb_removal_plan(appliance_name: str, targets: list[str]) -> str:
+    """Pre-removal plan shown for confirmation before any delete (gate)."""
+    target_text = ", ".join(f"`{name}`" for name in targets) or "_none detected_"
+    return (
+        f"**Plan — remove load balancer object(s) on {appliance_name}**\n\n"
+        f"- Targets: {target_text}\n\n"
+        "This deletes the listed virtual server(s) and their bound service groups. "
+        "Reply **yes** to remove them, or tell me what to change."
+    )
+
+
 async def try_auto_remove_lb_targets(
     db: AsyncIOMotorDatabase,
     *,

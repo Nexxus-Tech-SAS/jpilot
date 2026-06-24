@@ -78,10 +78,9 @@ from app.services.knowledge_pack_service import (
 )
 from app.services.skill_feedback_service import CalibrationFeedbackError, submit_calibration_feedback
 from app.services.copilot_roles import (
-    get_role_catalog,
-    list_installed_personas,
+    list_all_personas,
     normalize_role,
-    resolve_custom_persona,
+    resolve_persona,
     role_requires_appliance,
 )
 from app.schemas.model_usage import ModelUsageDashboardResponse, UsageLimitsUpdate
@@ -104,9 +103,11 @@ async def _validate_copilot_chat_request(
             detail="Message or attachments are required",
         )
 
-    # Resolve optional custom persona — if found, its baseRole drives tooling.
-    custom_persona = await resolve_custom_persona(db, payload.personaId)
-    effective_role_str = custom_persona.baseRole if custom_persona else payload.role
+    # Persona-first: personaId is the single source of truth. Empty/None or a base-role
+    # id resolves to the matching built-in persona; a stale custom id falls back to the
+    # built-in of the legacy `role` (migration for old clients still sending only `role`).
+    persona = await resolve_persona(db, payload.personaId, fallback_role=payload.role)
+    effective_role_str = persona.baseRole
 
     chat_role = normalize_role(effective_role_str)
     appliance_name = (payload.applianceName or "").strip()
@@ -129,7 +130,7 @@ async def _validate_copilot_chat_request(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Operator and Analyst roles require a NetScaler appliance for now",
             )
-    return chat_role, appliance_name, custom_persona
+    return chat_role, appliance_name, persona
 
 
 @router.get("/settings", response_model=CopilotSettings)
@@ -141,10 +142,10 @@ async def get_copilot_settings() -> CopilotSettings:
 async def list_copilot_roles(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> list[CopilotRoleResponse]:
-    base_roles = [CopilotRoleResponse(**item) for item in get_role_catalog()]
-    custom_personas = await list_installed_personas(db)
-    persona_responses = [CopilotRoleResponse(**p) for p in custom_personas]
-    return base_roles + persona_responses
+    # Persona-first: one unified list — built-in base-role personas + installed customs,
+    # each carrying `kind` (builtin|custom) and a `capability` badge.
+    personas = await list_all_personas(db)
+    return [CopilotRoleResponse(**p) for p in personas]
 
 
 @router.get("/platform-settings", response_model=CopilotPlatformSettingsResponse)
@@ -256,7 +257,7 @@ async def copilot_chat(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> ChatResponse:
     settings = payload.settings or DEFAULT_SETTINGS
-    chat_role, appliance_name, custom_persona = await _validate_copilot_chat_request(payload, db)
+    chat_role, appliance_name, persona = await _validate_copilot_chat_request(payload, db)
     provider = await resolve_chat_provider(db, payload.providerId, role=chat_role.value)
 
     try:
@@ -274,7 +275,7 @@ async def copilot_chat(
             request=request,
             deployment_continuation=payload.deploymentContinuation,
             long_task_approved=payload.longTaskApproved,
-            persona_system_prompt=custom_persona.systemPrompt if custom_persona else None,
+            persona_system_prompt=persona.systemPrompt or None,
         )
     except ChatCancelledError as exc:
         raise HTTPException(
@@ -686,17 +687,16 @@ async def copilot_chat_stream(
     request: Request,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> StreamingResponse:
-    chat_role, _appliance_name, custom_persona = await _validate_copilot_chat_request(payload, db)
-    # When a custom persona is active, override the role in the payload so
-    # the streaming service uses the persona's baseRole for tooling.
-    if custom_persona:
-        payload = payload.model_copy(update={"role": custom_persona.baseRole})
+    chat_role, _appliance_name, persona = await _validate_copilot_chat_request(payload, db)
+    # Persona-first: always derive the streaming role from the resolved persona's baseRole
+    # (built-in personas resolve to their own role; customs to their configured baseRole).
+    payload = payload.model_copy(update={"role": persona.baseRole})
     return StreamingResponse(
         stream_copilot_chat_events(
             db=db,
             payload=payload,
             request=request,
-            persona_system_prompt=custom_persona.systemPrompt if custom_persona else None,
+            persona_system_prompt=persona.systemPrompt or None,
         ),
         media_type="text/event-stream",
         headers={

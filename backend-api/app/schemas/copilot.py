@@ -34,6 +34,11 @@ class CopilotRoleResponse(BaseModel):
     handoffTarget: str | None = None
     baseRole: str | None = None
     isCustomPersona: bool = False
+    # Persona-first model: every entry is a persona. `kind` discriminates the three
+    # built-in base-role personas from installed/custom ones; `capability` is the
+    # user-facing label derived from baseRole (Plan-only / Read-only / Full control).
+    kind: Literal["builtin", "custom"] = "builtin"
+    capability: str = ""
 
 
 class DeploymentSubtask(BaseModel):

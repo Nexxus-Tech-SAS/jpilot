@@ -291,6 +291,48 @@ def is_form_submission(user_message: str) -> bool:
     return stripped.startswith("Configuration inputs for:") or stripped.startswith("Planning inputs for:")
 
 
+# Short confirmations a user types to approve a previously-presented plan. Used by the
+# Operator confirm-before-mutate gate to recognise a "yes" without re-triggering a parse
+# of the original request (which lives in the prior turn).
+_AFFIRMATION_TOKENS = frozenset(
+    {
+        "yes", "y", "yeah", "yep", "yup", "ok", "okay", "sure", "confirm", "confirmed",
+        "proceed", "go", "apply", "approve", "approved", "continue",
+        "si", "sí", "procede", "dale", "hazlo", "adelante", "confirmo", "ok",
+    }
+)
+
+
+def is_affirmation(user_message: str) -> bool:
+    """True when the message is essentially a short confirmation of a prior plan.
+
+    Strict on purpose: only a brief message (≤4 words) that starts with an affirmation
+    token counts, so a real configuration request can never be mistaken for a "yes".
+    """
+    stripped = (user_message or "").strip()
+    if not stripped or is_form_submission(user_message):
+        return False
+    cleaned = re.sub(r"[^\w\s]", " ", stripped.lower()).strip()
+    if not cleaned:
+        return False
+    words = cleaned.split()
+    if len(words) > 4:
+        return False
+    if cleaned in _AFFIRMATION_TOKENS or words[0] in _AFFIRMATION_TOKENS:
+        return True
+    # Two-word affirmations like "go ahead" / "do it".
+    joined = " ".join(words[:2])
+    return joined in {"go ahead", "do it"}
+
+
+def last_user_message(history: list[dict] | None) -> str:
+    """Content of the most recent prior user-role turn (the message being confirmed)."""
+    for item in reversed(history or []):
+        if str(item.get("role") or "").lower() == "user":
+            return str(item.get("content") or "")
+    return ""
+
+
 _DESIGN_IMPLEMENT_VERBS = frozenset(
     {
         "configure",

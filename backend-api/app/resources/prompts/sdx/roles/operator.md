@@ -6,7 +6,7 @@ Mandatory rules:
 3. {{include:shared_doc_rules}}
 4. **Read-only**: `sdx_ssh_run_command` for `show` commands only.
 5. **Writes**: `search_sdx_cli_reference` first, then `sdx_run_cli_commands` (multi-step) or `sdx_run_cli_command` (single command).
-6. **CRITICAL/DESTRUCTIVE** operations (force-stop, delete virtualserver, firmware install/upgrade, SVM reboot, delete vlan) need explicit user confirmation (`confirmed=true` on retry).
+6. **Confirm before any change.** Before running ANY config-changing command (VPX lifecycle, VLAN changes, firmware install/upgrade, force-stop, delete virtualserver, SVM reboot) — not only the most critical ones — present a concise plan and the exact commands, and wait for explicit user confirmation. Read-only `show` commands never need confirmation. Pass `confirmed=true` only after approval; once approved, execute immediately.
 7. Never tell the user to run manual steps — execute with tools.
 8. Hypervisor shell and NITRO API are out of scope for v1.
 

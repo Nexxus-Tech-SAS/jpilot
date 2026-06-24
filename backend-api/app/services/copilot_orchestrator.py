@@ -1002,14 +1002,20 @@ async def run_copilot_chat(
 
     from app.services.copilot_deploy import (
         detect_natural_language_lb_request,
+        format_classic_lb_plan,
         parse_natural_language_lb_request,
         try_auto_create_application,
         try_auto_deploy_classic_lb,
         try_auto_deploy_http_lb,
         try_auto_deploy_lb_from_message,
     )
-    from app.services.copilot_remove import try_auto_remove_lb_targets
-    from app.services.copilot_form import is_form_submission
+    from app.services.copilot_remove import (
+        detect_lb_removal_request,
+        format_lb_removal_plan,
+        parse_lb_removal_targets,
+        try_auto_remove_lb_targets,
+    )
+    from app.services.copilot_form import is_affirmation, is_form_submission, last_user_message
     from app.services.copilot_port_check import try_auto_appliance_internet_check, try_auto_tcp_port_check
     from app.services.copilot_inventory import try_auto_ip_inventory
     from app.services.copilot_service_status import try_auto_service_status
@@ -1039,16 +1045,35 @@ async def run_copilot_chat(
                     enabled_tool_names=enabled_tool_names,
                 )
         else:
-            lb_fields = parse_natural_language_lb_request(user_message)
-            if detect_natural_language_lb_request(user_message, lb_fields):
+            # Confirm-before-mutate gate: mutating auto-paths (deploy/remove) bypass the
+            # LLM and write directly, so prompt rules can't gate them. On first contact we
+            # present a plan and wait; a short "yes" confirms and we recover the original
+            # request from the prior user turn, then execute. Read-only auto-paths are
+            # never gated.
+            confirmed = is_affirmation(user_message)
+            effective_msg = last_user_message(history) if confirmed else user_message
+            provider_name = provider["providerName"]
+
+            lb_fields = parse_natural_language_lb_request(effective_msg)
+            if detect_natural_language_lb_request(effective_msg, lb_fields):
+                if not confirmed:
+                    # First contact → present the deploy plan, perform no writes.
+                    return _finalize_chat_response(
+                        format_classic_lb_plan(appliance_name, lb_fields),
+                        provider_name=provider_name,
+                        provider_type=provider_type,
+                        model=model,
+                        tool_traces=tool_traces,
+                        user_message=user_message,
+                        role=chat_role.value,
+                    )
                 auto_traces, auto_response = await try_auto_deploy_lb_from_message(
                     db,
-                    user_message=user_message,
+                    user_message=effective_msg,
                     appliance_name=appliance_name,
                     enabled_tool_names=enabled_tool_names,
                 )
                 tool_traces.extend(auto_traces)
-                provider_name = provider["providerName"]
                 return _finalize_chat_response(
                     auto_response
                     or "**Classic LB deploy failed** — no response was produced. Check MCP tool enablement.",
@@ -1059,34 +1084,51 @@ async def run_copilot_chat(
                     user_message=user_message,
                     role=chat_role.value,
                 )
-            auto_traces, auto_response = await try_auto_remove_lb_targets(
+
+            if detect_lb_removal_request(effective_msg):
+                if not confirmed:
+                    # First contact → present the removal plan, perform no deletes.
+                    return _finalize_chat_response(
+                        format_lb_removal_plan(
+                            appliance_name, parse_lb_removal_targets(effective_msg)
+                        ),
+                        provider_name=provider_name,
+                        provider_type=provider_type,
+                        model=model,
+                        tool_traces=tool_traces,
+                        user_message=user_message,
+                        role=chat_role.value,
+                    )
+                auto_traces, auto_response = await try_auto_remove_lb_targets(
                     db,
-                    user_message=user_message,
+                    user_message=effective_msg,
                     appliance_name=appliance_name,
                     enabled_tool_names=enabled_tool_names,
                 )
-            if not auto_traces:
+
+            # Read-only auto-paths — never gated, only on the original (non-confirmation) turn.
+            if not auto_traces and not confirmed:
                 auto_traces, auto_response = await try_auto_service_status(
                     db,
                     user_message=user_message,
                     appliance_name=appliance_name,
                     enabled_tool_names=enabled_tool_names,
                 )
-            if not auto_traces:
+            if not auto_traces and not confirmed:
                 auto_traces, auto_response = await try_auto_ip_inventory(
                     db,
                     user_message=user_message,
                     appliance_name=appliance_name,
                     enabled_tool_names=enabled_tool_names,
                 )
-            if not auto_traces:
+            if not auto_traces and not confirmed:
                 auto_traces, auto_response = await try_auto_appliance_internet_check(
                     db,
                     user_message=user_message,
                     appliance_name=appliance_name,
                     enabled_tool_names=enabled_tool_names,
                 )
-            if not auto_traces:
+            if not auto_traces and not confirmed:
                 auto_traces, auto_response = await try_auto_tcp_port_check(
                     db,
                     user_message=user_message,

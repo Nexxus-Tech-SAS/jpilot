@@ -1,5 +1,5 @@
 import { reactive, watch } from 'vue'
-import { normalizeRoleId } from '../config/jpilotRoles'
+import { getRoleById, normalizeRoleId, readLastUsedPersona } from '../config/jpilotRoles'
 import { trimDesignDocumentForStorage } from '../utils/architectDesignDocument'
 import { migrateStorageJson, readStorageJson, writeStorageJson } from '../utils/chatStorage'
 
@@ -8,11 +8,16 @@ import { migrateStorageJson, readStorageJson, writeStorageJson } from '../utils/
 const STORAGE_KEY = 'jpilot_sessions_v1'
 
 function blankSession() {
+  // Persona-first: a new chat defaults to the last persona the user selected (falling
+  // back to the built-in Operator). `role` is the persona's base role — for built-ins it
+  // equals the id; for a custom last-used persona it falls back to operator until ChatPane
+  // reconciles it to the persona's real baseRole once the installed list loads.
+  const personaId = readLastUsedPersona()
   return {
     messages: [],
     input: '',
-    role: 'operator',
-    personaId: null,
+    role: getRoleById(personaId).id,
+    personaId,
     connectedAppliance: '',
     applianceChoice: null,
     providerId: '',
@@ -74,13 +79,23 @@ function trimSessionsForStorage(sessions) {
 
 const state = reactive({ sessions: loadPersisted() })
 
-export function getSession(id, defaultRole = 'operator') {
+export function getSession(id, defaultPersonaId = null) {
   if (!state.sessions[id]) {
     const session = blankSession()
-    session.role = normalizeRoleId(defaultRole || 'operator')
+    // An explicit caller choice (e.g. "new Architect chat") selects that persona;
+    // otherwise the blank session keeps the last-used persona.
+    if (defaultPersonaId) {
+      session.personaId = defaultPersonaId
+      session.role = getRoleById(defaultPersonaId).id
+    }
     state.sessions[id] = session
   } else {
-    state.sessions[id].role = normalizeRoleId(state.sessions[id].role)
+    const existing = state.sessions[id]
+    existing.role = normalizeRoleId(existing.role)
+    // Migrate pre-persona-first sessions (personaId absent) to a built-in persona id.
+    if (!existing.personaId) {
+      existing.personaId = existing.role
+    }
   }
   return state.sessions[id]
 }

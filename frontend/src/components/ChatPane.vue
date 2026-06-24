@@ -242,6 +242,7 @@
                       <i :class="role.icon" aria-hidden="true" />
                     </span>
                     <span class="beta-role-toggle-label">{{ role.label }}</span>
+                    <span v-if="role.capability" class="beta-role-toggle-capability">{{ role.capability }}</span>
                   </button>
                 </div>
 
@@ -264,6 +265,7 @@
                         <i :class="persona.icon" aria-hidden="true" />
                       </span>
                       <span class="beta-role-toggle-label">{{ persona.label }}</span>
+                      <span v-if="persona.capability" class="beta-role-toggle-capability">{{ persona.capability }}</span>
                     </button>
                   </div>
                 </div>
@@ -1289,9 +1291,11 @@ import {
   CUSTOM_PERSONA_ACCENT,
   DEFAULT_JPILOT_ROLE,
   JPILOT_ROLES,
+  capabilityForRole,
   getRoleById,
   normalizeRoleId,
-  roleRequiresAppliance
+  roleRequiresAppliance,
+  writeLastUsedPersona
 } from '../config/jpilotRoles'
 import {
   appliancesForJpilotRole,
@@ -1579,8 +1583,16 @@ const cleanedPersonas = computed(() => {
   return result
 })
 
-// Base roles combined with any installed custom personas for the picker.
+// Persona-first: one unified persona list for the picker. Built-in base-role personas
+// (carrying icon/accent) plus installed custom personas, each with a capability badge.
 const roleOptions = computed(() => {
+  const baseRoles = JPILOT_ROLES.map((r) => ({
+    ...r,
+    isCustomPersona: false,
+    kind: 'builtin',
+    baseRole: r.id,
+    capability: r.capability || capabilityForRole(r.id)
+  }))
   const customs = cleanedPersonas.value.map((p) => ({
     id: p.id,
     label: p.label,
@@ -1591,9 +1603,11 @@ const roleOptions = computed(() => {
     icon: 'pi pi-user',
     accent: CUSTOM_PERSONA_ACCENT,
     isCustomPersona: true,
-    baseRole: p.baseRole
+    kind: 'custom',
+    baseRole: p.baseRole,
+    capability: p.capability || capabilityForRole(p.baseRole)
   }))
-  return [...JPILOT_ROLES, ...customs]
+  return [...baseRoles, ...customs]
 })
 
 const baseRoleOptions = computed(() => roleOptions.value.filter((role) => !role.isCustomPersona))
@@ -1755,7 +1769,7 @@ function isApplianceConnected() {
 }
 
 function roleOptionTooltip(role) {
-  return role.label
+  return role.capability ? `${role.label} · ${role.capability}` : role.label
 }
 
 function providerSupportsRole(provider, roleId) {
@@ -1807,21 +1821,16 @@ function pickApplianceForRole(force = false) {
   }
 }
 
-// The value shown in the role/persona picker: persona id when a custom persona is active,
-// otherwise the base role id.
-const activeRolePickerId = computed(() =>
-  session.personaId ? session.personaId : session.role
-)
+// Persona-first: the picker value is always the selected persona id (built-in or custom).
+const activeRolePickerId = computed(() => session.personaId || session.role)
 
 function onRolePickerChange(newId) {
-  const custom = installedPersonas.value.find((p) => p.id === newId)
-  if (custom) {
-    session.personaId = newId
-    session.role = custom.baseRole
-  } else {
-    session.personaId = null
-    session.role = newId
-  }
+  // Every selection is a persona. Derive the internal capability role from its baseRole
+  // (built-ins: baseRole === id) and remember it as the last-used default for new chats.
+  const option = roleOptions.value.find((r) => r.id === newId)
+  session.personaId = newId
+  session.role = option?.baseRole || getRoleById(newId).id
+  writeLastUsedPersona(newId)
   onRoleChange()
 }
 
@@ -2634,10 +2643,23 @@ function loadInstalledPersonas() {
 
 function syncStalePersonaSelection() {
   if (!session.personaId) return
-  const stillInstalled = installedPersonas.value.some((persona) => persona.id === session.personaId)
-  if (!stillInstalled) {
-    session.personaId = null
+  // Built-in personas are always valid; keep the internal role in sync.
+  if (BASE_ROLE_IDS.has(session.personaId)) {
+    session.role = session.personaId
+    return
   }
+  const persona = installedPersonas.value.find((p) => p.id === session.personaId)
+  if (persona) {
+    // Reconcile the internal capability role to the persona's base role.
+    session.role = persona.baseRole || session.role
+    return
+  }
+  // Selected custom persona is gone (uninstalled / orphan-pruned): re-anchor to the
+  // built-in of its last-known base role (or Operator) and update last-used — never null.
+  const fallback = getRoleById(session.role).id
+  session.personaId = fallback
+  session.role = fallback
+  writeLastUsedPersona(fallback)
 }
 
 function refreshInstalledPersonasOnFocus() {
@@ -3569,6 +3591,16 @@ onUnmounted(() => {
 
 .beta-role-picker-btn-persona .beta-role-toggle-label {
   color: var(--role-option-accent);
+}
+
+.beta-role-toggle-capability {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 0.65rem;
+  line-height: 1.2;
+  opacity: 0.7;
+  margin-top: 0.1rem;
 }
 
 @media (max-width: 380px) {

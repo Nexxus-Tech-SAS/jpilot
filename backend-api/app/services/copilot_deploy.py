@@ -850,6 +850,33 @@ def format_classic_lb_response(
     return "\n".join(lines)
 
 
+def format_classic_lb_plan(appliance_name: str, fields: dict[str, Any]) -> str:
+    """Pre-deploy plan shown for confirmation before any classic LB write (gate)."""
+    vserver = str(fields.get("vserver_name") or "").strip()
+    vip = str(fields.get("vip") or "").strip()
+    frontend_port = int(fields.get("frontend_port") or 443)
+    ssl_cert = str(fields.get("ssl_cert") or "").strip()
+    backend_ip = str(fields.get("backend_ip") or "").strip()
+    backend_ports = fields.get("backend_ports") or []
+    backend_text = ", ".join(f"`{backend_ip}:{port}`" for port in backend_ports) or "_none_"
+    monitor = str(fields.get("monitor") or "tcp")
+    lb_method = str(fields.get("lb_method") or "LEASTCONNECTION")
+
+    lines = [
+        f"**Plan — classic load balancer `{vserver}` on {appliance_name}**",
+        "",
+        f"- Frontend VIP: `{vip}:{frontend_port}`",
+        f"- Backends: {backend_text}",
+        f"- Monitor: `{monitor}` · method: `{lb_method}`",
+    ]
+    if ssl_cert:
+        lines.append(f"- SSL certificate: `{ssl_cert}`")
+    lines.extend(
+        ["", "Reply **yes** to apply this on the appliance, or tell me what to change."]
+    )
+    return "\n".join(lines)
+
+
 async def try_auto_deploy_classic_lb(
     db: AsyncIOMotorDatabase,
     *,
