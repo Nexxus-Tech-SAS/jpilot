@@ -82,6 +82,17 @@ PACK_TOOLS: dict[str, frozenset[str]] = {
     ),
     "logs": frozenset({"netscaler_get_logs"}),
     "config_search": frozenset({"netscaler_search_config"}),
+    # Verification-only subset of "read": no raw CLI write tool (netscaler_run_cli_command).
+    # Used when a dedicated config pack is matched so the model cannot fall into the
+    # gated raw-CLI trap (RC-1 in operator-findings).
+    "read_safe": frozenset(
+        {
+            "netscaler_list_virtual_servers",
+            "netscaler_list_service_status",
+            "netscaler_list_ip_addresses",
+            "netscaler_nextgen_get",
+        }
+    ),
     "ha_failover": frozenset({"netscaler_force_failover"}),
     "cli_search": frozenset({"search_netscaler_cli_reference"}),
     "nextgen_search": frozenset({"search_netscaler_nextgen_api"}),
@@ -432,8 +443,12 @@ def classify_tool_packs(
 
     if _dedicated_config_packs:
         packs.update(_dedicated_config_packs)
-        # Always include read so the model can verify with show commands
-        packs.add("read")
+        # Add verification reads but NOT the full "read" pack — the full pack contains
+        # netscaler_run_cli_command (a gated write tool) which would let the model fall into
+        # the gated raw-CLI trap instead of using dedicated create/modify/delete tools.
+        # read_safe gives the model show-command verification without the raw write tool.
+        packs.add("read_safe")
+        packs.discard("read")
         # Demote search tools: dedicated tools cover the request
         packs.discard("cli_search")
         packs.discard("nextgen_search")
@@ -450,6 +465,11 @@ def classify_tool_packs(
             packs.discard("nextgen_write")
             packs.discard("read")
             packs.discard("inventory")
+        elif _dedicated_config_packs:
+            # Dedicated config intent on a form-submission turn: keep dedicated tools +
+            # read_safe for verification but do NOT re-add the raw "read" pack (which
+            # carries netscaler_run_cli_command and would reopen the gated-CLI trap).
+            packs.update({"cli_write", "cli_search", "nextgen_write", "nextgen_search"})
         else:
             packs.update({"cli_write", "cli_search", "nextgen_write", "nextgen_search", "read"})
 
@@ -510,11 +530,13 @@ def classify_tool_packs(
     ):
         packs.add("read")
 
-    # Final demotion pass: if any dedicated config pack was matched, strip search
-    # tools even if the cli_write/nextgen_write signals re-added them above.
+    # Final demotion pass: if any dedicated config pack was matched, strip search tools
+    # and the raw "read" pack (which carries netscaler_run_cli_command) even if the
+    # cli_write/nextgen_write signals or the fallback re-added them above.
     if _dedicated_config_packs:
         packs.discard("cli_search")
         packs.discard("nextgen_search")
+        packs.discard("read")  # read_safe was added earlier; raw read not needed here
 
     return packs
 
@@ -545,6 +567,27 @@ def should_use_full_tool_set(user_message: str, role: str) -> bool:
     if _contains_any(lowered, ("and also", "then ", "after that", "multi-step", "step 1")):
         return True
     if lowered.count(",") >= 3:
+        return True
+    # Short confirmation/approval turns (e.g. "Yes, apply it", "yes proceed", "confirm",
+    # "go ahead") cannot be reliably routed — use the full tool set so the model retains
+    # access to whatever dedicated tool the prior turn used (e.g. netscaler_create_lb).
+    if _contains_any(
+        lowered,
+        (
+            "yes, apply",
+            "yes apply",
+            "apply it",
+            "go ahead",
+            "proceed",
+            "confirm",
+            "sí",
+            "procede",
+            "yes, proceed",
+            "yes proceed",
+            "yes, confirm",
+            "approved",
+        ),
+    ):
         return True
     return False
 

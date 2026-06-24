@@ -39,6 +39,9 @@ READ_ONLY_OPERATOR_TOOLS = frozenset(
         "netscaler_telnet",
         "netscaler_collect_nsconmsg",
         "jpilot_check_doc_connectivity",
+        # SSH-backed read tools — log tail and config grep are strictly read-only
+        "netscaler_get_logs",
+        "netscaler_search_config",
     }
 )
 
@@ -76,6 +79,20 @@ WRITE_EXEC_TOOL_NAMES = frozenset(
         "sdx_run_cli_commands",
         "f5_run_tmsh_command",
         "f5_run_tmsh_commands",
+        # Dedicated LB/CS/rewrite/responder config tools — these perform writes internally
+        "netscaler_create_lb",
+        "netscaler_modify_lb",
+        "netscaler_delete_lb",
+        "netscaler_create_cs",
+        "netscaler_modify_cs",
+        "netscaler_delete_cs",
+        "netscaler_create_rewrite",
+        "netscaler_modify_rewrite",
+        "netscaler_delete_rewrite",
+        "netscaler_create_responder",
+        "netscaler_modify_responder",
+        "netscaler_delete_responder",
+        "netscaler_force_failover",
     }
 )
 
@@ -276,6 +293,13 @@ def tool_result_is_failure(result: str) -> bool:
     except (json.JSONDecodeError, TypeError, ValueError):
         return False
     if not isinstance(data, dict):
+        return False
+    # A memory-review gate block is a recoverable redirect, not an appliance failure.
+    # The model can satisfy the gate or route to a dedicated tool. Don't count it.
+    if data.get("blocked") and not data.get("commandFailed"):
+        return False
+    # Waiting on user confirmation is not "stuck" either.
+    if data.get("needsConfirmation"):
         return False
     if data.get("success") is False or data.get("commandFailed"):
         return True

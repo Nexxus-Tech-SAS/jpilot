@@ -252,8 +252,11 @@ COPILOT_TOOLS = [
     {
         "name": "netscaler_run_cli_command",
         "description": (
-            "Run ANY NetScaler classic CLI command via SSH — including configuration writes "
-            "(add, set, bind, unbind, enable, disable, rm, clear, save, ...) plus show/stat/get. "
+            "LAST RESORT raw CLI. For load balancers use netscaler_create_lb/modify_lb/delete_lb; "
+            "for content switching use netscaler_create_cs/modify_cs/delete_cs; "
+            "for rewrite use netscaler_create_rewrite/modify_rewrite/delete_rewrite; "
+            "for responder use netscaler_create_responder/modify_responder/delete_responder. "
+            "Only use this tool for classic CLI that no dedicated tool covers. "
             "Verify unfamiliar syntax via search_netscaler_cli_reference first. "
             "Run 'save ns config' afterwards to persist classic configuration. "
             "Destructive commands (rm, clear, delete, reboot, shutdown, disable, unbind, flush, reset, "
@@ -269,7 +272,7 @@ COPILOT_TOOLS = [
                 },
                 "command": {
                     "type": "string",
-                    "description": "CLI command, e.g. add lb vserver web_vs HTTP 10.0.0.10 80",
+                    "description": "Read-only or uncovered classic CLI, e.g. show ns runningConfig -withDefaults",
                 },
                 "purpose": {
                     "type": "string",
@@ -286,8 +289,9 @@ COPILOT_TOOLS = [
     {
         "name": "netscaler_run_cli_commands",
         "description": (
-            "Run a sequence of NetScaler classic CLI commands via SSH in order — preferred for multi-step "
-            "LB setup (add lb vserver, add serviceGroup, bind serviceGroup, bind lb vserver, save ns config). "
+            "LAST RESORT raw CLI batch. For load balancers use netscaler_create_lb/modify_lb/delete_lb; "
+            "for content switching, rewrite, and responder use their dedicated tools. "
+            "Only use this for multi-step classic CLI that no dedicated tool covers. "
             "Verify unfamiliar syntax via search_netscaler_cli_reference first. "
             "Stops on first failure; read results[] for each command output. "
             "Destructive commands in the list require confirmed=true."

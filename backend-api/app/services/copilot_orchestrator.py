@@ -630,6 +630,16 @@ def guard_fabricated_execution(
     if normalize_role(role) == JPilotRole.ARCHITECT:
         return content
 
+    # A successful read-only turn that merely echoes config/log lines is not a fabricated
+    # write. When every tool that ran was non-state-changing AND at least one read succeeded,
+    # the model is quoting fetched data — do not fire the unexecuted-action banner.
+    if (
+        tool_traces
+        and not any(trace_is_state_changing(t) for t in tool_traces)
+        and any(trace_executed_successfully(t) for t in tool_traces)
+    ):
+        return content
+
     if _claims_config_change(content) and not _had_successful_action(tool_traces):
         logger.warning(
             "fabricated_execution_guard fired — response claims a config change but no "
