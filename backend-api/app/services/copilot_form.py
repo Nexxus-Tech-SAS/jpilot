@@ -655,20 +655,98 @@ def default_lb_vserver_form(workload_label: str = "Application") -> InputForm:
     )
 
 
+# Canonical field IDs the default LB form always includes (R4).
+# If the model's own form omits any of these, the missing ones are appended so the user
+# always sees a single, complete form (no second "persistence + monitor" follow-up form).
+_CANONICAL_LB_FIELD_IDS = (
+    "vserver_name",
+    "vip",
+    "service_type",
+    "frontend_port",
+    "ssl_offload",
+    "backend_ips",
+    "backend_port",
+    "lb_method",
+    "monitor",
+)
+
+# Alternate field IDs the model may use for the same concept (so we don't add a
+# duplicate when the model used a different name for the same field).
+_LB_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "vserver_name": ("name", "lb_name", "vserver", "vs_name"),
+    "vip": ("virtual_ip", "vip_address", "ip"),
+    "service_type": ("serviceType", "protocol", "service_protocol"),
+    "frontend_port": ("port", "vip_port", "front_end_port"),
+    "ssl_offload": ("ssl", "ssl_termination"),
+    "backend_ips": ("backend_ip", "backend_servers", "servers", "server_ips"),
+    "backend_port": ("server_port", "servers_port"),
+    "lb_method": ("load_balancing_method", "lb_algorithm", "method"),
+    "monitor": ("health_monitor", "monitor_type", "health_check"),
+}
+
+
+def _model_form_has_field(form: InputForm, canonical_id: str) -> bool:
+    """True when the model's form already covers this canonical field (exact or alias match)."""
+    existing_ids = {f.id.lower() for f in form.fields}
+    if canonical_id.lower() in existing_ids:
+        return True
+    for alias in _LB_FIELD_ALIASES.get(canonical_id, ()):
+        if alias.lower() in existing_ids:
+            return True
+    return False
+
+
+def _merge_missing_lb_fields(model_form: InputForm, workload_label: str) -> InputForm:
+    """Append canonical LB fields that the model's form is missing.
+
+    R4: emit ONE consolidated form even when the model produced a partial form, so the
+    user is never asked for persistence/monitor in a second follow-up form.
+    """
+    default = default_lb_vserver_form(workload_label)
+    default_fields_by_id = {f.id: f for f in default.fields}
+
+    extra_fields: list[InputFormField] = []
+    for cid in _CANONICAL_LB_FIELD_IDS:
+        if _model_form_has_field(model_form, cid):
+            continue  # model already asked for this
+        if cid in default_fields_by_id:
+            extra_fields.append(default_fields_by_id[cid])
+
+    if not extra_fields:
+        return model_form  # form is already complete
+
+    merged_data = model_form.model_dump()
+    merged_data["fields"] = [f.model_dump() for f in model_form.fields] + [
+        f.model_dump() for f in extra_fields
+    ]
+    return InputForm.model_validate(merged_data)
+
+
 def attach_default_lb_form_if_missing(
     user_message: str,
     content: str,
     form: InputForm | None,
     role: str | None = None,
 ) -> tuple[str, InputForm | None]:
-    """Ensure LB create requests always return a renderable form when inputs are missing."""
+    """Ensure LB create requests always return a single, complete renderable form.
+
+    R4: If the model emitted a partial LB form (missing persistence/monitor/etc.), merge
+    the missing canonical fields into it instead of accepting the partial form — so the
+    user is never prompted for remaining fields in a second follow-up form.
+    """
     from app.services.copilot_roles import JPilotRole, normalize_role
 
     if normalize_role(role) == JPilotRole.ARCHITECT:
         return content, form
 
     if form is not None:
-        return content, normalize_lb_form_fields(form)
+        normalized = normalize_lb_form_fields(form)
+        # R4: If this is an LB create request and the model's form is missing canonical
+        # fields, merge them in so the user gets one complete form, not two partial ones.
+        if user_requests_lb_vserver_create(user_message) and not is_form_submission(user_message):
+            workload = infer_workload_label(user_message)
+            normalized = _merge_missing_lb_fields(normalized, workload)
+        return content, normalized
     if is_form_submission(user_message):
         return content, form
     if not user_requests_lb_vserver_create(user_message):

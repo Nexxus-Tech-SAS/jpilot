@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import re
@@ -717,6 +718,100 @@ def _dedupe_read_result(
     return _truncate_tool_result(result, max_chars)
 
 
+# ---------------------------------------------------------------------------
+# R1 + R6: Dedicated dry_run plan marker — embed + recover
+# ---------------------------------------------------------------------------
+# When a dedicated tool (create_*/modify_*/delete_*) runs with dry_run=true and
+# succeeds, we embed a hidden HTML comment in the assistant's text response so
+# the next affirmation turn can recover the exact tool+args and re-execute with
+# confirm=true — without relying on the model to re-derive the call.
+# ---------------------------------------------------------------------------
+
+_PLAN_MARKER_PREFIX = "<!-- jpilot-plan: "
+_PLAN_MARKER_SUFFIX = " -->"
+_PLAN_MARKER_RE = re.compile(
+    r"<!--\s*jpilot-plan:\s*([A-Za-z0-9+/=]+)\s*-->", re.IGNORECASE
+)
+
+# Dedicated tools that support dry_run → confirm flow (R1/R6).
+_DEDICATED_DRY_RUN_TOOLS = frozenset(
+    {
+        "netscaler_create_lb",
+        "netscaler_modify_lb",
+        "netscaler_delete_lb",
+        "netscaler_create_cs",
+        "netscaler_modify_cs",
+        "netscaler_delete_cs",
+        "netscaler_create_rewrite",
+        "netscaler_modify_rewrite",
+        "netscaler_delete_rewrite",
+        "netscaler_create_responder",
+        "netscaler_modify_responder",
+        "netscaler_delete_responder",
+    }
+)
+
+
+def _embed_dry_run_plan_marker(content: str, tool_traces: list[ToolCallTrace]) -> str:
+    """R6: Append a hidden marker to the response when a dedicated dry_run preview ran.
+
+    The marker encodes the tool name + arguments so the next affirmation turn can
+    recover them deterministically (R1) and call the same tool with confirm=true.
+    """
+    for trace in reversed(tool_traces):
+        if trace.name not in _DEDICATED_DRY_RUN_TOOLS:
+            continue
+        args = trace.arguments or {}
+        if not args.get("dry_run"):
+            continue  # only mark a dry_run preview
+        # Verify the dry_run actually produced a non-blocked result
+        try:
+            payload = json.loads(trace.result)
+            if isinstance(payload, dict) and (
+                payload.get("blocked") or payload.get("success") is False
+            ):
+                continue
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # Encode: strip dry_run flag so the confirm call has clean args
+        confirm_args = {k: v for k, v in args.items() if k != "dry_run"}
+        confirm_args["confirm"] = True
+        plan_payload = json.dumps({"tool": trace.name, "args": confirm_args})
+        encoded = base64.b64encode(plan_payload.encode("utf-8")).decode("ascii")
+        marker = f"{_PLAN_MARKER_PREFIX}{encoded}{_PLAN_MARKER_SUFFIX}"
+        return f"{content}\n{marker}" if content else marker
+    return content
+
+
+def _extract_prior_dedicated_plan(history: list[dict]) -> tuple[str, dict] | None:
+    """R1: Scan recent history for a dry_run plan marker in the last assistant message.
+
+    Returns (tool_name, arguments_with_confirm_true) or None if not found.
+    """
+    for item in reversed(history):
+        if str(item.get("role") or "").lower() != "assistant":
+            continue
+        content = str(item.get("content") or "")
+        m = _PLAN_MARKER_RE.search(content)
+        if m:
+            try:
+                decoded = base64.b64decode(m.group(1).encode("ascii")).decode("utf-8")
+                payload = json.loads(decoded)
+                tool = str(payload.get("tool") or "")
+                args = dict(payload.get("args") or {})
+                if tool in _DEDICATED_DRY_RUN_TOOLS:
+                    return tool, args
+            except (ValueError, KeyError, json.JSONDecodeError):
+                pass
+        break  # only check the last assistant message
+    return None
+
+
+# ---------------------------------------------------------------------------
+# End R1+R6 helpers
+# ---------------------------------------------------------------------------
+
+
 def _finalize_chat_response(
     content: str,
     *,
@@ -730,6 +825,9 @@ def _finalize_chat_response(
 ) -> ChatResponse:
     if normalize_role(role) == JPilotRole.ARCHITECT:
         content = sanitize_architect_reply(content)
+    # R6: embed a hidden plan marker when a dedicated dry_run preview ran, so the next
+    # affirmation turn can deterministically recover the tool+args and confirm (R1).
+    content = _embed_dry_run_plan_marker(content, tool_traces)
     cleaned, input_form = parse_input_form(content)
     cleaned, input_form = attach_default_lb_form_if_missing(
         user_message, cleaned, input_form, role=role
@@ -867,6 +965,7 @@ async def _execute_tool_with_memory_gate(
         stack_calibration_reviewed=stack_calibration_reviewed,
         nextgen_memory_reviewed=nextgen_memory_reviewed,
         cli_memory_reviewed=cli_memory_reviewed,
+        tool_arguments=arguments,
     )
     if not allowed and blocked:
         logger.info("tool_call name=%s BLOCKED (memory/blueprint review not satisfied)", name)
@@ -1115,6 +1214,63 @@ async def run_copilot_chat(
             confirmed = is_affirmation(user_message)
             effective_msg = last_user_message(history) if confirmed else user_message
             provider_name = provider["providerName"]
+
+            # R1: On a short affirmation turn, check whether the prior assistant reply
+            # contained a hidden dry_run plan marker (R6). If so, re-execute the same
+            # dedicated tool with confirm=true (deterministic recovery — no model
+            # re-derivation needed), mirroring the copilot_deploy confirm recovery path.
+            if confirmed:
+                prior_plan = _extract_prior_dedicated_plan(history)
+                if prior_plan is not None:
+                    plan_tool_name, plan_args = prior_plan
+                    # Inject the appliance name if the stored plan carries a placeholder
+                    if appliance_name and not plan_args.get("appliance_name"):
+                        plan_args = {**plan_args, "appliance_name": appliance_name}
+                    logger.info(
+                        "r1_confirm_dedicated_plan tool=%s args=%s",
+                        plan_tool_name,
+                        json.dumps(plan_args, default=str)[:400],
+                    )
+                    try:
+                        confirm_result, _, _, _ = await _execute_tool_with_memory_gate(
+                            db,
+                            plan_tool_name,
+                            plan_args,
+                            appliance_name,
+                            True,   # nextgen_memory_reviewed — dedicated tools don't need search
+                            True,   # cli_memory_reviewed
+                            stack_calibration_reviewed,
+                            blueprint_relevant,
+                            role=chat_role.value,
+                            vendor=chat_vendor,
+                        )
+                    except Exception as exc:
+                        logger.exception("r1_confirm_dedicated_plan tool=%s failed", plan_tool_name)
+                        confirm_result = json.dumps({"success": False, "errorMessage": str(exc)})
+                    auto_traces.append(
+                        ToolCallTrace(name=plan_tool_name, arguments=plan_args, result=confirm_result)
+                    )
+                    try:
+                        result_payload = json.loads(confirm_result)
+                        if isinstance(result_payload, dict) and result_payload.get("success") is False:
+                            confirm_summary = (
+                                f"**{plan_tool_name} failed.** "
+                                + (result_payload.get("errorMessage") or result_payload.get("message") or "")
+                            )
+                        else:
+                            confirm_summary = f"**Configuration applied** via `{plan_tool_name}`."
+                    except (json.JSONDecodeError, TypeError):
+                        confirm_summary = f"**Configuration applied** via `{plan_tool_name}`."
+                    tool_traces.extend(auto_traces)
+                    return _finalize_chat_response(
+                        confirm_summary,
+                        provider_name=provider_name,
+                        provider_type=provider_type,
+                        model=model,
+                        tool_traces=tool_traces,
+                        user_message=user_message,
+                        role=chat_role.value,
+                    )
 
             lb_fields = parse_natural_language_lb_request(effective_msg)
             if detect_natural_language_lb_request(effective_msg, lb_fields):

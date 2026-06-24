@@ -15,6 +15,8 @@ NEXTGEN_API_TOOLS = frozenset(
 )
 
 # Curated read tools with fixed Next-Gen/NITRO endpoints — no memory search before use.
+# netscaler_nextgen_get is a read-only GET wrapper; its endpoint is user-supplied so
+# the model already knows the path — no forced search_netscaler_nextgen_api round-trip.
 NEXTGEN_CURATED_READ_TOOLS = frozenset(
     {
         "netscaler_get_system_info",
@@ -23,6 +25,7 @@ NEXTGEN_CURATED_READ_TOOLS = frozenset(
         "netscaler_list_virtual_ips",
         "netscaler_list_ip_addresses",
         "netscaler_list_service_status",
+        "netscaler_nextgen_get",
     }
 )
 
@@ -82,8 +85,18 @@ def nextgen_memory_review_required(tool_name: str) -> bool:
     return tool_name in NEXTGEN_API_TOOLS and tool_name != "netscaler_test_connection"
 
 
-def cli_memory_review_required(tool_name: str) -> bool:
-    return tool_name in {
+def cli_memory_review_required(tool_name: str, command: str | None = None) -> bool:
+    """Return True when this tool requires a CLI-reference memory search before execution.
+
+    For single-command tools (CLI_WRITE_TOOL and vendor equivalents), read-only verbs
+    (show/stat/get/…) are exempt — they don't change state and don't need a memory search
+    round-trip.  Write and destructive verbs remain gated as before.
+
+    The ``command`` argument should be the value of the tool's ``command`` parameter when
+    available.  Callers that only have the tool name may omit it; the gate then falls back
+    to the original tool-name-only behaviour (gated).
+    """
+    gated_tools = {
         SSH_TOOL,
         CLI_WRITE_TOOL,
         CLI_BATCH_TOOL,
@@ -95,6 +108,21 @@ def cli_memory_review_required(tool_name: str) -> bool:
         F5_CLI_WRITE_TOOL,
         F5_CLI_BATCH_TOOL,
     }
+    if tool_name not in gated_tools:
+        return False
+
+    # Arg-aware exemption: single-command read verbs don't need a memory search.
+    if command is not None and tool_name in {CLI_WRITE_TOOL, CISCO_CLI_WRITE_TOOL, SDX_CLI_WRITE_TOOL, F5_CLI_WRITE_TOOL}:
+        classifier = {
+            CLI_WRITE_TOOL: classify_cli_command,
+            CISCO_CLI_WRITE_TOOL: classify_cisco_command,
+            SDX_CLI_WRITE_TOOL: classify_sdx_command,
+            F5_CLI_WRITE_TOOL: classify_f5_command,
+        }[tool_name]
+        if classifier(command) == "read":
+            return False
+
+    return True
 
 
 CISCO_DESTRUCTIVE_VERBS = frozenset({"reload", "erase", "delete", "write"})
@@ -182,10 +210,47 @@ def classify_nextgen_request(method: str, path: str) -> str:
     return "write"
 
 
+# Dedicated config tools that perform destructive operations (dropping bindings/objects).
+# These require confirm=true before the MCP executes them.
+# R2: delete_* always destructive; modify_* with remove_services drops bindings.
+_DEDICATED_ALWAYS_DESTRUCTIVE = frozenset(
+    {
+        "netscaler_delete_lb",
+        "netscaler_delete_cs",
+        "netscaler_delete_rewrite",
+        "netscaler_delete_responder",
+    }
+)
+_DEDICATED_CONDITIONALLY_DESTRUCTIVE = frozenset(
+    {
+        "netscaler_modify_lb",
+        "netscaler_modify_cs",
+    }
+)
+
+
+def _dedicated_tool_is_destructive(tool_name: str, arguments: dict[str, Any]) -> bool:
+    """Return True when a dedicated config tool performs a destructive write."""
+    if tool_name in _DEDICATED_ALWAYS_DESTRUCTIVE:
+        return True
+    if tool_name in _DEDICATED_CONDITIONALLY_DESTRUCTIVE:
+        # remove_services / remove_policies drops bound objects — destructive
+        return bool(arguments.get("remove_services") or arguments.get("remove_policies"))
+    return False
+
+
 def destructive_confirmation_required(tool_name: str, arguments: dict[str, Any]) -> bool:
     """True when a write tool targets a destructive operation that the user has not confirmed."""
     if arguments.get("confirmed") is True:
         return False
+    # R2: dedicated delete_*/modify_* that drop bindings require confirm=true.
+    # A dry_run preview (dry_run=true) is never destructive — it's a read-only preview.
+    if _dedicated_tool_is_destructive(tool_name, arguments):
+        if arguments.get("dry_run"):
+            return False  # preview only, not an actual destructive write
+        if arguments.get("confirm") is True:
+            return False  # user already confirmed via the tool argument
+        return True
     if tool_name == CLI_WRITE_TOOL:
         return classify_cli_command(arguments.get("command", "")) == "destructive"
     if tool_name == CISCO_CLI_WRITE_TOOL:
@@ -223,6 +288,28 @@ def destructive_confirmation_required(tool_name: str, arguments: dict[str, Any])
 
 
 def block_result_for_unconfirmed_destructive(tool_name: str, arguments: dict[str, Any]) -> str:
+    if tool_name in _DEDICATED_ALWAYS_DESTRUCTIVE or tool_name in _DEDICATED_CONDITIONALLY_DESTRUCTIVE:
+        # R2: dedicated destructive tools — instruct the model to call dry_run first, then confirm.
+        op_name = arguments.get("name", tool_name)
+        return json.dumps(
+            {
+                "success": False,
+                "blocked": True,
+                "needsConfirmation": True,
+                "operation": f"{tool_name}({op_name})",
+                "message": (
+                    f"Destructive dedicated tool '{tool_name}' blocked: a dry_run preview is required first. "
+                    "Call this tool with dry_run=true to show the user exactly what will be removed/changed, "
+                    "present the plan, and ask for explicit confirmation. "
+                    "Only after the user agrees, call the tool again with confirm=true."
+                ),
+                "requiredAction": (
+                    f"Call {tool_name} with dry_run=true, show the plan to the user, "
+                    "then retry with confirm=true after they confirm."
+                ),
+            },
+            indent=2,
+        )
     if tool_name == CLI_WRITE_TOOL:
         operation = arguments.get("command", "")
     elif tool_name == CISCO_CLI_WRITE_TOOL:
@@ -306,10 +393,13 @@ def apply_memory_review_gates(
     tool_name: str,
     nextgen_memory_reviewed: bool,
     cli_memory_reviewed: bool,
+    tool_arguments: dict[str, Any] | None = None,
 ) -> tuple[bool, str | None]:
     if nextgen_memory_review_required(tool_name) and not nextgen_memory_reviewed:
         return False, block_result_for_missing_nextgen_memory(tool_name)
-    if cli_memory_review_required(tool_name) and not cli_memory_reviewed:
+    # Pass the command arg so read verbs (show/stat/get/…) bypass the CLI memory gate.
+    command = (tool_arguments or {}).get("command")
+    if cli_memory_review_required(tool_name, command=command if isinstance(command, str) else None) and not cli_memory_reviewed:
         return False, block_result_for_missing_cli_memory(tool_name)
     return True, None
 

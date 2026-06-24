@@ -266,6 +266,34 @@ def _revision_apply_nudge(*, planning_intent: str | None) -> str:
     )
 
 
+# A4 — Ordered section skeleton for new_deployment deliverables
+_NEW_DEPLOYMENT_SECTION_SKELETON = (
+    "Structure the document with these ordered sections (omit any section not in scope for this design): "
+    "1. **Summary** — one-paragraph executive summary; "
+    "2. **Deployment Topology** — site/DC layout, appliance count, HA mode; "
+    "3. **Network Table** — VLANs, subnets, interface assignments, VIP/NSIP/SNIP/gateway; "
+    "4. **High Availability** — HA protocol, sync configuration, failover triggers, heartbeat; "
+    "5. **SSL / WAF** — certificate details, cipher policy, SNI, AppFirewall profile (if in scope); "
+    "6. **Authentication** — auth method, LDAP/RADIUS/SAML parameters, session policy; "
+    "7. **Monitoring & ADM** — health checks, SNMP, syslog, ADM integration, alert thresholds; "
+    "8. **Backups & Config Export** — backup schedule, ns.conf export, tech-support bundle; "
+    "9. **Risks & Assumptions** — known gaps, TBD items, prerequisites; "
+    "10. **Handoff for Operator** — numbered CLI/provisioning steps, run-book reference. "
+)
+
+_NEW_FUNCTIONALITY_SECTION_SKELETON = (
+    "Structure the document with these ordered sections (omit any section not in scope): "
+    "1. **Summary** — what is changing and why; "
+    "2. **Current State** — relevant existing configuration; "
+    "3. **Proposed Change** — tables and config snippets; "
+    "4. **Impact & Risk** — blast radius, outage window, dependencies; "
+    "5. **Prerequisites** — what must be true before the change; "
+    "6. **Validation Steps** — post-change tests and success criteria; "
+    "7. **Rollback Plan** — how to revert; "
+    "8. **Handoff for Operator** — numbered steps. "
+)
+
+
 def _design_now_nudge(*, doc_tool: str, planning_intent: str | None, vendor_id: str) -> str:
     if planning_intent == "change_control":
         outline_hint = (
@@ -287,14 +315,17 @@ def _design_now_nudge(*, doc_tool: str, planning_intent: str | None, vendor_id: 
             "The user wants the functional change design now. Do NOT ask more discovery questions or show checklists. "
             "Use conversation history for answers already given. "
             f"Call {doc_tool} if you need official references, then output the full Functional change design. "
-            "First line: <!-- jpilot-design-document -->. End with **Handoff for Operator**. "
+            "First line: <!-- jpilot-design-document -->. "
+            f"{_NEW_FUNCTIONALITY_SECTION_SKELETON}"
             "Mark unknowns TBD — do not re-open completed topics."
         )
+    # new_deployment (default) — A4 skeleton
     return (
         "The user wants the formal design document now. Do NOT ask more discovery questions or show checklists. "
         "Use conversation history for answers already given (including plain-text replies like VMware or one-arm). "
         f"Call {doc_tool} if you need official references, then output the full Design document. "
-        "First line: <!-- jpilot-design-document -->. End with **Handoff for Operator**. "
+        "First line: <!-- jpilot-design-document -->. "
+        f"{_NEW_DEPLOYMENT_SECTION_SKELETON}"
         "Mark unknowns TBD — do not re-open completed topics."
     )
 
@@ -312,23 +343,119 @@ def count_unique_planning_form_submissions(text: str) -> int:
     return len({title.strip().lower() for title in titles if title.strip()})
 
 
+# ---------------------------------------------------------------------------
+# A2 — coverage-based readiness: topics we need to see covered in conversation
+# ---------------------------------------------------------------------------
+
+# Each topic is a tuple of keyword patterns; any match counts the topic covered.
+_COVERAGE_TOPICS_NEW_DEPLOYMENT = (
+    # business goal / planning intent
+    (r"business goal|planning intent|purpose|objective|use.?case|application",),
+    # sites / topology / HA
+    (r"site|datacenter|data center|topology|ha|high.?availab|pair|active.standby|single.?node",),
+    # hosting / platform
+    (r"hosting|platform|on.?prem|aws|azure|cloud|vmware|hyper.?v|bare.?metal|hardware",),
+    # firmware / version
+    (r"firmware|version|build|release|14\.\d|13\.\d|12\.\d",),
+    # network model
+    (r"network|vlan|subnet|ip.?address|cidr|routing|interface|one.?arm|inline|gateway",),
+    # auth / access
+    (r"auth|ldap|radius|saml|sso|kerberos|certificate|ssl offload|tls",),
+    # features / services in scope
+    (r"feature|service|load.?balanc|content.?switch|gslb|citrix.?gateway|storefront|aaa|waf|appfw",),
+    # constraints / non-functional
+    (r"constraint|sla|throughput|capacity|compliance|limit|budget|timeline|deadline",),
+)
+
+_COVERAGE_TOPICS_NEW_FUNCTIONALITY = (
+    # existing environment
+    (r"existing|current|live|production|platform|ha|version|site",),
+    # what is being added / changed
+    (r"adding|changing|new feature|new vserver|new policy|new cert|new service|delta|modify",),
+    # dependencies / blast radius
+    (r"depend|impact|blast.?radius|affect|rollback|risk",),
+    # validation / success criteria
+    (r"validat|success.?crit|test|verif|sign.?off|smoke.?test",),
+)
+
+_COVERAGE_TOPICS_CHANGE_CONTROL = (
+    # change classification
+    (r"classif|standard|normal|emergency|expedit",),
+    # change summary / business justification
+    (r"summary|justif|title|description|reason|business",),
+    # affected systems
+    (r"affect|ci\b|service|site|system|impact",),
+    # maintenance window
+    (r"window|schedule|date|time|timezone|duration",),
+    # rollback
+    (r"rollback|back.?out|revert|undo",),
+    # validation
+    (r"validat|verif|success|test|post.?change",),
+)
+
+# Hard backstop (A3): after this many form submissions, force deliverable regardless of coverage
+_DISCOVERY_HARD_BACKSTOP = 9
+
+
+def _count_covered_topics(
+    conversation_text: str,
+    topic_patterns: tuple,
+) -> int:
+    """Return count of topic groups that have at least one pattern matched in conversation."""
+    text = (conversation_text or "").lower()
+    covered = 0
+    for topic_patterns_group in topic_patterns:
+        for pattern in topic_patterns_group:
+            if re.search(pattern, text):
+                covered += 1
+                break
+    return covered
+
+
+def architect_discovery_coverage_ready(
+    conversation_text: str,
+    planning_intent: str | None,
+) -> tuple[bool, int, int]:
+    """Return (is_ready, covered_count, required_count) based on topic coverage."""
+    if planning_intent == "new_functionality":
+        topics = _COVERAGE_TOPICS_NEW_FUNCTIONALITY
+        required = 3  # must cover 3 of 4 topics
+    elif planning_intent == "change_control":
+        topics = _COVERAGE_TOPICS_CHANGE_CONTROL
+        required = 4  # must cover 4 of 6 topics
+    else:
+        # new_deployment or unknown — use full deployment topics
+        topics = _COVERAGE_TOPICS_NEW_DEPLOYMENT
+        required = 5  # must cover 5 of 8 topics
+    covered = _count_covered_topics(conversation_text, topics)
+    return covered >= required, covered, len(topics)
+
+
 def architect_discovery_ready_for_deliverable(
     conversation_text: str,
     planning_intent: str | None,
 ) -> bool:
-    """Heuristic: enough discovery forms collected to write the deliverable."""
+    """
+    Coverage-based readiness (A2): ready when required TOPICS are present in conversation.
+    Fast-paths for change-control are preserved.
+    Hard backstop (A3): always ready after _DISCOVERY_HARD_BACKSTOP form submissions.
+    """
     count = count_planning_form_submissions(conversation_text)
-    if planning_intent == "new_functionality":
-        return count >= 5
+
+    # A3 hard backstop — escape from endless discovery regardless of intent
+    if count >= _DISCOVERY_HARD_BACKSTOP:
+        return True
+
+    # Change-control fast paths (unchanged logic — these are quick by design)
     if planning_intent == "change_control":
         if _conversation_started_with_rich_change_control(conversation_text):
             return count >= 1
         if _change_control_intent_declared_upfront(conversation_text):
             return count_unique_planning_form_submissions(conversation_text) >= 3
-        return count >= 4
-    if planning_intent == "new_deployment":
-        return count >= 7
-    return count >= 6
+
+    # A2 — coverage-based check
+    ready, _covered, _total = architect_discovery_coverage_ready(conversation_text, planning_intent)
+    return ready
 
 
 def architect_tools_enabled(
@@ -363,22 +490,29 @@ def _deliverable_ready_nudge(*, planning_intent: str | None, vendor_id: str = "n
         )
         tool_hint = f"{outline_hint}then write the document. "
         handoff_hint = "Include **Handoff for Operator** only if the user requested on-appliance execution."
-    else:
+        section_skeleton = ""
+    elif planning_intent == "new_functionality":
         marker = "<!-- jpilot-design-document -->"
-        label = (
-            "Functional change design"
-            if planning_intent == "new_functionality"
-            else "Design document"
-        )
+        label = "Functional change design"
         tool_hint = "Do NOT call any tools — use conversation history only. "
-        handoff_hint = "End with **Handoff for Operator**."
+        handoff_hint = ""
+        section_skeleton = _NEW_FUNCTIONALITY_SECTION_SKELETON
+    else:
+        # new_deployment (default) — A4 ordered skeleton
+        marker = "<!-- jpilot-design-document -->"
+        label = "Design document"
+        tool_hint = "Do NOT call any tools — use conversation history only. "
+        handoff_hint = ""
+        section_skeleton = _NEW_DEPLOYMENT_SECTION_SKELETON
 
     return (
         f"Discovery is sufficient for this request. {JPILOT_FORM_NOT_A_TOOL_HINT} "
         f"{tool_hint}"
         f"Do NOT output another ```jpilot-form``` or ask more discovery questions. "
         f"Output the complete {label} in one markdown reply. "
-        f"First line: {marker}. Include configuration tables and phased implementation steps. "
+        f"First line: {marker}. "
+        f"{section_skeleton}"
+        f"Include configuration tables and phased implementation steps. "
         f"Mark unknowns **TBD**. {handoff_hint}"
     )
 
@@ -455,8 +589,11 @@ def build_discovery_form_submit_nudge(
         "The user submitted a planning discovery form. "
         f"{JPILOT_FORM_NOT_A_TOOL_HINT} "
         "Do NOT call search_jpilot_architect_resources, search_* documentation tools, or any other tools. "
-        "Acknowledge their answers in 1–2 sentences, then output exactly one ```jpilot-form``` for the "
-        f"**next** unknown discovery topic only.{intent_hint} "
+        "Acknowledge their answers in 1–2 sentences, then output exactly one ```jpilot-form``` that groups "
+        "several RELATED independent unknown topics together (e.g. Topology + HA + hosting + firmware can be "
+        "one form with up to 8 fields; auth + features + constraints is another logical group). "
+        "Do NOT split tightly related fields across multiple turns — combine them. "
+        f"Skip any topic already answered in chat or prior forms.{intent_hint} "
         'Use submitLabel "Continue". No prose after the closing fence.'
     )
 
@@ -586,7 +723,8 @@ def build_architect_discovery_nudge(
         "Your last reply violated Architect discovery rules. Do NOT use checklists (✅/❌), "
         'Still missing, Turn N labels, or prose question lists. Do NOT emit tool_calls or XML markup. '
         "Acknowledge any answers the user already gave in chat (1 sentence max), then output exactly one "
-        "```jpilot-form``` JSON block for the **next** unknown topic only — or the final deliverable if enough "
+        "```jpilot-form``` JSON block that GROUPS related unknown topics together (e.g. topology + HA + hosting "
+        "in one form; auth + features + constraints in another) — or the final deliverable if enough "
         f"is known.{intent_hint} No prose after the form fence."
     )
 

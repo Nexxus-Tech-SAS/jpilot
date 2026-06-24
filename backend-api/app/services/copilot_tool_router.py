@@ -108,7 +108,10 @@ PACK_TOOLS: dict[str, frozenset[str]] = {
 
 ROLE_BASE_PACKS: dict[str, frozenset[str]] = {
     "architect": frozenset({"inventory"}),
-    "analyst": frozenset({"core_read", "read", "diagnostic", "cli_search", "nextgen_search"}),
+    # analyst always has the dedicated read-only log-tail and config-grep tools so the model
+    # can use them without falling back to raw SSH.  logs → netscaler_get_logs;
+    # config_search → netscaler_search_config.
+    "analyst": frozenset({"core_read", "read", "diagnostic", "cli_search", "nextgen_search", "logs", "config_search"}),
     "operator": frozenset({"core_read", "read"}),
 }
 
@@ -467,9 +470,11 @@ def classify_tool_packs(
             packs.discard("inventory")
         elif _dedicated_config_packs:
             # Dedicated config intent on a form-submission turn: keep dedicated tools +
-            # read_safe for verification but do NOT re-add the raw "read" pack (which
-            # carries netscaler_run_cli_command and would reopen the gated-CLI trap).
-            packs.update({"cli_write", "cli_search", "nextgen_write", "nextgen_search"})
+            # read_safe for verification; do NOT add cli_write / raw "read" (which carry
+            # netscaler_run_cli_command and would reopen the gated-CLI trap — R7 fix).
+            # cli_search / nextgen_search are also unnecessary: the dedicated tools encode
+            # correct syntax internally and need no pre-search.
+            pass  # dedicated packs + read_safe already in packs from the block above
         else:
             packs.update({"cli_write", "cli_search", "nextgen_write", "nextgen_search", "read"})
 

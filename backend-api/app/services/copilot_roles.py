@@ -104,6 +104,10 @@ _ANALYST_TOOLS = _PLANNING_TOOLS | frozenset(
         "netscaler_collect_nsconmsg",
         "netscaler_ssh_run_command",
         "netscaler_run_cli_command",
+        # Dedicated read-only SSH tools: log tail and config grep.
+        # These let the analyst use purpose-built read tools instead of raw SSH.
+        "netscaler_get_logs",
+        "netscaler_search_config",
     }
 )
 

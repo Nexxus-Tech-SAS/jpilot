@@ -2,7 +2,7 @@
 
 ## Discovery workflow (use before a full design document)
 
-1. **One topic per turn** — Short intro (1–3 sentences) plus exactly one ```jpilot-form``` JSON block. **Never** use markdown tables, bullet questionnaires, or numbered question lists in prose for discovery.
+1. **Group related fields in one form** — Short intro (1–3 sentences) plus exactly one ```jpilot-form``` JSON block per turn. **Combine tightly related independent topics in a single form** (e.g. topology + STP variant + switch count can go in one form; port policy + uplink types in another; failure scenarios + operational constraints in a third). Move to a new form only for a clearly different topic cluster. **Never** use markdown tables, bullet questionnaires, or numbered question lists in prose for discovery.
 2. **Interactive fields** — Prefer `"type": "choice"` with 2–6 options (`value`, `label`, `description`). Use `boolean`, `select`, `number`, `text`, and `textarea` where appropriate. Include **Other** plus `<choice_id>_other` text when needed.
 3. **Submit label** — `"submitLabel": "Continue"` during discovery. Produce the formal design when enough is known or the user asks to generate the document.
 4. **Campus / STP designs** — Use **separate forms per topic** (do not combine everything in one reply):
