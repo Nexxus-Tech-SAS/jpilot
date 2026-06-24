@@ -171,8 +171,10 @@ class BlueprintTurnContext:
 
 BLUEPRINT_FIRST_NUDGE = (
     "## Blueprint-first\n"
-    "This turn matches installed stack calibration blueprint(s). Follow their playbooks "
-    "before generic CLI/API reference search or appliance tools."
+    "This turn matches installed stack calibration blueprint(s). Use their playbook "
+    "commands/paths/inputs directly. Do NOT call search_netscaler_cli_reference, "
+    "search_netscaler_nextgen_api, or memory search when the blueprint already supplies "
+    "what to run — reserve discovery searches only for steps the blueprint does not cover."
 )
 
 
