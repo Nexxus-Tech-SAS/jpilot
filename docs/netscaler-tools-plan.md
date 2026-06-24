@@ -89,27 +89,34 @@ official Next-Gen guide. The Next-Gen API is **declarative / desired-state**:
 | 3. Rewrite | ⚠️ Yes, via config_set | NOT an `application` property. Push action+policy+bindings as one **`config_set`**. |
 | 4. Responder | ⚠️ Yes, via config_set | Same as rewrite. (`responder_html_pages` is a separate first-class resource for custom pages.) |
 
-**Key finding:** `config_sets` (`POST /config_sets/{name}`) is the official mechanism to
-*"define any NetScaler configuration"* in one declarative request — bridging NITRO's power with
-the Next-Gen desired-state model. So all four topics can each be reduced to a single Next-Gen
-request (Topic 1 via `applications`, Topics 2–4 via `config_sets`), with atomic apply and
-desired-state delete (`DELETE /config_sets/{name}`) replacing the fragile "disable → unbind → rm".
+**Live-probe result (NS14.1 build 66.59) — DECISION: use classic CLI.**
+A `config_set` body `{config_set:{name, shareable, config:{<nitro_entity>:[...]}}}` with
+`server`/`lbvserver`/`csvserver`/`cspolicy`/`rewriteaction`/`rewritepolicy` was **ACCEPTED**
+(`config_status` → `state: ACCEPTED, pending_updates: 0`). **However, those objects are NOT
+visible in the classic plane** — `show lb vserver`, `show cs vserver`, `show rewrite policy`,
+and `show ns runningConfig | grep` do not show them. The Next-Gen `config_sets`/`applications`
+layer is a **separate desired-state plane**, invisible to the classic CLI that operators use.
 
-⚠️ The exact `config_set` body schema is being confirmed live (the guide shows none). If it
-can't cleanly model CS/Rewrite/Responder on this firmware (NS14.1 build 66.59), the fallback is
-guarded ordered CLI via `netscaler_run_cli_commands` — same external tool contract.
+Because the user's templates and verification are all classic CLI, the write goal tools are
+built on **guarded ordered classic CLI** (`netscaler_run_cli_commands`: add/bind/set/rm + save),
+so objects appear in `show ...` and are manageable normally. config_sets remain a documented
+alternative, not the chosen backend. (Also confirmed live: `show ... | grep <kw>` works over
+SSH, so Section 4 filtering needs no shell access.)
 
 ### Recommended tool design (goal-based, declarative under the hood)
-One tool per objective×action, each building the right `applications` or `config_set` body
+One tool per objective×action, each building the correct **classic CLI** command sequence
 internally so the model never has to discover syntax. **All write tools support dry-run/preview
-and require an explicit confirm flag to commit.**
-- LB: ✅ extend `netscaler_create_application`; 🆕 `netscaler_modify_lb`, `netscaler_delete_lb`.
+(return the exact CLI they would run) and require an explicit confirm flag to commit (then
+`save ns config`).** Objects are visible via `show ...`.
+- LB: 🆕 `netscaler_create_lb`, `netscaler_modify_lb`, `netscaler_delete_lb` (add server/service/
+  lbvserver + bind/set; safe-order delete). (`netscaler_create_application` stays as the existing
+  Next-Gen tool, separate plane.)
 - CS: 🆕 `netscaler_create_cs`, `netscaler_modify_cs`, `netscaler_delete_cs`.
 - Rewrite: 🆕 `netscaler_create_rewrite`, `netscaler_modify_rewrite`, `netscaler_delete_rewrite`.
 - Responder: 🆕 `netscaler_create_responder`, `netscaler_modify_responder`, `netscaler_delete_responder`.
 - Diagnostics: 🆕 `netscaler_get_logs`, 🆕 `netscaler_search_config`, 🆕 `netscaler_force_failover`.
-- Shared internal helper: `apply_config_set` / `delete_config_set` (not necessarily model-facing).
-- ⚠️ Keep `run_cli_command(s)` + the search tools as LAST-RESORT fallback only.
+- Shared internal helper: a guarded "apply ordered CLI config" executor (dry-run/confirm/save).
+- ⚠️ Keep raw `run_cli_command(s)` + the search tools as LAST-RESORT fallback only.
 
 ## Section 6 — Design decisions (resolved)
 1. **Declarative-first:** `applications` + `config_sets` primary; `run_cli_command(s)` fallback.
