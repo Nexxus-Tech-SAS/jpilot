@@ -52,6 +52,37 @@ PACK_TOOLS: dict[str, frozenset[str]] = {
             "netscaler_nextgen_request",
         }
     ),
+    "lb_config": frozenset(
+        {
+            "netscaler_create_lb",
+            "netscaler_modify_lb",
+            "netscaler_delete_lb",
+        }
+    ),
+    "cs_config": frozenset(
+        {
+            "netscaler_create_cs",
+            "netscaler_modify_cs",
+            "netscaler_delete_cs",
+        }
+    ),
+    "rewrite_config": frozenset(
+        {
+            "netscaler_create_rewrite",
+            "netscaler_modify_rewrite",
+            "netscaler_delete_rewrite",
+        }
+    ),
+    "responder_config": frozenset(
+        {
+            "netscaler_create_responder",
+            "netscaler_modify_responder",
+            "netscaler_delete_responder",
+        }
+    ),
+    "logs": frozenset({"netscaler_get_logs"}),
+    "config_search": frozenset({"netscaler_search_config"}),
+    "ha_failover": frozenset({"netscaler_force_failover"}),
     "cli_search": frozenset({"search_netscaler_cli_reference"}),
     "nextgen_search": frozenset({"search_netscaler_nextgen_api"}),
     "doc_connectivity": frozenset({"jpilot_check_doc_connectivity"}),
@@ -283,6 +314,129 @@ def classify_tool_packs(
     ):
         packs.add("read")
 
+    # ------------------------------------------------------------------
+    # Dedicated NetScaler config tools — tightly routed by intent.
+    # When any of these match, search tools are demoted (removed below).
+    # ------------------------------------------------------------------
+    _dedicated_config_packs: set[str] = set()
+
+    _config_verb = _contains_any(
+        lowered,
+        (
+            "create",
+            "add ",
+            "configure",
+            "set up",
+            "setup",
+            "modify",
+            "change",
+            "update",
+            "edit",
+            "delete",
+            "remove",
+            "replace",
+            "implement",
+        ),
+    )
+
+    if _contains_any(
+        lowered,
+        (
+            "load balanc",
+            "lb vserver",
+            "lbvserver",
+            "create an lb",
+            "new lb",
+            "lb method",
+        ),
+    ) or (
+        _config_verb
+        and _contains_any(lowered, ("service group", "vip ", "virtual server"))
+        and _contains_any(lowered, ("lb", "load balanc"))
+    ):
+        _dedicated_config_packs.add("lb_config")
+
+    if _contains_any(
+        lowered,
+        (
+            "content switch",
+            "cs vserver",
+            "csvserver",
+            "cs policy",
+        ),
+    ):
+        _dedicated_config_packs.add("cs_config")
+
+    if _contains_any(
+        lowered,
+        (
+            "rewrite policy",
+            "rewrite action",
+            "insert header",
+            "hsts",
+            "x-frame-options",
+        ),
+    ):
+        _dedicated_config_packs.add("rewrite_config")
+
+    if _contains_any(
+        lowered,
+        (
+            "responder",
+            "redirect to https",
+            "http to https",
+            "respond with",
+            "maintenance page",
+        ),
+    ):
+        _dedicated_config_packs.add("responder_config")
+
+    if _contains_any(
+        lowered,
+        (
+            "ns.log",
+            "/var/log",
+            "tail the log",
+            "show me the logs",
+            "messages log",
+            "get logs",
+            "fetch logs",
+        ),
+    ):
+        _dedicated_config_packs.add("logs")
+
+    if _contains_any(
+        lowered,
+        (
+            "search the config",
+            "grep the config",
+            "find in running config",
+            "running config for",
+            "search running config",
+            "search config",
+        ),
+    ):
+        _dedicated_config_packs.add("config_search")
+
+    if _contains_any(
+        lowered,
+        (
+            "force failover",
+            "failover",
+            "ha failover",
+            "force ha",
+        ),
+    ):
+        _dedicated_config_packs.add("ha_failover")
+
+    if _dedicated_config_packs:
+        packs.update(_dedicated_config_packs)
+        # Always include read so the model can verify with show commands
+        packs.add("read")
+        # Demote search tools: dedicated tools cover the request
+        packs.discard("cli_search")
+        packs.discard("nextgen_search")
+
     if role == "architect" and user_wants_deliverable_now(user_message):
         packs.update({"architect_search", "cli_search", "nextgen_search"})
 
@@ -354,6 +508,12 @@ def classify_tool_packs(
         {"diagnostic", "cli_write", "nextgen_write", "read", "doc_connectivity"}
     ):
         packs.add("read")
+
+    # Final demotion pass: if any dedicated config pack was matched, strip search
+    # tools even if the cli_write/nextgen_write signals re-added them above.
+    if _dedicated_config_packs:
+        packs.discard("cli_search")
+        packs.discard("nextgen_search")
 
     return packs
 

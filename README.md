@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.91` — **NetScaler goal tools (MCP layer).** Added 15 dedicated, goal-based NetScaler MCP tools built on the classic CLI (visible via `show ...`): Load Balancer, Content Switching, Rewrite, and Responder create/modify/delete lifecycles, plus `netscaler_get_logs`, `netscaler_search_config`, and a guarded `netscaler_force_failover`. All write tools share a confirm-gated `apply_cli_config` helper (dry-run preview + explicit `confirm` to apply + `save ns config`). Includes an appliance-free pytest suite (`mcp-server/tests/`). Live-verified end-to-end on the lab appliance. See [`docs/netscaler-tools-plan.md`](docs/netscaler-tools-plan.md). (Next: copilot/search-layer mapping, then JPilot e2e.)
+**Current release:** `v0.92` — **NetScaler goal tools wired into Copilot.** The 15 new NetScaler tools are now exposed to JPilot Chat: copilot catalog entries (`appliance_name`-based, credentials resolved server-side), `MCP_TOOL_MAP` + dispatch arg-forwarding, write-execution gating (`WRITE_EXEC_TOOL_NAMES`), and the admin tool catalog. Intent routing maps "create a load balancer / content switch / rewrite / responder", log, config-search, and failover requests to the dedicated tools, and **demotes the CLI/Next-Gen search tools to last resort** (routing + tool descriptions + a system-prompt preference line). Analyst stays read-only; write tools require operator. Router-unit verified.
+
+**Previous release:** `v0.91` — **NetScaler goal tools (MCP layer).** 15 dedicated classic-CLI goal tools (LB/CS/Rewrite/Responder lifecycles + get_logs/search_config/force_failover) with a confirm-gated `apply_cli_config` helper and an appliance-free pytest suite. Live-verified on the lab appliance.
 
 **Previous release:** `v0.90` — **NetScaler tooling baseline.** Capability plan doc + `netscaler_add_ip_address` NITRO empty-body fix; baseline checkpoint before the goal-tool build-out.
 

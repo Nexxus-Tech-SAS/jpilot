@@ -159,6 +159,19 @@ WRITE_EXEC_TOOL_NAMES = frozenset(
         "netscaler_run_cli_command",
         "netscaler_run_cli_commands",
         "netscaler_nextgen_request",
+        "netscaler_create_lb",
+        "netscaler_modify_lb",
+        "netscaler_delete_lb",
+        "netscaler_create_cs",
+        "netscaler_modify_cs",
+        "netscaler_delete_cs",
+        "netscaler_create_rewrite",
+        "netscaler_modify_rewrite",
+        "netscaler_delete_rewrite",
+        "netscaler_create_responder",
+        "netscaler_modify_responder",
+        "netscaler_delete_responder",
+        "netscaler_force_failover",
     }
 )
 

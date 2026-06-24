@@ -485,6 +485,699 @@ COPILOT_TOOLS = [
             "required": ["appliance_name", "operation"],
         },
     },
+    # ------------------------------------------------------------------
+    # Classic-CLI LB tools
+    # ------------------------------------------------------------------
+    {
+        "name": "netscaler_create_lb",
+        "description": (
+            "Create an LB vserver with backend servers and services using the classic NetScaler CLI. "
+            "classic CLI; visible via show lb vserver; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "name": {"type": "string", "description": "LB vserver name (also used as prefix for services/servers)"},
+                "vip": {"type": "string", "description": "Virtual IP address for the LB vserver"},
+                "port": {"type": "integer", "description": "Frontend listener port (default 80)"},
+                "service_type": {
+                    "type": "string",
+                    "description": "Protocol for the LB vserver, e.g. HTTP, HTTPS, TCP (default HTTP)",
+                },
+                "servers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of backend server IP addresses",
+                },
+                "server_port": {"type": "integer", "description": "Backend port (defaults to port if omitted)"},
+                "server_protocol": {
+                    "type": "string",
+                    "description": "Backend protocol (defaults to service_type if omitted)",
+                },
+                "lb_method": {
+                    "type": "string",
+                    "description": "Load-balancing method, e.g. ROUNDROBIN, LEASTCONNECTION",
+                },
+                "persistence": {
+                    "type": "string",
+                    "description": "Persistence type, e.g. NONE, SOURCEIP, COOKIEINSERT",
+                },
+                "persistence_timeout": {
+                    "type": "integer",
+                    "description": "Persistence timeout in minutes (used with persistence)",
+                },
+                "ssl_certkey": {
+                    "type": "string",
+                    "description": "SSL certkey name to bind (for HTTPS/SSL vservers)",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "name", "vip", "servers"],
+        },
+    },
+    {
+        "name": "netscaler_modify_lb",
+        "description": (
+            "Modify an existing LB vserver using the classic NetScaler CLI: change lb_method or "
+            "persistence, enable/disable the vserver, add new backend servers, or remove services. "
+            "classic CLI; visible via show lb vserver; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "name": {"type": "string", "description": "Name of the existing LB vserver"},
+                "lb_method": {
+                    "type": "string",
+                    "description": "New load-balancing method, e.g. ROUNDROBIN, LEASTCONNECTION",
+                },
+                "persistence": {
+                    "type": "string",
+                    "description": "New persistence type, e.g. NONE, SOURCEIP, COOKIEINSERT",
+                },
+                "persistence_timeout": {"type": "integer", "description": "Persistence timeout in minutes"},
+                "comment": {"type": "string", "description": "Comment/description to set on the vserver"},
+                "state": {
+                    "type": "string",
+                    "enum": ["enable", "disable"],
+                    "description": "Set to 'enable' or 'disable' to change vserver state",
+                },
+                "add_servers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of new backend IP addresses to add as services and bind",
+                },
+                "remove_services": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of service names to unbind and remove",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "name"],
+        },
+    },
+    {
+        "name": "netscaler_delete_lb",
+        "description": (
+            "Delete an LB vserver (and optionally its backing services and servers) using the "
+            "classic NetScaler CLI. Safe deletion order: disable → unbind services → rm vserver → "
+            "rm services → rm servers. classic CLI; visible via show lb vserver; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "name": {"type": "string", "description": "Name of the LB vserver to delete"},
+                "services": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Service names to unbind and remove",
+                },
+                "servers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Server names to remove",
+                },
+                "remove_backends": {
+                    "type": "boolean",
+                    "description": "If true (default), rm service and rm server after removing vserver",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "name"],
+        },
+    },
+    # ------------------------------------------------------------------
+    # Classic-CLI CS tools
+    # ------------------------------------------------------------------
+    {
+        "name": "netscaler_create_cs",
+        "description": (
+            "Create a Content-Switching vserver with policies using the classic NetScaler CLI. "
+            "classic CLI; visible via show cs vserver; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "name": {"type": "string", "description": "CS vserver name"},
+                "vip": {"type": "string", "description": "Virtual IP address for the CS vserver"},
+                "service_type": {
+                    "type": "string",
+                    "description": "Protocol for the CS vserver, e.g. HTTP, HTTPS, TCP (default HTTP)",
+                },
+                "port": {"type": "integer", "description": "Frontend listener port (default 80)"},
+                "policies": {
+                    "type": "array",
+                    "description": "List of CS policies to create and bind",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "policy_name": {"type": "string"},
+                            "rule": {"type": "string"},
+                            "target_lb_vserver": {"type": "string"},
+                            "priority": {"type": "integer"},
+                        },
+                        "required": ["policy_name", "rule", "target_lb_vserver"],
+                    },
+                },
+                "default_lb_vserver": {
+                    "type": "string",
+                    "description": "Default LB vserver for unmatched traffic",
+                },
+                "ssl_certkey": {
+                    "type": "string",
+                    "description": "SSL certkey name to bind (for HTTPS/SSL CS vservers)",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "name", "vip"],
+        },
+    },
+    {
+        "name": "netscaler_modify_cs",
+        "description": (
+            "Modify an existing Content-Switching vserver using the classic NetScaler CLI: "
+            "update a CS policy rule, rebind a policy, change the default LB vserver, enable/disable, or add a policy. "
+            "classic CLI; visible via show cs vserver; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "name": {"type": "string", "description": "Name of the existing CS vserver"},
+                "set_policy_rule": {
+                    "type": "object",
+                    "description": "Update the expression of an existing CS policy",
+                    "properties": {
+                        "policy_name": {"type": "string"},
+                        "rule": {"type": "string"},
+                    },
+                    "required": ["policy_name", "rule"],
+                },
+                "rebind_policy": {
+                    "type": "object",
+                    "description": "Unbind then re-bind a policy to change its target LB vserver or priority",
+                    "properties": {
+                        "policy_name": {"type": "string"},
+                        "target_lb_vserver": {"type": "string"},
+                        "priority": {"type": "integer"},
+                    },
+                    "required": ["policy_name", "target_lb_vserver"],
+                },
+                "default_lb_vserver": {
+                    "type": "string",
+                    "description": "New default LB vserver for unmatched traffic",
+                },
+                "state": {
+                    "type": "string",
+                    "enum": ["enable", "disable"],
+                    "description": "Set to 'enable' or 'disable' to change CS vserver state",
+                },
+                "add_policy": {
+                    "type": "object",
+                    "description": "Add a brand-new CS policy and bind it to the vserver",
+                    "properties": {
+                        "policy_name": {"type": "string"},
+                        "rule": {"type": "string"},
+                        "target_lb_vserver": {"type": "string"},
+                        "priority": {"type": "integer"},
+                    },
+                    "required": ["policy_name", "rule", "target_lb_vserver"],
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "name"],
+        },
+    },
+    {
+        "name": "netscaler_delete_cs",
+        "description": (
+            "Delete a Content-Switching vserver (and optionally its CS policies) using the classic NetScaler CLI. "
+            "Safe deletion order: disable → unbind policies → rm vserver → rm policies. "
+            "classic CLI; visible via show cs vserver; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "name": {"type": "string", "description": "Name of the CS vserver to delete"},
+                "policies": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "CS policy names to unbind from the vserver before deletion",
+                },
+                "remove_policies": {
+                    "type": "boolean",
+                    "description": "If true (default), rm cs policy for each policy after removing vserver",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "name"],
+        },
+    },
+    # ------------------------------------------------------------------
+    # Classic-CLI Rewrite tools
+    # ------------------------------------------------------------------
+    {
+        "name": "netscaler_create_rewrite",
+        "description": (
+            "Create a NetScaler rewrite action and policy using the classic CLI, then optionally bind "
+            "to an LB or CS vserver. classic CLI; visible via show rewrite policy; "
+            "preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "action_name": {"type": "string", "description": "Name for the rewrite action"},
+                "action_type": {
+                    "type": "string",
+                    "enum": ["insert_http_header", "delete_http_header", "replace"],
+                    "description": "Rewrite action type",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Header name (insert_http_header/delete_http_header) or expression to replace (replace)",
+                },
+                "expression": {
+                    "type": "string",
+                    "description": "Value expression (required for insert_http_header and replace)",
+                },
+                "policy_name": {"type": "string", "description": "Name for the rewrite policy"},
+                "rule": {"type": "string", "description": "Policy match expression, e.g. HTTP.RES.IS_VALID"},
+                "bind_to": {
+                    "type": "object",
+                    "description": "Optional: bind the policy to an LB or CS vserver after creation",
+                    "properties": {
+                        "entity_type": {"type": "string", "enum": ["lb", "cs"]},
+                        "vserver": {"type": "string"},
+                        "bind_point": {"type": "string", "enum": ["REQUEST", "RESPONSE"]},
+                        "priority": {"type": "integer"},
+                    },
+                    "required": ["entity_type", "vserver"],
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "action_name", "action_type", "target", "policy_name", "rule"],
+        },
+    },
+    {
+        "name": "netscaler_modify_rewrite",
+        "description": (
+            "Modify an existing NetScaler rewrite policy using the classic CLI: update the rule, "
+            "unbind from a vserver, or rebind to a new vserver/priority. "
+            "classic CLI; visible via show rewrite policy; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "policy_name": {"type": "string", "description": "Name of the rewrite policy to modify"},
+                "set_rule": {"type": "string", "description": "New policy match expression to set"},
+                "rebind": {
+                    "type": "object",
+                    "description": "Unbind then re-bind the policy to an LB/CS vserver",
+                    "properties": {
+                        "entity_type": {"type": "string", "enum": ["lb", "cs"]},
+                        "vserver": {"type": "string"},
+                        "bind_point": {"type": "string", "enum": ["REQUEST", "RESPONSE"]},
+                        "priority": {"type": "integer"},
+                    },
+                    "required": ["entity_type", "vserver"],
+                },
+                "unbind": {
+                    "type": "object",
+                    "description": "Unbind the policy from an LB/CS vserver",
+                    "properties": {
+                        "entity_type": {"type": "string", "enum": ["lb", "cs"]},
+                        "vserver": {"type": "string"},
+                        "bind_point": {"type": "string", "enum": ["REQUEST", "RESPONSE"]},
+                    },
+                    "required": ["entity_type", "vserver"],
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "policy_name"],
+        },
+    },
+    {
+        "name": "netscaler_delete_rewrite",
+        "description": (
+            "Delete a NetScaler rewrite policy (and optionally its action) using the classic CLI. "
+            "Safe deletion order: unbind from each vserver → rm policy → rm action. "
+            "classic CLI; visible via show rewrite policy; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "policy_name": {"type": "string", "description": "Name of the rewrite policy to delete"},
+                "action_name": {
+                    "type": "string",
+                    "description": "If provided, also remove this rewrite action after removing the policy",
+                },
+                "unbind_from": {
+                    "type": "array",
+                    "description": "Vserver bindings to remove before deleting the policy",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "entity_type": {"type": "string", "enum": ["lb", "cs"]},
+                            "vserver": {"type": "string"},
+                            "bind_point": {"type": "string", "enum": ["REQUEST", "RESPONSE"]},
+                        },
+                        "required": ["entity_type", "vserver"],
+                    },
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "policy_name"],
+        },
+    },
+    # ------------------------------------------------------------------
+    # Classic-CLI Responder tools
+    # ------------------------------------------------------------------
+    {
+        "name": "netscaler_create_responder",
+        "description": (
+            "Create a NetScaler responder action and policy using the classic CLI, then optionally bind "
+            "to an LB or CS vserver. classic CLI; visible via show responder policy; "
+            "preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "action_name": {"type": "string", "description": "Name for the responder action"},
+                "action_type": {
+                    "type": "string",
+                    "enum": ["redirect", "respondwith", "drop", "noop"],
+                    "description": "Responder action type. drop/noop take no expression.",
+                },
+                "expression": {
+                    "type": "string",
+                    "description": "Expression for redirect or respondwith (not used for drop/noop)",
+                },
+                "policy_name": {"type": "string", "description": "Name for the responder policy"},
+                "rule": {"type": "string", "description": "Policy match expression, e.g. HTTP.REQ.IS_VALID"},
+                "bind_to": {
+                    "type": "object",
+                    "description": "Optional: bind the policy to an LB or CS vserver after creation",
+                    "properties": {
+                        "entity_type": {"type": "string", "enum": ["lb", "cs"]},
+                        "vserver": {"type": "string"},
+                        "priority": {"type": "integer"},
+                    },
+                    "required": ["entity_type", "vserver"],
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "action_name", "action_type", "policy_name", "rule"],
+        },
+    },
+    {
+        "name": "netscaler_modify_responder",
+        "description": (
+            "Modify an existing NetScaler responder policy using the classic CLI: update the rule, "
+            "update the action expression, unbind from a vserver, or rebind to a new vserver/priority. "
+            "classic CLI; visible via show responder policy; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "policy_name": {"type": "string", "description": "Name of the responder policy to modify"},
+                "set_rule": {"type": "string", "description": "New policy match expression to set"},
+                "set_action_expression": {
+                    "type": "object",
+                    "description": "Update the target expression on a responder action",
+                    "properties": {
+                        "action_name": {"type": "string"},
+                        "expression": {"type": "string"},
+                    },
+                    "required": ["action_name", "expression"],
+                },
+                "rebind": {
+                    "type": "object",
+                    "description": "Unbind then re-bind the policy to change vserver or priority",
+                    "properties": {
+                        "entity_type": {"type": "string", "enum": ["lb", "cs"]},
+                        "vserver": {"type": "string"},
+                        "priority": {"type": "integer"},
+                    },
+                    "required": ["entity_type", "vserver"],
+                },
+                "unbind": {
+                    "type": "object",
+                    "description": "Unbind the policy from an LB/CS vserver",
+                    "properties": {
+                        "entity_type": {"type": "string", "enum": ["lb", "cs"]},
+                        "vserver": {"type": "string"},
+                    },
+                    "required": ["entity_type", "vserver"],
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "policy_name"],
+        },
+    },
+    {
+        "name": "netscaler_delete_responder",
+        "description": (
+            "Delete a NetScaler responder policy (and optionally its action) using the classic CLI. "
+            "Safe deletion order: unbind from each vserver → rm policy → rm action. "
+            "classic CLI; visible via show responder policy; preview with dry_run, apply with confirm=true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "policy_name": {"type": "string", "description": "Name of the responder policy to delete"},
+                "action_name": {
+                    "type": "string",
+                    "description": "If provided, also remove this responder action after removing the policy",
+                },
+                "unbind_from": {
+                    "type": "array",
+                    "description": "Vserver bindings to remove before deleting the policy",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "entity_type": {"type": "string", "enum": ["lb", "cs"]},
+                            "vserver": {"type": "string"},
+                        },
+                        "required": ["entity_type", "vserver"],
+                    },
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, return command list without executing (default false)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply changes (default false)",
+                },
+            },
+            "required": ["appliance_name", "policy_name"],
+        },
+    },
+    # ------------------------------------------------------------------
+    # Log and config inspection tools
+    # ------------------------------------------------------------------
+    {
+        "name": "netscaler_get_logs",
+        "description": (
+            "Return the last N lines of a NetScaler syslog file via SSH (read-only). "
+            "Allowed logfiles: ns.log (syslog), messages (BSD messages), nsvpn.log (VPN), "
+            "newnslog (binary perf log). Useful for recent errors, auth events, and health-check noise."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "logfile": {
+                    "type": "string",
+                    "enum": ["ns.log", "messages", "nsvpn.log", "newnslog"],
+                    "description": "Log file name under /var/log (default ns.log)",
+                },
+                "lines": {
+                    "type": "integer",
+                    "description": "Number of lines to tail (default 100, max 2000)",
+                },
+            },
+            "required": ["appliance_name"],
+        },
+    },
+    {
+        "name": "netscaler_search_config",
+        "description": (
+            "Search the NetScaler running configuration for a keyword using grep (read-only). "
+            "Runs 'show ns runningConfig | grep -i <keyword>' over SSH. "
+            "Useful for finding all objects related to a VIP, hostname, certificate, or policy name."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "keyword": {
+                    "type": "string",
+                    "description": "Search term. Only letters, digits, and _ . : - / are allowed.",
+                },
+            },
+            "required": ["appliance_name", "keyword"],
+        },
+    },
+    # ------------------------------------------------------------------
+    # HA failover tool
+    # ------------------------------------------------------------------
+    {
+        "name": "netscaler_force_failover",
+        "description": (
+            "Trigger a force HA failover on a NetScaler HA pair. "
+            "Always checks 'show ha node' first — if the appliance is standalone, returns haConfigured=false. "
+            "classic CLI; preview with dry_run, apply with confirm=true. Safe to call on standalone boxes."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appliance_name": {
+                    "type": "string",
+                    "description": "Inventory name of the NetScaler appliance",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to actually trigger failover on an HA pair (default false)",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, preview mode only — do not trigger failover (default false)",
+                },
+            },
+            "required": ["appliance_name"],
+        },
+    },
 ]
 
 SELF_CONNECTIVITY_TOOL = {
@@ -547,9 +1240,14 @@ STACK_CALIBRATION_MEMORY_TOOL = {
 SEARCH_TOOL = {
     "name": "search_netscaler_nextgen_api",
     "description": (
-        "REQUIRED before any Next-Gen API tool call. Searches the authoritative "
-        "netscaler_nextgen_api_memory.md file plus official API reference. "
-        "Read memoryExcerpts and suggestedGetPaths and follow them exactly."
+        "LAST RESORT for Next-Gen API calls. For configuring NetScaler, PREFER the dedicated tools: "
+        "netscaler_create_lb/modify_lb/delete_lb, netscaler_create_cs/modify_cs/delete_cs, "
+        "netscaler_create_rewrite/modify_rewrite/delete_rewrite, "
+        "netscaler_create_responder/modify_responder/delete_responder, "
+        "netscaler_get_logs, netscaler_search_config, netscaler_force_failover. "
+        "Only use this search when no dedicated tool covers the request. "
+        "When used: searches netscaler_nextgen_api_memory.md plus official API reference; "
+        "read memoryExcerpts and suggestedGetPaths and follow them exactly."
     ),
     "parameters": {
         "type": "object",
@@ -566,9 +1264,14 @@ SEARCH_TOOL = {
 CLI_SEARCH_TOOL = {
     "name": "search_netscaler_cli_reference",
     "description": (
-        "REQUIRED before netscaler_run_cli_command or netscaler_run_cli_commands. "
-        "Searches netscaler_adc_cli_memory.md plus the official ADC CLI reference. "
-        "Read recommendedCommands for exact syntax; read memoryExcerpts only when retrievalMode is section. Never invent CLI syntax."
+        "LAST RESORT for raw CLI commands. For configuring NetScaler, PREFER the dedicated tools: "
+        "netscaler_create_lb/modify_lb/delete_lb, netscaler_create_cs/modify_cs/delete_cs, "
+        "netscaler_create_rewrite/modify_rewrite/delete_rewrite, "
+        "netscaler_create_responder/modify_responder/delete_responder, "
+        "netscaler_get_logs, netscaler_search_config, netscaler_force_failover. "
+        "Only use this search when no dedicated tool covers the request. "
+        "When used: searches netscaler_adc_cli_memory.md plus the official ADC CLI reference; "
+        "read recommendedCommands for exact syntax; never invent CLI syntax."
     ),
     "parameters": {
         "type": "object",
@@ -892,6 +1595,21 @@ MCP_TOOL_MAP = {
     "netscaler_collect_nsconmsg": "netscaler_collect_nsconmsg",
     "netscaler_nextgen_request": "netscaler_nextgen_request",
     "netscaler_list_lb_vservers": "netscaler_list_virtual_servers",
+    "netscaler_create_lb": "netscaler_create_lb",
+    "netscaler_modify_lb": "netscaler_modify_lb",
+    "netscaler_delete_lb": "netscaler_delete_lb",
+    "netscaler_create_cs": "netscaler_create_cs",
+    "netscaler_modify_cs": "netscaler_modify_cs",
+    "netscaler_delete_cs": "netscaler_delete_cs",
+    "netscaler_create_rewrite": "netscaler_create_rewrite",
+    "netscaler_modify_rewrite": "netscaler_modify_rewrite",
+    "netscaler_delete_rewrite": "netscaler_delete_rewrite",
+    "netscaler_create_responder": "netscaler_create_responder",
+    "netscaler_modify_responder": "netscaler_modify_responder",
+    "netscaler_delete_responder": "netscaler_delete_responder",
+    "netscaler_force_failover": "netscaler_force_failover",
+    "netscaler_get_logs": "netscaler_get_logs",
+    "netscaler_search_config": "netscaler_search_config",
     "cisco_test_connection": "cisco_test_connection",
     "cisco_ssh_run_command": "cisco_ssh_run_command",
     "cisco_run_cli_command": "cisco_run_cli_command",
@@ -1365,6 +2083,274 @@ async def execute_copilot_tool(
             raise ValueError("purpose is required")
         mcp_args["commands"] = commands
         mcp_args["purpose"] = purpose
+
+    if name == "netscaler_create_lb":
+        lb_name = arguments.get("name", "").strip()
+        vip = arguments.get("vip", "").strip()
+        servers = arguments.get("servers") or []
+        if not lb_name:
+            raise ValueError("name is required")
+        if not vip:
+            raise ValueError("vip is required")
+        if not servers:
+            raise ValueError("servers is required")
+        mcp_args["name"] = lb_name
+        mcp_args["vip"] = vip
+        mcp_args["servers"] = servers
+        if arguments.get("port") is not None:
+            mcp_args["port"] = int(arguments["port"])
+        if arguments.get("service_type"):
+            mcp_args["service_type"] = arguments["service_type"].strip()
+        if arguments.get("server_port") is not None:
+            mcp_args["server_port"] = int(arguments["server_port"])
+        if arguments.get("server_protocol"):
+            mcp_args["server_protocol"] = arguments["server_protocol"].strip()
+        if arguments.get("lb_method"):
+            mcp_args["lb_method"] = arguments["lb_method"].strip()
+        if arguments.get("persistence"):
+            mcp_args["persistence"] = arguments["persistence"].strip()
+        if arguments.get("persistence_timeout") is not None:
+            mcp_args["persistence_timeout"] = int(arguments["persistence_timeout"])
+        if arguments.get("ssl_certkey"):
+            mcp_args["ssl_certkey"] = arguments["ssl_certkey"].strip()
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_modify_lb":
+        lb_name = arguments.get("name", "").strip()
+        if not lb_name:
+            raise ValueError("name is required")
+        mcp_args["name"] = lb_name
+        if arguments.get("lb_method"):
+            mcp_args["lb_method"] = arguments["lb_method"].strip()
+        if arguments.get("persistence"):
+            mcp_args["persistence"] = arguments["persistence"].strip()
+        if arguments.get("persistence_timeout") is not None:
+            mcp_args["persistence_timeout"] = int(arguments["persistence_timeout"])
+        if arguments.get("comment"):
+            mcp_args["comment"] = arguments["comment"].strip()
+        if arguments.get("state"):
+            mcp_args["state"] = arguments["state"].strip()
+        if arguments.get("add_servers"):
+            mcp_args["add_servers"] = arguments["add_servers"]
+        if arguments.get("remove_services"):
+            mcp_args["remove_services"] = arguments["remove_services"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_delete_lb":
+        lb_name = arguments.get("name", "").strip()
+        if not lb_name:
+            raise ValueError("name is required")
+        mcp_args["name"] = lb_name
+        if arguments.get("services"):
+            mcp_args["services"] = arguments["services"]
+        if arguments.get("servers"):
+            mcp_args["servers"] = arguments["servers"]
+        if "remove_backends" in arguments:
+            mcp_args["remove_backends"] = arguments["remove_backends"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_create_cs":
+        cs_name = arguments.get("name", "").strip()
+        vip = arguments.get("vip", "").strip()
+        if not cs_name:
+            raise ValueError("name is required")
+        if not vip:
+            raise ValueError("vip is required")
+        mcp_args["name"] = cs_name
+        mcp_args["vip"] = vip
+        if arguments.get("service_type"):
+            mcp_args["service_type"] = arguments["service_type"].strip()
+        if arguments.get("port") is not None:
+            mcp_args["port"] = int(arguments["port"])
+        if arguments.get("policies"):
+            mcp_args["policies"] = arguments["policies"]
+        if arguments.get("default_lb_vserver"):
+            mcp_args["default_lb_vserver"] = arguments["default_lb_vserver"].strip()
+        if arguments.get("ssl_certkey"):
+            mcp_args["ssl_certkey"] = arguments["ssl_certkey"].strip()
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_modify_cs":
+        cs_name = arguments.get("name", "").strip()
+        if not cs_name:
+            raise ValueError("name is required")
+        mcp_args["name"] = cs_name
+        if arguments.get("set_policy_rule"):
+            mcp_args["set_policy_rule"] = arguments["set_policy_rule"]
+        if arguments.get("rebind_policy"):
+            mcp_args["rebind_policy"] = arguments["rebind_policy"]
+        if arguments.get("default_lb_vserver"):
+            mcp_args["default_lb_vserver"] = arguments["default_lb_vserver"].strip()
+        if arguments.get("state"):
+            mcp_args["state"] = arguments["state"].strip()
+        if arguments.get("add_policy"):
+            mcp_args["add_policy"] = arguments["add_policy"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_delete_cs":
+        cs_name = arguments.get("name", "").strip()
+        if not cs_name:
+            raise ValueError("name is required")
+        mcp_args["name"] = cs_name
+        if arguments.get("policies"):
+            mcp_args["policies"] = arguments["policies"]
+        if "remove_policies" in arguments:
+            mcp_args["remove_policies"] = arguments["remove_policies"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_create_rewrite":
+        action_name = arguments.get("action_name", "").strip()
+        action_type = arguments.get("action_type", "").strip()
+        target = arguments.get("target", "").strip()
+        policy_name = arguments.get("policy_name", "").strip()
+        rule = arguments.get("rule", "").strip()
+        if not action_name:
+            raise ValueError("action_name is required")
+        if not action_type:
+            raise ValueError("action_type is required")
+        if not target:
+            raise ValueError("target is required")
+        if not policy_name:
+            raise ValueError("policy_name is required")
+        if not rule:
+            raise ValueError("rule is required")
+        mcp_args["action_name"] = action_name
+        mcp_args["action_type"] = action_type
+        mcp_args["target"] = target
+        mcp_args["policy_name"] = policy_name
+        mcp_args["rule"] = rule
+        if arguments.get("expression"):
+            mcp_args["expression"] = arguments["expression"]
+        if arguments.get("bind_to"):
+            mcp_args["bind_to"] = arguments["bind_to"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_modify_rewrite":
+        policy_name = arguments.get("policy_name", "").strip()
+        if not policy_name:
+            raise ValueError("policy_name is required")
+        mcp_args["policy_name"] = policy_name
+        if arguments.get("set_rule"):
+            mcp_args["set_rule"] = arguments["set_rule"]
+        if arguments.get("rebind"):
+            mcp_args["rebind"] = arguments["rebind"]
+        if arguments.get("unbind"):
+            mcp_args["unbind"] = arguments["unbind"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_delete_rewrite":
+        policy_name = arguments.get("policy_name", "").strip()
+        if not policy_name:
+            raise ValueError("policy_name is required")
+        mcp_args["policy_name"] = policy_name
+        if arguments.get("action_name"):
+            mcp_args["action_name"] = arguments["action_name"].strip()
+        if arguments.get("unbind_from"):
+            mcp_args["unbind_from"] = arguments["unbind_from"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_create_responder":
+        action_name = arguments.get("action_name", "").strip()
+        action_type = arguments.get("action_type", "").strip()
+        policy_name = arguments.get("policy_name", "").strip()
+        rule = arguments.get("rule", "").strip()
+        if not action_name:
+            raise ValueError("action_name is required")
+        if not action_type:
+            raise ValueError("action_type is required")
+        if not policy_name:
+            raise ValueError("policy_name is required")
+        if not rule:
+            raise ValueError("rule is required")
+        mcp_args["action_name"] = action_name
+        mcp_args["action_type"] = action_type
+        mcp_args["policy_name"] = policy_name
+        mcp_args["rule"] = rule
+        if arguments.get("expression"):
+            mcp_args["expression"] = arguments["expression"]
+        if arguments.get("bind_to"):
+            mcp_args["bind_to"] = arguments["bind_to"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_modify_responder":
+        policy_name = arguments.get("policy_name", "").strip()
+        if not policy_name:
+            raise ValueError("policy_name is required")
+        mcp_args["policy_name"] = policy_name
+        if arguments.get("set_rule"):
+            mcp_args["set_rule"] = arguments["set_rule"]
+        if arguments.get("set_action_expression"):
+            mcp_args["set_action_expression"] = arguments["set_action_expression"]
+        if arguments.get("rebind"):
+            mcp_args["rebind"] = arguments["rebind"]
+        if arguments.get("unbind"):
+            mcp_args["unbind"] = arguments["unbind"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_delete_responder":
+        policy_name = arguments.get("policy_name", "").strip()
+        if not policy_name:
+            raise ValueError("policy_name is required")
+        mcp_args["policy_name"] = policy_name
+        if arguments.get("action_name"):
+            mcp_args["action_name"] = arguments["action_name"].strip()
+        if arguments.get("unbind_from"):
+            mcp_args["unbind_from"] = arguments["unbind_from"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+
+    if name == "netscaler_get_logs":
+        if arguments.get("logfile"):
+            mcp_args["logfile"] = arguments["logfile"]
+        if arguments.get("lines") is not None:
+            mcp_args["lines"] = int(arguments["lines"])
+
+    if name == "netscaler_search_config":
+        keyword = arguments.get("keyword", "").strip()
+        if not keyword:
+            raise ValueError("keyword is required")
+        mcp_args["keyword"] = keyword
+
+    if name == "netscaler_force_failover":
+        if "confirm" in arguments:
+            mcp_args["confirm"] = arguments["confirm"]
+        if "dry_run" in arguments:
+            mcp_args["dry_run"] = arguments["dry_run"]
 
     return await invoke_mcp_tool(mcp_tool, mcp_args, db=db)
 

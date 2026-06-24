@@ -189,13 +189,25 @@ def build_system_prompt(
             f"{base}\n"
             f"Active appliance: {appliance_name}\n"
             f"SSH connectivity is confirmed. Always pass appliance_name \"{appliance_name}\" to tool calls.\n"
-            "Official CLI behavioral rules are loaded on demand — do not assume syntax without searching first."
+            "Official CLI behavioral rules are loaded on demand — do not assume syntax without searching first.\n"
+            "When a dedicated tool exists (netscaler_create_lb, netscaler_modify_lb, netscaler_delete_lb, "
+            "netscaler_create_cs, netscaler_modify_cs, netscaler_delete_cs, netscaler_create_rewrite, "
+            "netscaler_modify_rewrite, netscaler_delete_rewrite, netscaler_create_responder, "
+            "netscaler_modify_responder, netscaler_delete_responder, netscaler_get_logs, "
+            "netscaler_search_config, netscaler_force_failover), use it instead of raw "
+            "netscaler_run_cli_command(s) or the search tools."
         )
     return (
         f"{base}\n"
         f"Active appliance: {appliance_name}\n"
         f"Next-Gen API login is confirmed. Always pass appliance_name \"{appliance_name}\" to NetScaler tools.\n"
-        "Official CLI/API behavioral rules are loaded on demand — do not assume syntax without searching first."
+        "Official CLI/API behavioral rules are loaded on demand — do not assume syntax without searching first.\n"
+        "When a dedicated tool exists (netscaler_create_lb, netscaler_modify_lb, netscaler_delete_lb, "
+        "netscaler_create_cs, netscaler_modify_cs, netscaler_delete_cs, netscaler_create_rewrite, "
+        "netscaler_modify_rewrite, netscaler_delete_rewrite, netscaler_create_responder, "
+        "netscaler_modify_responder, netscaler_delete_responder, netscaler_get_logs, "
+        "netscaler_search_config, netscaler_force_failover), use it instead of raw "
+        "netscaler_run_cli_command(s) or the search tools."
     )
 
 
