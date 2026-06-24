@@ -572,7 +572,23 @@ def route_copilot_tools(
     )
     # Precise single-intent reads route tightly even for comma-heavy phrasing; only fall
     # back to the full tool set for genuinely ambiguous/multi-step requests.
-    precise_intent = bool(packs & {"ip_inventory", "service_status"})
+    precise_intent = bool(
+        packs
+        & {
+            "ip_inventory",
+            "service_status",
+            # Dedicated config/goal intents route tightly to their own tools instead of
+            # falling through to the full 45-tool set (which dilutes selection — e.g. the
+            # model picking netscaler_telnet for "create a load balancer").
+            "lb_config",
+            "cs_config",
+            "rewrite_config",
+            "responder_config",
+            "logs",
+            "config_search",
+            "ha_failover",
+        }
+    )
     if not precise_intent and should_use_full_tool_set(user_message, role):
         return enabled_tools
     allowed_names = pack_tool_names(packs, vendor=vendor)
