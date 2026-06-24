@@ -201,6 +201,7 @@ class OrchestrationSettings:
     max_continuation_phases: int = DEFAULT_MAX_TOOL_CONTINUATION_PHASES
     long_task_threshold: int = DEFAULT_LONG_TASK_TOOL_THRESHOLD
     prompt_before_long_tasks: bool = True
+    loop_breakers_enabled: bool = True
     repeated_failed_call_limit: int = DEFAULT_REPEATED_FAILED_CALL_LIMIT
     per_tool_failure_limit: int = DEFAULT_PER_TOOL_FAILURE_LIMIT
     no_progress_window: int = DEFAULT_NO_PROGRESS_WINDOW
@@ -250,6 +251,7 @@ def orchestration_settings_from_document(document: dict | None) -> Orchestration
         ),
         long_task_threshold=int(document.get("longTaskToolThreshold", DEFAULT_LONG_TASK_TOOL_THRESHOLD)),
         prompt_before_long_tasks=bool(document.get("promptBeforeLongTasks", True)),
+        loop_breakers_enabled=bool(document.get("loopBreakersEnabled", True)),
         repeated_failed_call_limit=int(
             document.get("repeatedFailedCallLimit", DEFAULT_REPEATED_FAILED_CALL_LIMIT)
         ),
@@ -351,6 +353,8 @@ def check_loop_breakers(
     new result across a window of steps, and only well past a floor of tool rounds.
     """
     settings = runtime.settings
+    if not settings.loop_breakers_enabled:
+        return None
     args_hash = _args_hash(arguments)
     failed = tool_result_is_failure(result)
 

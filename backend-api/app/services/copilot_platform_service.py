@@ -5,6 +5,12 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
 from app.services.encryption_service import decrypt_value, encrypt_value
+from app.services.copilot_orchestration import (
+    DEFAULT_NO_PROGRESS_FLOOR,
+    DEFAULT_NO_PROGRESS_WINDOW,
+    DEFAULT_PER_TOOL_FAILURE_LIMIT,
+    DEFAULT_REPEATED_FAILED_CALL_LIMIT,
+)
 from app.services.orchestration_presets import (
     DEFAULT_ORCHESTRATION_MODE,
     ORCHESTRATION_PRESETS,
@@ -31,6 +37,12 @@ class CopilotPlatformSettingsUpdate(BaseModel):
     longTaskToolThreshold: int | None = None
     promptBeforeLongTasks: bool | None = None
     orchestrationMode: str | None = None
+    # Loop-breakers (stuck detection) — orthogonal to the orchestration preset.
+    loopBreakersEnabled: bool | None = None
+    repeatedFailedCallLimit: int | None = None
+    perToolFailureLimit: int | None = None
+    noProgressWindow: int | None = None
+    noProgressFloor: int | None = None
 
 
 class CopilotPlatformSettingsResponse(BaseModel):
@@ -44,6 +56,11 @@ class CopilotPlatformSettingsResponse(BaseModel):
     longTaskToolThreshold: int = 8
     promptBeforeLongTasks: bool = True
     orchestrationMode: str = DEFAULT_ORCHESTRATION_MODE
+    loopBreakersEnabled: bool = True
+    repeatedFailedCallLimit: int = DEFAULT_REPEATED_FAILED_CALL_LIMIT
+    perToolFailureLimit: int = DEFAULT_PER_TOOL_FAILURE_LIMIT
+    noProgressWindow: int = DEFAULT_NO_PROGRESS_WINDOW
+    noProgressFloor: int = DEFAULT_NO_PROGRESS_FLOOR
 
 
 def utc_now() -> datetime:
@@ -98,6 +115,13 @@ async def get_platform_settings(db: AsyncIOMotorDatabase) -> CopilotPlatformSett
         longTaskToolThreshold=int(document.get("longTaskToolThreshold", 8)),
         promptBeforeLongTasks=bool(document.get("promptBeforeLongTasks", True)),
         orchestrationMode=infer_orchestration_mode(document),
+        loopBreakersEnabled=bool(document.get("loopBreakersEnabled", True)),
+        repeatedFailedCallLimit=int(
+            document.get("repeatedFailedCallLimit", DEFAULT_REPEATED_FAILED_CALL_LIMIT)
+        ),
+        perToolFailureLimit=int(document.get("perToolFailureLimit", DEFAULT_PER_TOOL_FAILURE_LIMIT)),
+        noProgressWindow=int(document.get("noProgressWindow", DEFAULT_NO_PROGRESS_WINDOW)),
+        noProgressFloor=int(document.get("noProgressFloor", DEFAULT_NO_PROGRESS_FLOOR)),
     )
 
 
@@ -166,6 +190,18 @@ async def update_platform_settings(
         update_data["longTaskToolThreshold"] = max(3, min(int(payload.longTaskToolThreshold), 40))
     if apply_custom_orchestration and payload.promptBeforeLongTasks is not None:
         update_data["promptBeforeLongTasks"] = bool(payload.promptBeforeLongTasks)
+
+    # Loop-breakers (stuck detection) — independent of the orchestration preset.
+    if payload.loopBreakersEnabled is not None:
+        update_data["loopBreakersEnabled"] = bool(payload.loopBreakersEnabled)
+    if payload.repeatedFailedCallLimit is not None:
+        update_data["repeatedFailedCallLimit"] = max(1, min(int(payload.repeatedFailedCallLimit), 10))
+    if payload.perToolFailureLimit is not None:
+        update_data["perToolFailureLimit"] = max(1, min(int(payload.perToolFailureLimit), 15))
+    if payload.noProgressWindow is not None:
+        update_data["noProgressWindow"] = max(2, min(int(payload.noProgressWindow), 30))
+    if payload.noProgressFloor is not None:
+        update_data["noProgressFloor"] = max(2, min(int(payload.noProgressFloor), 60))
 
     await db.copilotPlatformSettings.update_one({"_id": SETTINGS_ID}, {"$set": update_data}, upsert=True)
     return await get_platform_settings(db)

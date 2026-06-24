@@ -104,6 +104,78 @@
           />
         </div>
       </div>
+
+      <div class="flex flex-column gap-4 stuck-detection">
+        <div class="flex align-items-center justify-content-between gap-3 setting-row">
+          <div>
+            <div class="setting-label">Stuck detection (loop-breakers)</div>
+            <div class="setting-hint">
+              When a chat turn keeps failing the same call, fails one tool repeatedly, or makes
+              no new progress, JPilot pauses and asks you how to proceed instead of grinding to
+              the tool-call limit. Applies to every orchestration mode.
+            </div>
+          </div>
+          <ToggleSwitch
+            v-model="settings.loopBreakersEnabled"
+            :disabled="saving"
+            @update:model-value="saveSettings"
+          />
+        </div>
+
+        <div v-if="settings.loopBreakersEnabled" class="flex flex-column gap-4">
+          <div class="flex flex-column gap-2 setting-row">
+            <label for="repeatedFailedCallLimit" class="setting-label">Identical failed calls before pausing</label>
+            <InputNumber
+              id="repeatedFailedCallLimit"
+              v-model="settings.repeatedFailedCallLimit"
+              :min="1"
+              :max="10"
+              :disabled="saving"
+              class="max-select"
+              @blur="saveSettings"
+            />
+          </div>
+
+          <div class="flex flex-column gap-2 setting-row">
+            <label for="perToolFailureLimit" class="setting-label">Failures of one tool before pausing</label>
+            <InputNumber
+              id="perToolFailureLimit"
+              v-model="settings.perToolFailureLimit"
+              :min="1"
+              :max="15"
+              :disabled="saving"
+              class="max-select"
+              @blur="saveSettings"
+            />
+          </div>
+
+          <div class="flex flex-column gap-2 setting-row">
+            <label for="noProgressWindow" class="setting-label">No-progress steps before pausing</label>
+            <InputNumber
+              id="noProgressWindow"
+              v-model="settings.noProgressWindow"
+              :min="2"
+              :max="30"
+              :disabled="saving"
+              class="max-select"
+              @blur="saveSettings"
+            />
+          </div>
+
+          <div class="flex flex-column gap-2 setting-row">
+            <label for="noProgressFloor" class="setting-label">Minimum tool rounds before the no-progress check</label>
+            <InputNumber
+              id="noProgressFloor"
+              v-model="settings.noProgressFloor"
+              :min="2"
+              :max="60"
+              :disabled="saving"
+              class="max-select"
+              @blur="saveSettings"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <Message v-if="message" class="mt-3" :severity="messageSeverity" :closable="false">
@@ -137,7 +209,12 @@ const settings = reactive({
   maxToolIterations: 20,
   maxToolContinuationPhases: 3,
   longTaskToolThreshold: 8,
-  promptBeforeLongTasks: true
+  promptBeforeLongTasks: true,
+  loopBreakersEnabled: true,
+  repeatedFailedCallLimit: 2,
+  perToolFailureLimit: 3,
+  noProgressWindow: 5,
+  noProgressFloor: 8
 })
 
 const modeDescription = computed(() => orchestrationModeDescription(orchestrationMode.value))
@@ -149,6 +226,11 @@ function applySettings(data) {
   settings.maxToolContinuationPhases = Number(data.maxToolContinuationPhases ?? 3)
   settings.longTaskToolThreshold = Number(data.longTaskToolThreshold ?? 8)
   settings.promptBeforeLongTasks = Boolean(data.promptBeforeLongTasks ?? true)
+  settings.loopBreakersEnabled = Boolean(data.loopBreakersEnabled ?? true)
+  settings.repeatedFailedCallLimit = Number(data.repeatedFailedCallLimit ?? 2)
+  settings.perToolFailureLimit = Number(data.perToolFailureLimit ?? 3)
+  settings.noProgressWindow = Number(data.noProgressWindow ?? 5)
+  settings.noProgressFloor = Number(data.noProgressFloor ?? 8)
   orchestrationMode.value = inferOrchestrationMode(data)
 }
 
@@ -172,6 +254,12 @@ function buildPayload() {
     payload.longTaskToolThreshold = settings.longTaskToolThreshold
     payload.promptBeforeLongTasks = settings.promptBeforeLongTasks
   }
+  // Loop-breakers apply to every mode, so always include them.
+  payload.loopBreakersEnabled = settings.loopBreakersEnabled
+  payload.repeatedFailedCallLimit = settings.repeatedFailedCallLimit
+  payload.perToolFailureLimit = settings.perToolFailureLimit
+  payload.noProgressWindow = settings.noProgressWindow
+  payload.noProgressFloor = settings.noProgressFloor
   return payload
 }
 
@@ -306,6 +394,11 @@ onMounted(loadSettings)
 
 .custom-orchestration {
   padding-top: 0.25rem;
+}
+
+.stuck-detection {
+  padding-top: 1rem;
+  border-top: 1px solid var(--p-content-border-color);
 }
 
 .max-select {

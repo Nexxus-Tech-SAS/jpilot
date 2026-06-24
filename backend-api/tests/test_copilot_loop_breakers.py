@@ -2,6 +2,9 @@
 
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -103,3 +106,77 @@ def test_thresholds_are_admin_configurable():
     brk = check_loop_breakers(rt, name="t", arguments=args, result=_FAIL)  # fifth
     assert brk is not None
     assert brk.reason == "repeated_failed_call"
+
+
+def test_settings_from_document_reads_loop_breaker_keys():
+    s = orchestration_settings_from_document(
+        {
+            "loopBreakersEnabled": False,
+            "repeatedFailedCallLimit": 4,
+            "perToolFailureLimit": 6,
+            "noProgressWindow": 9,
+            "noProgressFloor": 15,
+        }
+    )
+    assert s.loop_breakers_enabled is False
+    assert s.repeated_failed_call_limit == 4
+    assert s.per_tool_failure_limit == 6
+    assert s.no_progress_window == 9
+    assert s.no_progress_floor == 15
+    # Defaults when the keys are absent.
+    assert orchestration_settings_from_document({}).loop_breakers_enabled is True
+
+
+def test_disabled_toggle_skips_all_breakers():
+    rt = _runtime(OrchestrationSettings(loop_breakers_enabled=False))
+    # A flood of identical failures never breaks when the feature is off.
+    for _ in range(10):
+        assert check_loop_breakers(rt, name="netscaler_run_cli_commands", arguments={"c": 1}, result=_FAIL) is None
+
+
+def test_platform_settings_schema_exposes_loop_breakers():
+    from app.services.copilot_platform_service import (
+        CopilotPlatformSettingsResponse,
+        CopilotPlatformSettingsUpdate,
+    )
+
+    resp = CopilotPlatformSettingsResponse()
+    assert resp.loopBreakersEnabled is True
+    assert (resp.repeatedFailedCallLimit, resp.perToolFailureLimit) == (2, 3)
+    assert (resp.noProgressWindow, resp.noProgressFloor) == (5, 8)
+
+    upd = CopilotPlatformSettingsUpdate(loopBreakersEnabled=False, noProgressFloor=20)
+    assert upd.loopBreakersEnabled is False
+    assert upd.noProgressFloor == 20
+
+
+@pytest.mark.asyncio
+async def test_update_platform_settings_clamps_and_persists_loop_breakers():
+    from app.services.copilot_platform_service import (
+        CopilotPlatformSettingsUpdate,
+        default_document,
+        update_platform_settings,
+    )
+
+    doc = default_document()
+    coll = MagicMock()
+    coll.find_one = AsyncMock(return_value=doc)
+    coll.insert_one = AsyncMock()
+
+    async def _fake_update(_filter, update, upsert=False):
+        doc.update(update["$set"])
+        return MagicMock()
+
+    coll.update_one = AsyncMock(side_effect=_fake_update)
+    db = MagicMock()
+    db.copilotPlatformSettings = coll
+
+    payload = CopilotPlatformSettingsUpdate(
+        loopBreakersEnabled=False,
+        repeatedFailedCallLimit=999,  # clamps to 10
+        noProgressFloor=1,            # clamps to 2
+    )
+    resp = await update_platform_settings(db, payload)
+    assert resp.loopBreakersEnabled is False
+    assert resp.repeatedFailedCallLimit == 10
+    assert resp.noProgressFloor == 2
