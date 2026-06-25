@@ -536,8 +536,24 @@ def user_configures_existing_lb(user_message: str) -> bool:
     return False
 
 
+_LB_READ_MARKERS = (
+    "show ", "show me", "list ", "display ", "view ", "what ", "which ",
+    "how many", "do i have", "are configured", "are there", "get me the",
+)
+_LB_STRONG_CREATE_VERBS = (
+    "create", "provision", "add ", "set up", "setup", "build ", "new lb", "new vserver",
+)
+
+
 def user_requests_lb_vserver_create(user_message: str) -> bool:
     lowered = user_message.lower()
+    # A read/listing request ("show me all virtual servers configured", "list the vservers")
+    # is never an LB-create — even if it mentions "configured" (substring of "configure")
+    # or "backend". Only short-circuit when there's no explicit create imperative.
+    if any(m in lowered for m in _LB_READ_MARKERS) and not any(
+        v in lowered for v in _LB_STRONG_CREATE_VERBS
+    ):
+        return False
     if not any(verb in lowered for verb in _LB_CREATE_VERBS):
         return False
     if message_targets_policy_or_feature_config(user_message):

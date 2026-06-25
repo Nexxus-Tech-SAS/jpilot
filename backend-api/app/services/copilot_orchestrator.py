@@ -656,6 +656,10 @@ def guard_incomplete_lb_success(
         return content
     if not content or not _LB_SUCCESS_CLAIM_RE.search(content):
         return content
+    # Only warn after an actual LB write this turn. A pure read/listing of existing
+    # (possibly DOWN) vservers is not an incomplete deployment — don't nag on `show`.
+    if not any(trace_is_state_changing(trace) for trace in tool_traces):
+        return content
 
     inventory: dict[str, Any] | None = None
     for trace in reversed(tool_traces):
