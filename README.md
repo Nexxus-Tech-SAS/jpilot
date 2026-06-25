@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.113` (beta) — **iPad chat navigation fix.** Portrait iPad keeps the desktop chat header (role toggle, no hamburger app menu). Sidebar navigation to Chat replaces browser history so Safari’s back/close control does not return to Settings after Settings → Chat. PWA meta tags improve the Home Screen experience with less Safari chrome.
+**Current release:** `v0.114` (beta) — **Legal page branding + favicon refresh.** `/legal/*` uses the animated TriArc logo and blinking `ld-cursor` “JPilot” title (matching login and chat). Favicon and iPad Home Screen icons regenerated from `JPilot-logo.svg` at proper sizes.
+
+**Previous release:** `v0.113` (beta) — **iPad chat navigation fix.** Portrait iPad keeps the desktop chat header (role toggle, no hamburger app menu). Sidebar navigation to Chat replaces browser history so Safari’s back/close control does not return to Settings after Settings → Chat. PWA meta tags improve the Home Screen experience with less Safari chrome.
 
 **Previous release:** `v0.112` (beta) — **Plans page responsive polish.** iPad and tablet get a dedicated layout: compact plan headers with full feature lists underneath each tier, a bottom row with **What's included** (opens a comparison drawer) and **Need Enterprise** (gradient Contact us CTA). iPhone fixes natural vertical scrolling (no overlapping footer), tier separators, and a mobile-optimized comparison drawer (sticky feature column, compact plan headers, safe-area insets). Early Access card copy cleaned up; Enterprise / Enterprise Pro use blue and violet tier accents throughout cards and the compare table.
 
