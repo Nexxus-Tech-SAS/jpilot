@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.116` (beta) — **Chat polish and Nexxus blog fix.** Role picker `SelectButton` warnings resolved; chat form fields get proper `id`/`name` attributes for autofill and accessibility. Dashboard blog articles load via a same-origin backend proxy (`/api/system/nexxus-blog`) instead of a cross-origin nginx redirect that triggered CORS errors.
+**Current release:** `v0.117` (beta) — **Chat backgrounds, glass controls, and collapsible nav.** JPilot Chat adds ten animated WebGL/canvas backgrounds (Aurora, Line waves, Galaxy, Dot field, Threads, Orb, Shape grid, Floating lines, plus existing Constellation/Waves/Drift/Orbit). Chat options include transparency sliders for the conversation window and chat list. Desktop navigation can collapse to reclaim space, with hover-to-peek and slide/fade animations. Login uses a Soft Aurora backdrop; `ogl` and `three` power the new effects.
+
+**Previous release:** `v0.116` (beta) — **Chat polish and Nexxus blog fix.** Role picker `SelectButton` warnings resolved; chat form fields get proper `id`/`name` attributes for autofill and accessibility. Dashboard blog articles load via a same-origin backend proxy (`/api/system/nexxus-blog`) instead of a cross-origin nginx redirect that triggered CORS errors.
 
 **Previous release:** `v0.115` (beta) — **Router redirect loop fix.** Navigating from the dashboard (or any in-app route) to **JPilot Chat** no longer triggers an infinite `beforeEach` redirect (`/` → `/jpilot` stack overflow). The replace-history optimization runs once per navigation instead of re-firing on every guard pass.
 
@@ -165,6 +167,16 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.117
+
+| Area | Highlights |
+|------|------------|
+| **JPilot Chat backgrounds** | New animated options from React Bits ports: Aurora, Line waves, Galaxy, Dot field, Threads, Orb, Shape grid, and Floating lines (`three`), with theme-aware tuning and picker previews. |
+| **Chat appearance** | Transparency sliders in chat options for the conversation window and conversations list; settings persist per device. |
+| **Navigation** | Desktop sidebar collapses to free horizontal space; hover the left edge or ☰ tab to peek, pin open with ←/→ control; animated slide/fade with reduced-motion support. |
+| **Login** | Soft Aurora WebGL background on the sign-in page. |
+| **Dependencies** | Added `ogl` and `three` for WebGL chat/login effects. |
 
 ## What's new in v0.116
 

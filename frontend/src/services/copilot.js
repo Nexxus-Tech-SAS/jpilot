@@ -159,7 +159,15 @@ export const BETA_CHAT_BACKGROUNDS = [
   { id: 'constellation', label: 'Constellation', base: 'theme' },
   { id: 'waves', label: 'Waves', base: 'theme' },
   { id: 'drift', label: 'Drift', base: 'theme' },
-  { id: 'orbit', label: 'Orbit', base: 'theme' }
+  { id: 'orbit', label: 'Orbit', base: 'theme' },
+  { id: 'aurora', label: 'Aurora', base: 'theme' },
+  { id: 'line-waves', label: 'Line waves', base: 'theme' },
+  { id: 'galaxy', label: 'Galaxy', base: 'theme' },
+  { id: 'dot-field', label: 'Dot field', base: 'theme' },
+  { id: 'threads', label: 'Threads', base: 'theme' },
+  { id: 'orb', label: 'Orb', base: 'theme' },
+  { id: 'shape-grid', label: 'Shape grid', base: 'theme' },
+  { id: 'floating-lines', label: 'Floating lines', base: 'theme' }
 ]
 
 const BETA_BG_KEYS = {

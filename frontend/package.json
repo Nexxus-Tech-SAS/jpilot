@@ -15,10 +15,12 @@
     "chart.js": "^4.5.1",
     "dompurify": "^3.4.7",
     "marked": "^18.0.4",
+    "ogl": "^1.0.11",
     "primeflex": "^3.3.0",
     "primeicons": "^7.0.0",
     "primevue": "^4.0.0",
     "qrcode": "^1.5.4",
+    "three": "^0.172.0",
     "vue": "^3.4.0",
     "vue-router": "^4.3.0"
   },

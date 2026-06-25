@@ -1,5 +1,11 @@
 <template>
-  <div class="app-shell" :class="{ 'app-shell-beta-immersive': isImmersiveBetaChat }">
+  <div
+    class="app-shell"
+    :class="{
+      'app-shell-beta-immersive': isImmersiveBetaChat,
+      'app-shell-nav-collapsed': navCollapsed && isDesktopLayout
+    }"
+  >
     <header v-if="!isImmersiveBetaChat" class="mobile-topbar">
       <div class="mobile-topbar-side mobile-topbar-start">
         <button
@@ -28,7 +34,48 @@
       </div>
     </header>
 
-    <aside class="sidebar-panel desktop-sidebar flex flex-column">
+    <Transition name="nav-reveal-tab">
+      <button
+        v-if="navCollapsed && isDesktopLayout && !navPeek && !navPeekClosing"
+        type="button"
+        class="nav-sidebar-reveal-tab"
+        aria-label="Show navigation"
+        @mouseenter="openNavPeek"
+        @focus="openNavPeek"
+        @click="expandNavSidebar"
+      >
+        <i class="pi pi-bars" />
+      </button>
+    </Transition>
+
+    <div
+      v-if="navCollapsed && isDesktopLayout && !navPeek && !navPeekClosing"
+      class="nav-sidebar-peek-zone"
+      aria-hidden="true"
+      @mouseenter="openNavPeek"
+    />
+
+    <Transition name="nav-sidebar-backdrop">
+      <div
+        v-if="navCollapsed && isDesktopLayout && (navPeek || navPeekClosing)"
+        class="nav-sidebar-backdrop"
+        aria-hidden="true"
+        @mouseenter="clearNavPeekLeaveTimer"
+        @mouseleave="scheduleNavPeekClose"
+      />
+    </Transition>
+
+    <aside
+      class="sidebar-panel desktop-sidebar flex flex-column"
+      :class="{
+        'sidebar-panel-collapsed': navCollapsed && isDesktopLayout,
+        'sidebar-panel-peek': navPeek && navCollapsed && isDesktopLayout,
+        'sidebar-panel-peek-closing': navPeekClosing && navCollapsed && isDesktopLayout
+      }"
+      @mouseenter="clearNavPeekLeaveTimer"
+      @mouseleave="scheduleNavPeekClose"
+      @animationend="onSidebarAnimationEnd"
+    >
       <div class="nav-trio-logo-wrap">
         <TriArcLoader class="nav-trio-logo nav-trio-logo-sidebar" />
       </div>
@@ -85,6 +132,17 @@
           @click="onToggleTheme"
         >
           <i :class="theme === 'dark' ? 'pi pi-sun' : 'pi pi-moon'" />
+        </button>
+
+        <button
+          v-if="isDesktopLayout"
+          v-tooltip.right="navCollapsed ? 'Pin navigation open' : 'Hide navigation'"
+          class="nav-btn nav-btn-collapse"
+          :class="{ 'nav-btn-collapse-pinned': navCollapsed }"
+          type="button"
+          @click="onToggleNavSidebar"
+        >
+          <i class="pi pi-angle-left nav-btn-collapse-icon" />
         </button>
 
         <div class="sidebar-divider" />
@@ -244,6 +302,7 @@ import { NEXXUS_TECH } from '../config/nexxusTech'
 import api from '../services/api'
 import { clearAuth, getStoredUser } from '../services/auth'
 import { getTheme, toggleTheme } from '../services/theme'
+import { getNavSidebarCollapsed, onNavSidebarChange, setNavSidebarCollapsed } from '../services/navSidebar'
 import { hasActiveChatRuns } from '../stores/copilotChatRuns'
 
 const MOBILE_NAV_BREAKPOINT = 992
@@ -256,6 +315,12 @@ const currentUser = ref(getStoredUser())
 const theme = ref(getTheme())
 const currentYear = new Date().getFullYear()
 const isFullscreen = ref(false)
+const navCollapsed = ref(getNavSidebarCollapsed())
+const navPeek = ref(false)
+const navPeekClosing = ref(false)
+const isDesktopLayout = ref(typeof window !== 'undefined' ? window.innerWidth >= MOBILE_NAV_BREAKPOINT : true)
+let navPeekLeaveTimer = null
+let navSidebarCleanup = null
 
 const fullscreenIcon = computed(() =>
   isFullscreen.value ? 'pi pi-window-minimize' : 'pi pi-window-maximize'
@@ -272,6 +337,73 @@ const showAtmosphere = computed(() => route.meta.atmosphere === true)
 
 function closeMobileNav() {
   mobileNavOpen.value = false
+}
+
+function syncDesktopLayout() {
+  isDesktopLayout.value = window.innerWidth >= MOBILE_NAV_BREAKPOINT
+  if (!isDesktopLayout.value) {
+    navPeek.value = false
+    clearNavPeekLeaveTimer()
+  }
+}
+
+function clearNavPeekLeaveTimer() {
+  if (navPeekLeaveTimer) {
+    clearTimeout(navPeekLeaveTimer)
+    navPeekLeaveTimer = null
+  }
+}
+
+function scheduleNavPeekClose() {
+  if (!navCollapsed.value || !isDesktopLayout.value || navPeekClosing.value) return
+  clearNavPeekLeaveTimer()
+  navPeekLeaveTimer = setTimeout(() => {
+    if (!navPeek.value) return
+    navPeekClosing.value = true
+    navPeekLeaveTimer = setTimeout(() => {
+      if (navPeekClosing.value) finishNavPeekClose()
+      navPeekLeaveTimer = null
+    }, 320)
+  }, 220)
+}
+
+function finishNavPeekClose() {
+  navPeek.value = false
+  navPeekClosing.value = false
+  clearNavPeekLeaveTimer()
+}
+
+function onSidebarAnimationEnd(event) {
+  if (event.animationName === 'sidebar-peek-out' && navPeekClosing.value) {
+    finishNavPeekClose()
+  }
+}
+
+function openNavPeek() {
+  if (!navCollapsed.value || !isDesktopLayout.value) return
+  clearNavPeekLeaveTimer()
+  navPeekClosing.value = false
+  navPeek.value = true
+}
+
+function expandNavSidebar() {
+  setNavSidebarCollapsed(false)
+  navCollapsed.value = false
+  finishNavPeekClose()
+}
+
+function collapseNavSidebar() {
+  setNavSidebarCollapsed(true)
+  navCollapsed.value = true
+  finishNavPeekClose()
+}
+
+function onToggleNavSidebar() {
+  if (navCollapsed.value) {
+    expandNavSidebar()
+  } else {
+    collapseNavSidebar()
+  }
 }
 
 function openMobileNav() {
@@ -358,6 +490,13 @@ async function logout() {
 }
 
 onMounted(async () => {
+  syncDesktopLayout()
+  navSidebarCleanup = onNavSidebarChange(() => {
+    navCollapsed.value = getNavSidebarCollapsed()
+    if (!navCollapsed.value) {
+      finishNavPeekClose()
+    }
+  })
   try {
     const { data } = await api.get('/auth/me')
     currentUser.value = data
@@ -375,11 +514,14 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  navSidebarCleanup?.()
+  clearNavPeekLeaveTimer()
   window.removeEventListener('resize', onViewportChange)
   document.removeEventListener('fullscreenchange', syncFullscreenState)
 })
 
 function onViewportChange() {
+  syncDesktopLayout()
   if (window.innerWidth >= MOBILE_NAV_BREAKPOINT) {
     closeMobileNav()
   }
@@ -389,6 +531,9 @@ watch(
   () => route.path,
   () => {
     closeMobileNav()
+    if (navCollapsed.value) {
+      finishNavPeekClose()
+    }
   }
 )
 
@@ -426,6 +571,7 @@ function isActive(item) {
   min-height: 100vh;
   align-items: flex-start;
   background: var(--p-surface-0);
+  transition: gap 0.36s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 :global(.app-dark) .app-shell {
@@ -450,6 +596,7 @@ function isActive(item) {
     0 1px 2px rgba(2, 6, 23, 0.04),
     0 10px 28px rgba(2, 6, 23, 0.08),
     0 24px 48px rgba(2, 6, 23, 0.06);
+  will-change: width, opacity, transform;
 }
 
 .nav-trio-logo-wrap {
@@ -560,6 +707,15 @@ function isActive(item) {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
+.nav-btn-collapse-icon {
+  display: inline-block;
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-btn-collapse-pinned .nav-btn-collapse-icon {
+  transform: rotate(180deg);
+}
+
 .nav-btn-busy {
   position: relative;
 }
@@ -618,6 +774,230 @@ function isActive(item) {
   padding: 0 0.5rem 0;
   gap: 0.75rem;
   overflow: hidden;
+  transition:
+    flex 0.36s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.36s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes sidebar-peek-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--sidebar-width) - 1.25rem));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sidebar-peek-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--sidebar-width) - 1.25rem));
+  }
+}
+
+@keyframes nav-reveal-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-0.65rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+@media (min-width: 992px) {
+  .app-shell-nav-collapsed {
+    --app-shell-gap: 0.75rem;
+  }
+
+  .sidebar-panel {
+    transition:
+      width 0.36s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.28s ease,
+      padding 0.36s cubic-bezier(0.4, 0, 0.2, 1),
+      border-width 0.24s ease,
+      box-shadow 0.32s ease,
+      transform 0.36s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .sidebar-panel-collapsed:not(.sidebar-panel-peek):not(.sidebar-panel-peek-closing) {
+    width: 0;
+    min-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    margin: 0;
+    border-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    box-shadow: none;
+    transform: translateX(-0.75rem);
+  }
+
+  .sidebar-panel-collapsed.sidebar-panel-peek,
+  .sidebar-panel-collapsed.sidebar-panel-peek-closing {
+    position: fixed;
+    left: max(0.75rem, env(safe-area-inset-left, 0px));
+    top: max(1.5rem, env(safe-area-inset-top, 0px));
+    width: var(--sidebar-width);
+    height: calc(100vh - 3rem);
+    pointer-events: auto;
+    z-index: 1100;
+    padding: 1.25rem 0.75rem;
+    border-width: 1px;
+    overflow: hidden;
+    margin: 0;
+    min-width: 0;
+    transform: translateX(0);
+  }
+
+  .sidebar-panel-collapsed.sidebar-panel-peek {
+    opacity: 1;
+    animation: sidebar-peek-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+    box-shadow:
+      0 1px 2px rgba(2, 6, 23, 0.08),
+      0 16px 40px rgba(2, 6, 23, 0.16),
+      0 32px 64px rgba(2, 6, 23, 0.12);
+  }
+
+  .sidebar-panel-collapsed.sidebar-panel-peek-closing {
+    opacity: 0;
+    animation: sidebar-peek-out 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+    pointer-events: none;
+    box-shadow:
+      0 1px 2px rgba(2, 6, 23, 0.04),
+      0 8px 20px rgba(2, 6, 23, 0.08);
+  }
+
+  :global(.app-dark) .sidebar-panel-collapsed.sidebar-panel-peek {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.28),
+      0 16px 40px rgba(0, 0, 0, 0.42),
+      0 32px 64px rgba(0, 0, 0, 0.36);
+  }
+
+  .nav-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1099;
+    background: rgba(2, 6, 23, 0.16);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+
+  :global(.app-dark) .nav-sidebar-backdrop {
+    background: rgba(0, 0, 0, 0.42);
+  }
+
+  .nav-sidebar-backdrop-enter-active,
+  .nav-sidebar-backdrop-leave-active {
+    transition: opacity 0.3s ease;
+  }
+
+  .nav-sidebar-backdrop-enter-from,
+  .nav-sidebar-backdrop-leave-to {
+    opacity: 0;
+  }
+
+  .nav-reveal-tab-enter-active {
+    animation: nav-reveal-tab-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .nav-reveal-tab-leave-active {
+    transition:
+      opacity 0.22s ease,
+      transform 0.22s ease;
+  }
+
+  .nav-reveal-tab-leave-to {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-0.65rem);
+  }
+
+  .nav-sidebar-reveal-tab {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    z-index: 1098;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 3.25rem;
+    padding: 0;
+    border: 1px solid var(--p-content-border-color);
+    border-left: 0;
+    border-radius: 0 0.625rem 0.625rem 0;
+    background: var(--p-content-background);
+    color: var(--p-text-muted-color);
+    cursor: pointer;
+    transform: translateY(-50%);
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.12);
+    transition:
+      color 0.15s ease,
+      background 0.15s ease,
+      border-color 0.15s ease,
+      box-shadow 0.24s ease;
+  }
+
+  .nav-sidebar-reveal-tab:hover,
+  .nav-sidebar-reveal-tab:focus-visible {
+    color: var(--p-text-color);
+    background: var(--p-surface-100);
+    border-color: var(--p-primary-200);
+    box-shadow: 0 10px 28px rgba(2, 6, 23, 0.16);
+    outline: none;
+  }
+
+  .nav-sidebar-reveal-tab i {
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  .nav-sidebar-peek-zone {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1097;
+    width: 0.75rem;
+    height: 100%;
+  }
+}
+
+@media (min-width: 992px) and (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .sidebar-panel,
+  .main-content,
+  .nav-sidebar-reveal-tab,
+  .nav-btn-collapse-icon {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .sidebar-panel-collapsed.sidebar-panel-peek,
+  .sidebar-panel-collapsed.sidebar-panel-peek-closing {
+    animation: none !important;
+  }
+
+  .nav-reveal-tab-enter-active {
+    animation: none !important;
+  }
+
+  .nav-sidebar-backdrop-enter-active,
+  .nav-sidebar-backdrop-leave-active {
+    transition: none !important;
+  }
 }
 
 /* Shared animated backdrop for atmosphere routes: fixed behind the scrolling

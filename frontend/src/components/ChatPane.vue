@@ -306,6 +306,36 @@
             </div>
 
             <div class="beta-options-group">
+              <span class="beta-options-label">Chat window transparency</span>
+              <div class="beta-transparency-row">
+                <Slider
+                  v-model="chatPanelTransparency"
+                  :min="0"
+                  :max="100"
+                  class="beta-transparency-slider"
+                  aria-label="Chat window transparency"
+                  @update:model-value="onChatPanelTransparencyChange"
+                />
+                <span class="beta-transparency-value">{{ chatPanelTransparency }}%</span>
+              </div>
+            </div>
+
+            <div class="beta-options-group">
+              <span class="beta-options-label">Conversations transparency</span>
+              <div class="beta-transparency-row">
+                <Slider
+                  v-model="chatSidebarTransparency"
+                  :min="0"
+                  :max="100"
+                  class="beta-transparency-slider"
+                  aria-label="Conversations list transparency"
+                  @update:model-value="onChatSidebarTransparencyChange"
+                />
+                <span class="beta-transparency-value">{{ chatSidebarTransparency }}%</span>
+              </div>
+            </div>
+
+            <div class="beta-options-group">
               <span class="beta-options-label">Background</span>
               <div class="beta-bg-picker">
                 <button
@@ -1267,6 +1297,7 @@ import Menu from 'primevue/menu'
 import ProgressSpinner from 'primevue/progressspinner'
 import InputText from 'primevue/inputtext'
 import Popover from 'primevue/popover'
+import Slider from 'primevue/slider'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
 import Textarea from 'primevue/textarea'
@@ -1282,6 +1313,13 @@ import ChatBlueprintSuggestion from './ChatBlueprintSuggestion.vue'
 import ChatDeploymentSubtasks from './ChatDeploymentSubtasks.vue'
 import TriArcLoader from './TriArcLoader.vue'
 import { isDeploymentContinueMessage, messageNeedsDeploymentContinuation } from '../utils/deploymentContinuation'
+import {
+  getBetaChatPanelTransparency,
+  getBetaChatSidebarTransparency,
+  onBetaChatAppearanceChange,
+  setBetaChatPanelTransparency,
+  setBetaChatSidebarTransparency
+} from '../services/betaChatAppearance'
 import { streamCopilotChat } from '../services/copilotStream'
 import { formatCopilotError, isChatAbortError, isProviderQuotaError } from '../utils/chatErrors'
 import { generationStatusMeta, formatMessageGenerationStats } from '../utils/generationStatus'
@@ -1931,6 +1969,24 @@ function closeBetaOptions() {
 function chooseBetaBackground(id) {
   emit('update:betaBackground', id)
 }
+
+const chatPanelTransparency = ref(getBetaChatPanelTransparency(props.chatNamespace))
+const chatSidebarTransparency = ref(getBetaChatSidebarTransparency(props.chatNamespace))
+
+function syncChatTransparencyFromStorage() {
+  chatPanelTransparency.value = getBetaChatPanelTransparency(props.chatNamespace)
+  chatSidebarTransparency.value = getBetaChatSidebarTransparency(props.chatNamespace)
+}
+
+function onChatPanelTransparencyChange(value) {
+  setBetaChatPanelTransparency(value, props.chatNamespace)
+}
+
+function onChatSidebarTransparencyChange(value) {
+  setBetaChatSidebarTransparency(value, props.chatNamespace)
+}
+
+let chatAppearanceCleanup = null
 
 function clearBetaConversation() {
   clearConversation()
@@ -2690,7 +2746,18 @@ watch(
   }
 )
 
+watch(
+  () => props.chatNamespace,
+  () => {
+    syncChatTransparencyFromStorage()
+  }
+)
+
 onMounted(() => {
+  syncChatTransparencyFromStorage()
+  chatAppearanceCleanup = onBetaChatAppearanceChange(() => {
+    syncChatTransparencyFromStorage()
+  })
   markPaneFocused()
   scrollToBottom()
   tryConsumeDesignHandoff()
@@ -2765,6 +2832,7 @@ watch(
 )
 
 onUnmounted(() => {
+  chatAppearanceCleanup?.()
   stopGenerationTimer()
   window.removeEventListener('focus', refreshInstalledPersonasOnFocus)
   document.removeEventListener('visibilitychange', refreshInstalledPersonasOnVisible)
@@ -3804,6 +3872,26 @@ onUnmounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--p-text-muted-color);
+}
+
+.beta-transparency-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.beta-transparency-slider {
+  flex: 1;
+  min-width: 0;
+}
+
+.beta-transparency-value {
+  flex-shrink: 0;
+  min-width: 2.5rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--p-text-muted-color);
+  text-align: right;
 }
 
 .beta-options-context {

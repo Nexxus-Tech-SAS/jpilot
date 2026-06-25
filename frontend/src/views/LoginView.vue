@@ -1,7 +1,22 @@
 <template>
   <div class="login-page flex align-items-center justify-content-center min-h-screen">
     <div class="login-bg" aria-hidden="true">
-      <ConstellationCanvas />
+      <SoftAuroraBackground
+        :speed="0.4"
+        :scale="0.1"
+        :brightness="1.1"
+        color1="#7184df"
+        color2="#10B981"
+        :noise-frequency="2.5"
+        :noise-amplitude="3.5"
+        :band-height="0.5"
+        :band-spread="0.8"
+        :octave-decay="0.41"
+        :layer-offset="1"
+        :color-speed="1.0"
+        :enable-mouse-interaction="true"
+        :mouse-influence="0.1"
+      />
       <div class="login-bg-overlay"></div>
     </div>
 
@@ -256,7 +271,7 @@ import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Password from 'primevue/password'
 import TriArcLoader from '../components/TriArcLoader.vue'
-import ConstellationCanvas from '../components/ConstellationCanvas.vue'
+import SoftAuroraBackground from '../components/SoftAuroraBackground.vue'
 import api from '../services/api'
 import { setAuth } from '../services/auth'
 import { getSystemVersion } from '../services/system'
@@ -468,7 +483,7 @@ async function handlePasskeyLogin(preferCrossDevice = false) {
 .login-page {
   position: relative;
   padding: 1.5rem;
-  background: var(--p-surface-ground);
+  background: #000000;
 }
 
 .login-bg {
@@ -483,15 +498,17 @@ async function handlePasskeyLogin(preferCrossDevice = false) {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 60% 50%, rgba(0, 123, 167, 0.1) 0%, transparent 65%),
-    linear-gradient(180deg, transparent 70%, var(--p-surface-ground) 100%);
+    radial-gradient(ellipse at 50% 35%, rgba(113, 132, 223, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 40% 55%, rgba(16, 185, 129, 0.05) 0%, transparent 45%),
+    linear-gradient(180deg, transparent 65%, rgba(0, 0, 0, 0.88) 100%);
   pointer-events: none;
 }
 
 :global(.app-dark) .login-bg-overlay {
   background:
-    radial-gradient(ellipse at 60% 50%, rgba(0, 123, 167, 0.12) 0%, transparent 65%),
-    linear-gradient(180deg, transparent 70%, var(--p-surface-ground) 100%);
+    radial-gradient(ellipse at 50% 35%, rgba(113, 132, 223, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 40% 55%, rgba(16, 185, 129, 0.07) 0%, transparent 45%),
+    linear-gradient(180deg, transparent 65%, rgba(0, 0, 0, 0.92) 100%);
 }
 
 .anim-panel-in {

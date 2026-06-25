@@ -13,6 +13,7 @@
           'beta-chat-layout-sidebar-hidden': !chatSidebarVisible,
           'beta-chat-layout-lab': showBetaLabel
         }"
+        :style="chatGlassStyle"
       >
         <div
           v-show="!isMobileLayout"
@@ -133,6 +134,7 @@ import {
 } from '../services/copilot'
 import { getCopilotPlatformSettings } from '../services/copilotPlatform'
 import { MOBILE_CHAT_LAYOUT_MQL } from '../utils/responsiveLayout'
+import { getBetaChatGlassStyle, onBetaChatAppearanceChange } from '../services/betaChatAppearance'
 
 const toast = useToast()
 const confirm = useConfirm()
@@ -171,6 +173,13 @@ const mobileChatsOpen = ref(false)
 const chatSidebarVisible = ref(loadChatSidebarVisible())
 const chatSidebarBeforeDesignPanel = ref(null)
 const designPanelOpen = ref(false)
+const chatAppearanceTick = ref(0)
+let chatAppearanceCleanup = null
+
+const chatGlassStyle = computed(() => {
+  chatAppearanceTick.value
+  return getBetaChatGlassStyle(chatNamespace.value)
+})
 
 function toggleChatSidebar() {
   chatSidebarVisible.value = !chatSidebarVisible.value
@@ -343,6 +352,9 @@ async function loadWebSearchAvailability() {
 onMounted(() => {
   syncMobileLayout()
   MOBILE_LAYOUT_MQL?.addEventListener('change', syncMobileLayout)
+  chatAppearanceCleanup = onBetaChatAppearanceChange(() => {
+    chatAppearanceTick.value += 1
+  })
   chatSidebarVisible.value = loadChatSidebarVisible()
   background.value = getBetaChatBackground(chatNamespace.value)
   if (!betaChatState.value.conversations.length) {
@@ -354,6 +366,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  chatAppearanceCleanup?.()
   MOBILE_LAYOUT_MQL?.removeEventListener('change', syncMobileLayout)
 })
 
@@ -369,6 +382,7 @@ watch(
 watch(chatNamespace, () => {
   chatSidebarVisible.value = loadChatSidebarVisible()
   background.value = getBetaChatBackground(chatNamespace.value)
+  chatAppearanceTick.value += 1
   if (!betaChatState.value.conversations.length) {
     chatStore.value.createBetaConversation('architect', 'Architect')
   }
@@ -454,6 +468,8 @@ watch(chatNamespace, () => {
 }
 
 .beta-chat-layout {
+  --beta-chat-panel-mix: 42%;
+  --beta-chat-sidebar-mix: 42%;
   position: relative;
   z-index: 1;
   display: flex;
@@ -466,10 +482,10 @@ watch(chatNamespace, () => {
 }
 
 .beta-chat-layout-lab {
-  --beta-glass-panel-bg: transparent;
-  --beta-glass-panel-bg-dark: rgba(8, 12, 22, 0.04);
-  --beta-glass-sidebar-bg: rgba(255, 255, 255, 0.01);
-  --beta-glass-sidebar-bg-dark: rgba(8, 12, 22, 0.01);
+  --beta-glass-panel-bg: color-mix(in srgb, var(--p-content-background) var(--beta-chat-panel-mix), transparent);
+  --beta-glass-panel-bg-dark: color-mix(in srgb, rgb(8, 12, 22) var(--beta-chat-panel-mix), transparent);
+  --beta-glass-sidebar-bg: color-mix(in srgb, var(--p-content-background) var(--beta-chat-sidebar-mix), transparent);
+  --beta-glass-sidebar-bg-dark: color-mix(in srgb, rgb(8, 12, 22) var(--beta-chat-sidebar-mix), transparent);
 }
 .beta-sidebar-card.content-panel,
 .beta-chat-card.content-panel {
@@ -479,9 +495,16 @@ watch(chatNamespace, () => {
 }
 
 @media (min-width: 992px) {
-  .beta-sidebar-card.content-panel,
+  .beta-sidebar-card.content-panel {
+    background: color-mix(in srgb, var(--p-content-background) var(--beta-chat-sidebar-mix), transparent);
+    border-color: color-mix(in srgb, var(--p-content-border-color) 52%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 28px rgba(2, 6, 23, 0.06);
+  }
+
   .beta-chat-card.content-panel {
-    background: color-mix(in srgb, var(--p-content-background) 42%, transparent);
+    background: color-mix(in srgb, var(--p-content-background) var(--beta-chat-panel-mix), transparent);
     border-color: color-mix(in srgb, var(--p-content-border-color) 52%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
