@@ -73,6 +73,7 @@ class ChatRequest(BaseModel):
     longTaskApproved: bool = False
     designDocumentContext: str | None = None
     includeDesignRevision: bool = False
+    skipBlueprintSkillId: str | None = None
 
 
 class CopilotApplianceItem(BaseModel):
@@ -128,7 +129,11 @@ class InputForm(BaseModel):
 
 
 class BlueprintSuggestion(BaseModel):
-    """Surfaced when a strict blueprint match missed but a relaxed match found a candidate."""
+    """Surfaced on every turn where a blueprint is relevant.
+
+    state="applied"   — strict match hit; blueprint injected silently this turn.
+    state="suggested" — strict miss, relaxed candidate found; user can apply or skip.
+    """
 
     skillId: str
     label: str
@@ -136,6 +141,7 @@ class BlueprintSuggestion(BaseModel):
     confidence: int = 0
     action: Literal["apply", "install"] = "apply"
     applyPrompt: str
+    state: Literal["applied", "suggested"] = "suggested"
 
 
 class ChatResponse(BaseModel):

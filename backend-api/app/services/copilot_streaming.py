@@ -62,6 +62,7 @@ async def stream_copilot_chat_events(
                 design_document_context=payload.designDocumentContext,
                 include_design_revision=payload.includeDesignRevision,
                 persona_system_prompt=persona_system_prompt,
+                skip_blueprint_skill_id=payload.skipBlueprintSkillId or None,
             )
         except Exception as exc:
             error_holder["error"] = exc

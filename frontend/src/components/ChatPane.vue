@@ -536,7 +536,7 @@
                     :suggestion="msg.blueprintSuggestion"
                     :disabled="isGenerating"
                     @apply="applyBlueprintSuggestion(msg)"
-                    @skip="dismissBlueprintSuggestion(msg)"
+                    @skip="skipBlueprintSuggestion(msg)"
                   />
                   <ChatToolTrace v-if="msg.toolCalls?.length" :tools="msg.toolCalls" />
                   <p class="beta-message-time">
@@ -1056,7 +1056,7 @@
               :suggestion="msg.blueprintSuggestion"
               :disabled="isGenerating"
               @apply="applyBlueprintSuggestion(msg)"
-              @skip="dismissBlueprintSuggestion(msg)"
+              @skip="skipBlueprintSuggestion(msg)"
             />
             <ChatToolTrace v-if="msg.toolCalls?.length" :tools="msg.toolCalls" />
             <p
@@ -2388,7 +2388,8 @@ async function runChat(content, attachments, runOptions = {}) {
         deploymentContinuation: Boolean(runOptions.deploymentContinuation),
         longTaskApproved: Boolean(runOptions.longTaskApproved),
         designDocumentContext: resolveDesignDocumentContext(runOptions),
-        includeDesignRevision: Boolean(runOptions.includeDesignRevision)
+        includeDesignRevision: Boolean(runOptions.includeDesignRevision),
+        ...(runOptions.skipBlueprintSkillId ? { skipBlueprintSkillId: runOptions.skipBlueprintSkillId } : {})
       },
       {
         signal: controller.signal,
@@ -2499,8 +2500,37 @@ async function submitConfigForm(values, messageIndex) {
   }
 }
 
-function dismissBlueprintSuggestion(msg) {
+/**
+ * Skip: find the original user message that triggered this assistant turn and
+ * re-send it with skipBlueprintSkillId so the backend answers without that blueprint.
+ * Dismiss the card immediately so it doesn't re-render on the old message.
+ */
+async function skipBlueprintSuggestion(msg) {
+  if (isGenerating.value || !msg.blueprintSuggestion) return
+  const skillId = msg.blueprintSuggestion.skillId
   msg.blueprintSuggestionDismissed = true
+
+  // Find the index of this assistant message in the messages array.
+  const msgIndex = session.messages.indexOf(msg)
+  if (msgIndex < 0) return
+
+  // Walk backwards to find the immediately preceding user message.
+  let originalUserMsg = null
+  for (let i = msgIndex - 1; i >= 0; i--) {
+    if (session.messages[i].role === 'user') {
+      originalUserMsg = session.messages[i]
+      break
+    }
+  }
+  if (!originalUserMsg || !originalUserMsg.content) return
+
+  // Re-send the original user message with skipBlueprintSkillId.
+  const originalText = originalUserMsg.content
+  const originalAttachments = originalUserMsg.attachments || []
+  await sendMessage(originalText, originalAttachments, {
+    skipRoleInference: true,
+    skipBlueprintSkillId: skillId
+  })
 }
 
 async function applyBlueprintSuggestion(msg) {

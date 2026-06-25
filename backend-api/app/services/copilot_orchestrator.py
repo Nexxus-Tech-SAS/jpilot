@@ -326,12 +326,17 @@ def _apply_blueprint_context(
     user_message: str,
     role: str,
     vendor: str | None,
+    skip_blueprint_skill_id: str | None = None,
 ) -> tuple[str, bool, bool, dict | None]:
-    """Return (system_prompt, blueprint_relevant, stack_calibration_reviewed, relaxed_candidate).
+    """Return (system_prompt, blueprint_relevant, stack_calibration_reviewed, blueprint_candidate).
 
-    ``relaxed_candidate`` is a dict with keys {skillId, label, summary, confidence}
-    when the strict match missed but a secondary/relaxed match found a plausible candidate
-    AND no blueprints were silently injected.  It is ``None`` otherwise.
+    ``blueprint_candidate`` is a dict with keys {skillId, label, summary, confidence, state}:
+    - state="applied"   — strict match hit and blueprint injected this turn.
+    - state="suggested" — strict miss, relaxed candidate found; nothing injected.
+
+    When skip_blueprint_skill_id is set, that skill is suppressed: it will not be
+    injected and no card is emitted for it.  This is how "Skip → re-run without blueprint"
+    works.
     """
     from app.services.knowledge_pack_runtime import resolve_knowledge_pack_turn_context
     from app.services.knowledge_pack_service import get_active_pack_dir
@@ -352,6 +357,21 @@ def _apply_blueprint_context(
             installed=installed,
         )
 
+    # If the skipped skill is among the matched ones, strip it and re-resolve without it.
+    skip_id = (skip_blueprint_skill_id or "").strip()
+    if skip_id and ctx.relevant and skip_id in ctx.matched_skill_ids:
+        # Re-run context resolution with the skipped skill filtered out.
+        installed_filtered = [
+            s for s in list_installed_skills()
+            if str(s.get("skillId") or "") != skip_id
+        ]
+        ctx = resolve_blueprint_turn_context(
+            user_message=user_message,
+            role=role,
+            vendor=effective_vendor,
+            installed=installed_filtered,
+        )
+
     if ctx.injection_block:
         system_prompt = f"{system_prompt}\n\n{ctx.injection_block}"
     if ctx.relevant:
@@ -360,19 +380,48 @@ def _apply_blueprint_context(
     if ctx.relevant and ctx.injection_block:
         reviewed = True
 
-    # When strict match missed, probe for a relaxed suggestion candidate.
-    relaxed_candidate: dict | None = None
-    if not ctx.relevant and not get_active_pack_dir():
+    # Build blueprint candidate for the suggestion card.
+    blueprint_candidate: dict | None = None
+
+    if ctx.relevant and ctx.matched_skill_ids and not get_active_pack_dir():
+        # Strict HIT — look up the first matched skill to build the "applied" card.
+        first_skill_id = ctx.matched_skill_ids[0]
+        installed_all = list_installed_skills()
+        skill_row = next(
+            (s for s in installed_all if str(s.get("skillId") or "") == first_skill_id),
+            None,
+        )
+        if skill_row:
+            from pathlib import Path as _Path
+            from app.services.calibration_matcher import _load_manifest as _lm
+            skill_dir = _Path(skill_row.get("path") or "")
+            manifest = _lm(skill_dir) if skill_dir.is_dir() else {}
+            label = str((manifest or {}).get("label") or skill_row.get("skillId") or "")
+            summary = str((manifest or {}).get("description") or (manifest or {}).get("summary") or "")
+            blueprint_candidate = {
+                "skillId": first_skill_id,
+                "label": label,
+                "summary": summary,
+                "confidence": 100,
+                "state": "applied",
+            }
+
+    elif not ctx.relevant and not get_active_pack_dir():
+        # Strict MISS — probe for relaxed suggestion candidate.
         _eff_installed = list_installed_skills()
+        if skip_id:
+            _eff_installed = [s for s in _eff_installed if str(s.get("skillId") or "") != skip_id]
         if has_installed_skills_for_chat(role=role, vendor=effective_vendor, installed=_eff_installed):
-            relaxed_candidate = find_relaxed_blueprint_candidate(
+            relaxed = find_relaxed_blueprint_candidate(
                 user_message=user_message,
                 role=role,
                 vendor=effective_vendor,
                 installed=_eff_installed,
             )
+            if relaxed:
+                blueprint_candidate = {**relaxed, "state": "suggested"}
 
-    return system_prompt, ctx.relevant, reviewed, relaxed_candidate
+    return system_prompt, ctx.relevant, reviewed, blueprint_candidate
 
 
 def _append_skill_calibration(
@@ -381,12 +430,14 @@ def _append_skill_calibration(
     user_message: str,
     role: str,
     vendor: str | None,
+    skip_blueprint_skill_id: str | None = None,
 ) -> str:
     prompt, _, _, _ = _apply_blueprint_context(
         system_prompt,
         user_message=user_message,
         role=role,
         vendor=vendor,
+        skip_blueprint_skill_id=skip_blueprint_skill_id,
     )
     return prompt
 
@@ -837,22 +888,26 @@ def _extract_prior_dedicated_plan(history: list[dict]) -> tuple[str, dict] | Non
 
 
 def _build_blueprint_suggestion(
-    relaxed_candidate: dict | None,
+    blueprint_candidate: dict | None,
     *,
     role: str,
     chat_role: "JPilotRole",
     history: list[dict],
     user_message: str,
 ) -> "BlueprintSuggestion | None":
-    """Build a BlueprintSuggestion from a relaxed candidate if gating conditions are met.
+    """Build a BlueprintSuggestion from a blueprint candidate if gating conditions are met.
 
-    Gating:
+    Gating (applied equally to both applied and suggested states):
     - architect: only at conversation start (no planning-form submissions in history yet).
     - operator/analyst: only when the user message maps to a dedicated config/read intent.
-    - Never surfaces when strict blueprint already injected (relaxed_candidate is None then).
+
+    state="applied"   — strict match hit; blueprint was injected this turn.
+    state="suggested" — strict miss; relaxed candidate surfaced for user to apply or skip.
     """
-    if not relaxed_candidate:
+    if not blueprint_candidate:
         return None
+
+    candidate_state = blueprint_candidate.get("state", "suggested")
 
     if chat_role == JPilotRole.ARCHITECT:
         from app.services.copilot_architect_discovery import count_planning_form_submissions
@@ -863,21 +918,28 @@ def _build_blueprint_suggestion(
         if count_planning_form_submissions(conv_text) > 0:
             # Not at conversation start — don't nag after discovery has begun.
             return None
-        apply_prompt = f"Start from the {relaxed_candidate['label']} blueprint"
+        if candidate_state == "applied":
+            apply_prompt = f"Start from the {blueprint_candidate['label']} blueprint"
+        else:
+            apply_prompt = f"Start from the {blueprint_candidate['label']} blueprint"
     elif chat_role in (JPilotRole.OPERATOR, JPilotRole.ANALYST):
-        if not has_dedicated_config_or_read_intent(user_message, role):
+        if candidate_state == "suggested" and not has_dedicated_config_or_read_intent(user_message, role):
             return None
-        apply_prompt = f"Apply the {relaxed_candidate['label']} blueprint to this request"
+        if candidate_state == "applied":
+            apply_prompt = f"Apply the {blueprint_candidate['label']} blueprint to this request"
+        else:
+            apply_prompt = f"Apply the {blueprint_candidate['label']} blueprint to this request"
     else:
         return None
 
     return BlueprintSuggestion(
-        skillId=relaxed_candidate["skillId"],
-        label=relaxed_candidate["label"],
-        summary=relaxed_candidate["summary"],
-        confidence=relaxed_candidate["confidence"],
+        skillId=blueprint_candidate["skillId"],
+        label=blueprint_candidate["label"],
+        summary=blueprint_candidate.get("summary", ""),
+        confidence=blueprint_candidate.get("confidence", 0),
         action="apply",
         applyPrompt=apply_prompt,
+        state=candidate_state,
     )
 
 
@@ -1130,6 +1192,7 @@ async def run_copilot_chat(
     design_document_context: str | None = None,
     include_design_revision: bool = False,
     persona_system_prompt: str | None = None,
+    skip_blueprint_skill_id: str | None = None,
 ) -> ChatResponse:
     from app.services.copilot_service import set_web_search_allowed
 
@@ -1199,11 +1262,12 @@ async def run_copilot_chat(
     # Layer the custom persona's system prompt on top of the base role prompt.
     if persona_system_prompt and persona_system_prompt.strip():
         system_prompt = f"{system_prompt}\n\n## Custom Persona Instructions\n{persona_system_prompt.strip()}"
-    system_prompt, blueprint_relevant, stack_calibration_reviewed, relaxed_blueprint_candidate = _apply_blueprint_context(
+    system_prompt, blueprint_relevant, stack_calibration_reviewed, blueprint_candidate = _apply_blueprint_context(
         system_prompt,
         user_message=user_message,
         role=chat_role.value,
         vendor=chat_vendor,
+        skip_blueprint_skill_id=skip_blueprint_skill_id,
     )
     from app.services.copilot_platform_service import ensure_default_settings
 
@@ -1583,7 +1647,7 @@ async def run_copilot_chat(
         )
 
     blueprint_suggestion = _build_blueprint_suggestion(
-        relaxed_blueprint_candidate,
+        blueprint_candidate,
         role=chat_role.value,
         chat_role=chat_role,
         history=history,
