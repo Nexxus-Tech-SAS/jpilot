@@ -126,8 +126,8 @@ router.beforeEach(async (to, from) => {
 
   const openingChat = to.name === 'jpilot' || to.name === 'jpilot-beta'
   const fromInApp = from.matched.some((record) => record.meta.requiresAuth)
-  if (openingChat && fromInApp && from.name && from.name !== to.name) {
-    return { ...to, replace: true }
+  if (openingChat && fromInApp && from.name && from.name !== to.name && !to.redirectedFrom) {
+    return { name: to.name, params: to.params, query: to.query, hash: to.hash, replace: true }
   }
 
   return true

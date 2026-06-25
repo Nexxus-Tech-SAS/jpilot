@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.114` (beta) — **Legal page branding + favicon refresh.** `/legal/*` uses the animated TriArc logo and blinking `ld-cursor` “JPilot” title (matching login and chat). Favicon and iPad Home Screen icons regenerated from `JPilot-logo.svg` at proper sizes.
+**Current release:** `v0.115` (beta) — **Router redirect loop fix.** Navigating from the dashboard (or any in-app route) to **JPilot Chat** no longer triggers an infinite `beforeEach` redirect (`/` → `/jpilot` stack overflow). The replace-history optimization runs once per navigation instead of re-firing on every guard pass.
+
+**Previous release:** `v0.114` (beta) — **Legal page branding + favicon refresh.** `/legal/*` uses the animated TriArc logo and blinking `ld-cursor` “JPilot” title (matching login and chat). Favicon and iPad Home Screen icons regenerated from `JPilot-logo.svg` at proper sizes.
 
 **Previous release:** `v0.113` (beta) — **iPad chat navigation fix.** Portrait iPad keeps the desktop chat header (role toggle, no hamburger app menu). Sidebar navigation to Chat replaces browser history so Safari’s back/close control does not return to Settings after Settings → Chat. PWA meta tags improve the Home Screen experience with less Safari chrome.
 
@@ -161,6 +163,12 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.115
+
+| Area | Highlights |
+|------|------------|
+| **Router** | Fixed infinite redirect when opening **JPilot Chat** from the dashboard or another authenticated route (`/` → `/jpilot` loop). The navigation guard now applies the replace-history redirect only once per navigation (`!to.redirectedFrom`). |
 
 ## What's new in v0.113
 
