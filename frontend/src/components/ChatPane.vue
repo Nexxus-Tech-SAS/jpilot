@@ -2181,11 +2181,18 @@ function onSelectPersona(payload) {
   }
 }
 
-function onSelectSkill({ prompt }) {
-  if (prompt) {
-    session.input = prompt
+async function onSelectSkill({ prompt, roleId }) {
+  if (roleId && roleId !== session.role) {
+    session.role = roleId
+    pickProviderForRole(true)
   }
-  focusComposer()
+  const text = (prompt || '').trim()
+  if (!text) {
+    focusComposer()
+    return
+  }
+  if (!ready.value || isGenerating.value || connecting.value) return
+  await sendMessage(text, null, { skipRoleInference: true })
 }
 
 function focusAskInput() {

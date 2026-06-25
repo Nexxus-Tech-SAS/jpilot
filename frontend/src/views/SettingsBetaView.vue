@@ -80,7 +80,6 @@
               :is="activeComponent"
               :key="activeComponentKey"
               v-bind="activeComponentProps"
-              @update-status="onUpdateStatus"
             />
           </KeepAlive>
         </div>
@@ -339,12 +338,6 @@ function selectSection(key) {
 function selectTab(key) {
   activeTabKey.value = key
   router.replace({ query: { ...route.query, section: activeKey.value, pane: key } })
-}
-
-function onUpdateStatus(info) {
-  if (info?.update_available) {
-    window.dispatchEvent(new CustomEvent('jpilot-update-available', { detail: info }))
-  }
 }
 
 watch(() => [route.query.section, route.query.pane], syncFromQuery)

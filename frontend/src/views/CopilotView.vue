@@ -41,7 +41,7 @@
       <Button v-tooltip.top="'JPilot settings'" icon="pi pi-cog" text rounded @click="router.push('/settings?section=jpilot')" />
     </div>
 
-    <Message v-if="!ready" severity="warn" :closable="false" class="mb-3">
+    <Message v-if="providersChecked && !ready" severity="warn" :closable="false" class="mb-3">
       No enabled AI provider found.
       <RouterLink to="/settings?section=ai-providers" class="ml-2">Configure AI Providers →</RouterLink>
     </Message>
@@ -108,6 +108,7 @@ import { getCopilotPlatformSettings } from '../services/copilotPlatform'
 const router = useRouter()
 
 const providers = ref([])
+const providersChecked = ref(false)
 const appliances = ref([])
 const orientation = ref('horizontal')
 const windowCount = ref(1)
@@ -146,6 +147,8 @@ async function loadProviders() {
     providers.value = await listChatProviders()
   } catch {
     providers.value = []
+  } finally {
+    providersChecked.value = true
   }
 }
 

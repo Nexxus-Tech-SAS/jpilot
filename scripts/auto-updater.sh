@@ -100,6 +100,13 @@ clear_agent_armed() {
   rm -f "${AGENT_ARMED_MARKER}"
 }
 
+reset_update_sentinel() {
+  echo "==> Clearing update sentinels (manual updates only — no auto-start)..."
+  rm -f "${UPDATE_DIR}/request.json" "${UPDATE_DIR}/status.json"
+  chown -R "${RUN_USER}:${RUN_USER}" "${UPDATE_DIR}" 2>/dev/null || true
+  chmod -R u+rwX "${UPDATE_DIR}" 2>/dev/null || true
+}
+
 # ── systemd (Linux) ──────────────────────────────────────────────────────────
 write_systemd_units() {
   echo "==> Writing systemd units"
@@ -112,8 +119,9 @@ Description=JPilot update-request sentinel watcher
 Documentation=https://github.com/Nexxus-Tech-SAS/jpilot
 
 [Path]
-PathExists=${UPDATE_DIR}/request.json
-PathModified=${UPDATE_DIR}/request.json
+# PathChanged only — do NOT use PathExists: it fires on unit start when an old
+# request.json is still on disk and would auto-trigger updates without a button click.
+PathChanged=${UPDATE_DIR}/request.json
 Unit=${SERVICE_NAME}.service
 
 [Install]
@@ -166,6 +174,7 @@ enable_systemd_agent() {
     echo "         not be able to run 'docker compose'. Set DOCKER_USER=<user> to override."
   fi
   mkdir -p "${UPDATE_DIR}"
+  reset_update_sentinel
   clean_systemd_agent
   write_systemd_units
   $SUDO systemctl daemon-reload

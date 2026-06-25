@@ -1,6 +1,6 @@
 <template>
   <div class="page copilot-page flex flex-column">
-    <Message v-if="!ready" severity="warn" :closable="false" class="copilot-warn mb-3">
+    <Message v-if="providersChecked && !ready" severity="warn" :closable="false" class="copilot-warn mb-3">
       No enabled AI provider found.
       <RouterLink to="/settings?section=ai-providers" class="ml-2">Configure AI Providers →</RouterLink>
     </Message>
@@ -161,6 +161,7 @@ function loadChatSidebarVisible() {
 }
 
 const providers = ref([])
+const providersChecked = ref(false)
 const appliances = ref([])
 const backgrounds = BETA_CHAT_BACKGROUNDS
 const background = ref(getBetaChatBackground(chatNamespace.value))
@@ -316,6 +317,8 @@ async function loadProviders() {
     providers.value = await listChatProviders()
   } catch {
     providers.value = []
+  } finally {
+    providersChecked.value = true
   }
 }
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -16,12 +16,15 @@ from app.schemas.model_usage import (
     BraveUsageItem,
     ModelUsageDashboardResponse,
     ProviderUsageItem,
+    UsageActivityDay,
+    UsageActivityResponse,
     UsageLimitsUpdate,
 )
 from app.services.copilot_platform_service import get_platform_settings
 
 USAGE_LIMITS_ID = "default"
 BRAVE_COUNTER_ID = "brave"
+DAILY_GLOBAL_COUNTER_KEY = "daily:global"
 
 DEFAULT_BRAVE_MONTHLY_QUERIES = 2000
 
@@ -60,6 +63,19 @@ def utc_now() -> datetime:
 def current_period_key(now: datetime | None = None) -> str:
     moment = now or utc_now()
     return moment.strftime("%Y-%m")
+
+
+def current_day_key(now: datetime | None = None) -> str:
+    moment = now or utc_now()
+    return moment.strftime("%Y-%m-%d")
+
+
+def day_label(day_key: str) -> str:
+    try:
+        parsed = datetime.strptime(day_key, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return parsed.strftime("%b %d")
+    except ValueError:
+        return day_key
 
 
 def period_label(period_key: str) -> str:
@@ -203,6 +219,39 @@ def _provider_limits_configured(custom: dict[str, Any]) -> bool:
     return "monthlyTokenLimit" in custom or "monthlyRequestLimit" in custom
 
 
+async def record_daily_activity(
+    db: AsyncIOMotorDatabase,
+    *,
+    requests: int = 0,
+    tokens: int = 0,
+    queries: int = 0,
+) -> None:
+    if requests <= 0 and tokens <= 0 and queries <= 0:
+        return
+    day_key = current_day_key()
+    doc_id = _counter_document_id(DAILY_GLOBAL_COUNTER_KEY, day_key)
+    inc: dict[str, int] = {}
+    if requests > 0:
+        inc["requests"] = requests
+    if tokens > 0:
+        inc["tokens"] = tokens
+    if queries > 0:
+        inc["queries"] = queries
+    await db.modelUsageCounters.update_one(
+        {"_id": doc_id},
+        {
+            "$inc": inc,
+            "$set": {
+                "updatedAt": utc_now(),
+                "day": day_key,
+                "counterKey": DAILY_GLOBAL_COUNTER_KEY,
+            },
+            "$setOnInsert": {"_id": doc_id},
+        },
+        upsert=True,
+    )
+
+
 async def record_provider_usage(
     db: AsyncIOMotorDatabase,
     *,
@@ -231,6 +280,11 @@ async def record_provider_usage(
         },
         upsert=True,
     )
+    await record_daily_activity(
+        db,
+        requests=max(0, requests),
+        tokens=max(0, tokens),
+    )
 
 
 async def record_brave_search_usage(db: AsyncIOMotorDatabase, *, queries: int = 1) -> None:
@@ -245,6 +299,7 @@ async def record_brave_search_usage(db: AsyncIOMotorDatabase, *, queries: int = 
         },
         upsert=True,
     )
+    await record_daily_activity(db, queries=max(0, queries))
 
 
 async def record_llm_response_usage(
@@ -420,3 +475,23 @@ async def get_usage_dashboard(db: AsyncIOMotorDatabase) -> ModelUsageDashboardRe
         providers=provider_items,
         braveSearch=brave_item,
     )
+
+
+async def get_usage_activity(db: AsyncIOMotorDatabase, *, days: int = 30) -> UsageActivityResponse:
+    span = max(1, min(int(days), 90))
+    now = utc_now()
+    series: list[UsageActivityDay] = []
+    for offset in range(span - 1, -1, -1):
+        day = now - timedelta(days=offset)
+        day_key = day.strftime("%Y-%m-%d")
+        counter = await _get_counter(db, DAILY_GLOBAL_COUNTER_KEY, day_key)
+        series.append(
+            UsageActivityDay(
+                date=day_key,
+                label=day_label(day_key),
+                requests=counter["requests"],
+                tokens=counter["tokens"],
+                queries=counter["queries"],
+            )
+        )
+    return UsageActivityResponse(days=span, series=series)

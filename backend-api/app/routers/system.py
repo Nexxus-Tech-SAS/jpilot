@@ -21,6 +21,7 @@ from app.services.license_service import (
 )
 from app.services.license_sync_service import LicenseSyncError
 from app.services.update_service import (
+    cancel_update_request,
     check_for_updates,
     get_update_agent_info,
     get_version_info,
@@ -92,6 +93,14 @@ async def get_update_status(
 ) -> UpdateStatusResponse:
     """Poll the current update state (readable by any authenticated user)."""
     return read_update_status()
+
+
+@router.post("/update/cancel", response_model=UpdateStatusResponse)
+async def cancel_update(
+    _admin: dict = Depends(require_admin),
+) -> UpdateStatusResponse:
+    """Clear a stuck update request without starting a rebuild (admin only)."""
+    return cancel_update_request()
 
 
 @router.get("/update/agent", response_model=UpdateAgentResponse)

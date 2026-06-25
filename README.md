@@ -8,9 +8,11 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.106` (beta) — **Safer two-step login + cookie consent.** The login form now asks for **username first** (Continue / Enter), then reveals passkey + QR or password only after an explicit lookup — reducing passive username probing. Terms acceptance sits on step 1; with cookie consent, JPilot can remember that choice on this device. A site-wide **cookie consent** banner (Essential only / Accept all) gates preference storage; the Privacy Policy link is included. Enter advances Continue on step 1 and submits sign-in on the password step.
+**Current release:** `v0.107` (beta) — **Dashboard activity + update reliability + chat polish.** The home dashboard now includes **usage activity charts** (daily chat rounds, tokens, and Brave searches over the last 30 days, plus monthly provider breakdown) backed by a new `GET /copilot/usage-activity` API and per-day counters recorded from chat and search usage. **About & updates** is more reliable: stale update sentinels are reconciled automatically, admins can **cancel a stuck update request**, the host path unit watches **PathChanged** (not PathExists), and sentinel files are made writable for the host agent. The global update banner was removed; available updates appear on the **dashboard** instead. Chat no longer flashes “No enabled AI provider” before providers load; **welcome quick actions and blueprints auto-send** on click (no extra Send press). API calls use a 30s timeout and auth no longer logs you out on transient 503s.
 
-**Previous release:** `v0.105` (beta) — **Regression test for the clean tool-arg catch.** Locks in the v0.104 fix so it can't silently regress. The live watcher caught `netscaler_delete_lb` called with `vs_name` instead of `name` (the model recovered, but a stray `ValueError` traceback had briefly resurfaced during an active edit window). The v0.104 catch in `_execute_tool_with_memory_gate` already handles this correctly on committed code — verified live (a real delete-class arg error now returns a clean `{"success": false, …}` and the orchestrator logs no traceback). New `test_copilot_tool_arg_errors.py` asserts (1) a misnamed required arg returns a clean error without raising, (2) the catch is generic across tools, and (3) non-`ValueError` exceptions still propagate (guards against the catch being widened to bare `except Exception`). 3/3 passing.
+**Previous release:** `v0.106` (beta) — **Safer two-step login + cookie consent.** The login form now asks for **username first** (Continue / Enter), then reveals passkey + QR or password only after an explicit lookup — reducing passive username probing. Terms acceptance sits on step 1; with cookie consent, JPilot can remember that choice on this device. A site-wide **cookie consent** banner (Essential only / Accept all) gates preference storage; the Privacy Policy link is included. Enter advances Continue on step 1 and submits sign-in on the password step.
+
+**Previous release:** `v0.105` (beta) — **Regression test for the clean tool-arg catch.** Locks in the v0.104 fix so it can't silently regress. New `test_copilot_tool_arg_errors.py` asserts misnamed required args return clean errors without raising, the catch is generic across tools, and non-`ValueError` exceptions still propagate. 3/3 passing.
 
 **Previous release:** `v0.104` (beta) — **Clean tool-arg errors (no more tracebacks).** From the live watcher: when the chat model called a tool with a missing required argument (e.g. `name is required`), the backend raised a `ValueError` that logged a misleading ERROR + traceback every turn (the model recovered, but the logs looked like a crash). The tool-gate now catches tool-argument `ValueError`s, logs a `WARNING`, and returns a clean `{"success": false, "error": …, "hint": …}` result the model corrects from. Quieter logs, sharper watcher signal.
 
@@ -145,6 +147,17 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.107
+
+| Area | Highlights |
+|------|------------|
+| **Dashboard activity** | Daily charts for chat rounds, tokens, and Brave searches (30-day window) plus monthly usage by AI provider; data accumulates from new chat/search activity after upgrade. |
+| **Usage API** | `GET /copilot/usage-activity?days=30` returns the daily series; provider and Brave recording also increment global daily counters. |
+| **Self-update hardening** | Stale `request.json` / `status.json` sentinels are reconciled on read; `POST /system/update/cancel` clears a stuck request; path unit uses **PathChanged**; sentinel files chmod for host-agent pickup. |
+| **Update UX** | Removed the persistent top-of-app update banner; the dashboard shows an update notice with links to About & Updates and release notes. |
+| **Chat polish** | Provider warning waits until providers are loaded (no flash); Beta welcome quick actions and blueprints **send immediately** on click. |
+| **Resilience** | HTTP client 30s timeout; `/auth/me` failures other than 401/403 no longer force logout (e.g. brief 503 during backend restart). |
 
 ## What's new in v0.69
 

@@ -83,8 +83,8 @@ from app.services.copilot_roles import (
     resolve_persona,
     role_requires_appliance,
 )
-from app.schemas.model_usage import ModelUsageDashboardResponse, UsageLimitsUpdate
-from app.services.model_usage_service import get_usage_dashboard, update_usage_limits
+from app.schemas.model_usage import ModelUsageDashboardResponse, UsageActivityResponse, UsageLimitsUpdate
+from app.services.model_usage_service import get_usage_dashboard, get_usage_activity, update_usage_limits
 from app.services.copilot_streaming import stream_copilot_chat_events
 from app.services.copilot_appliance_service import connect_appliance, list_copilot_appliances
 
@@ -193,6 +193,14 @@ async def read_usage_dashboard(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> ModelUsageDashboardResponse:
     return await get_usage_dashboard(db)
+
+
+@router.get("/usage-activity", response_model=UsageActivityResponse)
+async def read_usage_activity(
+    days: int = 30,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> UsageActivityResponse:
+    return await get_usage_activity(db, days=days)
 
 
 @router.put("/usage-limits", response_model=ModelUsageDashboardResponse)

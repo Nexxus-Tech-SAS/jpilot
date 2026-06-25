@@ -11,10 +11,10 @@ Description=JPilot update-request sentinel watcher
 Documentation=https://github.com/Nexxus-Tech-SAS/jpilot
 
 [Path]
-# PathExists fires when the file appears; PathModified covers re-writes.
+# PathChanged only — do NOT use PathExists: it fires on unit start when an old
+# request.json is still on disk and would auto-trigger updates without a button click.
 # Edit the path below to match your jpilot installation directory.
-PathExists=/opt/jpilot/var/update/request.json
-PathModified=/opt/jpilot/var/update/request.json
+PathChanged=/opt/jpilot/var/update/request.json
 Unit=jpilot-update-agent.service
 
 [Install]

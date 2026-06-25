@@ -126,6 +126,20 @@
             <code>sudo journalctl -u jpilot-update-agent.service -n 50</code>.
           </Message>
 
+          <div
+            v-if="isAdmin && (updateTriggered || updateRunning) && !updateDone"
+            class="flex gap-2 flex-wrap mt-2"
+          >
+            <Button
+              label="Cancel update"
+              icon="pi pi-times"
+              size="small"
+              severity="secondary"
+              outlined
+              @click="dismissStuckUpdate"
+            />
+          </div>
+
           <div v-if="updateStatus?.progress?.length" class="update-log">
             <div
               v-for="(line, i) in updateStatus.progress"
@@ -326,7 +340,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import ChatMarkdown from './ChatMarkdown.vue'
 import { JPILOT_BETA } from '../config/product'
-import { checkForUpdates, getUpdateAgentStatus, getUpdateStatus, triggerUpdate } from '../services/system'
+import { checkForUpdates, cancelUpdate, getUpdateAgentStatus, getUpdateStatus, triggerUpdate } from '../services/system'
 
 const props = defineProps({
   isAdmin: {
@@ -552,6 +566,15 @@ async function pollStatus() {
       }
     }
   }
+}
+
+async function dismissStuckUpdate() {
+  try {
+    await cancelUpdate()
+  } catch {
+    // Still reset UI if cancel fails (e.g. network).
+  }
+  resetUpdateUi()
 }
 
 function resetUpdateUi() {

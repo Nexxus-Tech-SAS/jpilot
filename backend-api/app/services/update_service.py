@@ -35,15 +35,18 @@ _cache: dict[str, Any] = {"checked_at": None, "payload": None}
 
 
 def _read_installed_version() -> str:
+    candidates: list[str] = []
     for path in _version_paths:
         try:
             if path.is_file():
                 raw = path.read_text(encoding="utf-8").strip()
                 if raw:
-                    return _normalize_version(raw)
+                    candidates.append(_normalize_version(raw))
         except OSError:
             continue
-    return "0.0.0"
+    if not candidates:
+        return "0.0.0"
+    return max(candidates, key=_version_tuple)
 
 
 def _normalize_version(raw: str) -> str:
@@ -271,7 +274,54 @@ def _update_dir() -> Path:
     """Return the shared sentinel directory (create if missing)."""
     path = Path(os.environ.get(_UPDATE_DIR_ENV, _DEFAULT_UPDATE_DIR))
     path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.chmod(path.stat().st_mode | 0o777)
+    except OSError:
+        pass
     return path
+
+
+def _make_sentinel_writable(path: Path) -> None:
+    """Best-effort: backend may run as root in Docker while the host agent runs as the install owner."""
+    try:
+        path.chmod(0o666)
+    except OSError:
+        pass
+
+
+def _clear_sentinel_files() -> None:
+    for path in (_request_file(), _status_file()):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def reconcile_stale_update_lock() -> bool:
+    """Drop abandoned request/status files so updates stay manual (button-only).
+
+    Returns True when stale sentinels were cleared.
+    """
+    status_path = _status_file()
+    request_path = _request_file()
+    if not status_path.is_file() and not request_path.is_file():
+        return False
+
+    try:
+        if status_path.is_file():
+            raw = json.loads(status_path.read_text(encoding="utf-8"))
+            state = str(raw.get("state") or "idle")
+        else:
+            state = "idle"
+    except (OSError, json.JSONDecodeError):
+        state = "idle"
+
+    stale = state in ("requested", "running") and _lock_is_stale()
+    terminal_with_request = state in ("success", "failed", "idle") and request_path.is_file()
+    if stale or terminal_with_request:
+        _clear_sentinel_files()
+        return True
+    return False
 
 
 def _request_file() -> Path:
@@ -307,6 +357,9 @@ def get_update_agent_info() -> tuple[bool, str]:
 
 def read_update_status() -> UpdateStatusResponse:
     """Read status.json from the sentinel dir; return idle defaults if absent."""
+    if reconcile_stale_update_lock():
+        return UpdateStatusResponse(state="idle")
+
     status_path = _status_file()
     try:
         if status_path.is_file():
@@ -352,6 +405,8 @@ async def request_update() -> TriggerUpdateResponse:
     initialise status.json. Raises ValueError if already in-progress.
     Returns TriggerUpdateResponse (accepted=False) if already up to date.
     """
+    reconcile_stale_update_lock()
+
     # Single-flight guard — block only if an update is genuinely in progress.
     # A stale lock (host agent never picked it up / died) is allowed to be overridden.
     current_status = read_update_status()
@@ -392,6 +447,7 @@ async def request_update() -> TriggerUpdateResponse:
     _request_file().write_text(
         json.dumps(request_payload, indent=2), encoding="utf-8"
     )
+    _make_sentinel_writable(_request_file())
 
     # Initialise status.json so the frontend can poll immediately.
     initial_status_payload = {
@@ -405,6 +461,7 @@ async def request_update() -> TriggerUpdateResponse:
     _status_file().write_text(
         json.dumps(initial_status_payload, indent=2), encoding="utf-8"
     )
+    _make_sentinel_writable(_status_file())
 
     new_status = UpdateStatusResponse(
         state="requested",
@@ -418,3 +475,10 @@ async def request_update() -> TriggerUpdateResponse:
         message=f"Update to {target_tag} has been requested. The host agent will rebuild the stack shortly.",
         status=new_status,
     )
+
+
+def cancel_update_request() -> UpdateStatusResponse:
+    """Admin-only: clear a stuck or abandoned update request (does not roll back)."""
+    reconcile_stale_update_lock()
+    _clear_sentinel_files()
+    return UpdateStatusResponse(state="idle")

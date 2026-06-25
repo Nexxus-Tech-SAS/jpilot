@@ -183,18 +183,6 @@
     </Drawer>
 
     <main class="main-content flex-1 flex flex-column">
-      <div v-if="updateBannerVisible" class="update-banner">
-        <Message severity="warn" :closable="true" @close="dismissUpdateBanner">
-          <span>
-            JPilot <strong>{{ updateInfo.latest_display_version }}</strong> is available
-            (installed {{ updateInfo.display_version }}).
-            <RouterLink to="/settings?section=about" class="update-banner-link">
-              View update instructions
-            </RouterLink>
-          </span>
-        </Message>
-      </div>
-
       <div class="main-view">
         <router-view v-slot="{ Component, route }">
           <Transition name="page-fade" mode="out-in">
@@ -240,18 +228,15 @@ import Avatar from 'primevue/avatar'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Drawer from 'primevue/drawer'
 import Menu from 'primevue/menu'
-import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import Toast from 'primevue/toast'
 import TriArcLoader from '../components/TriArcLoader.vue'
 import { NEXXUS_TECH } from '../config/nexxusTech'
 import api from '../services/api'
 import { clearAuth, getStoredUser } from '../services/auth'
-import { checkForUpdates } from '../services/system'
 import { getTheme, toggleTheme } from '../services/theme'
 import { hasActiveChatRuns } from '../stores/copilotChatRuns'
 
-const DISMISS_KEY = 'jpilot_update_dismissed'
 const MOBILE_NAV_BREAKPOINT = 992
 
 const route = useRoute()
@@ -261,8 +246,6 @@ const mobileNavOpen = ref(false)
 const currentUser = ref(getStoredUser())
 const theme = ref(getTheme())
 const currentYear = new Date().getFullYear()
-const updateInfo = ref(null)
-const updateBannerDismissed = ref(false)
 const isFullscreen = ref(false)
 
 const fullscreenIcon = computed(() =>
@@ -277,10 +260,6 @@ const fullscreenTooltip = computed(() => fullscreenLabel.value)
 
 const isImmersiveBetaChat = computed(() => route.name === 'jpilot')
 
-const updateBannerVisible = computed(() =>
-  Boolean(updateInfo.value?.update_available) && !updateBannerDismissed.value
-)
-
 function closeMobileNav() {
   mobileNavOpen.value = false
 }
@@ -290,38 +269,6 @@ function openMobileNav() {
 }
 
 provide('openMobileNav', openMobileNav)
-
-function isUpdateDismissed(version) {
-  try {
-    return sessionStorage.getItem(DISMISS_KEY) === version
-  } catch {
-    return false
-  }
-}
-
-function dismissUpdateBanner() {
-  updateBannerDismissed.value = true
-  try {
-    sessionStorage.setItem(DISMISS_KEY, updateInfo.value?.latest_display_version || '1')
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-async function loadUpdateStatus(force = false) {
-  try {
-    const info = await checkForUpdates(force)
-    updateInfo.value = info
-    updateBannerDismissed.value = isUpdateDismissed(info.latest_display_version)
-  } catch {
-    updateInfo.value = null
-  }
-}
-
-function onUpdateAvailableEvent(event) {
-  updateInfo.value = event.detail
-  updateBannerDismissed.value = isUpdateDismissed(event.detail?.latest_display_version)
-}
 
 function onToggleTheme() {
   theme.value = toggleTheme()
@@ -404,20 +351,20 @@ onMounted(async () => {
   try {
     const { data } = await api.get('/auth/me')
     currentUser.value = data
-  } catch {
-    clearAuth()
-    router.push('/login')
+  } catch (err) {
+    const status = err.response?.status
+    if (status === 401 || status === 403) {
+      clearAuth()
+      router.push('/login')
+    }
     return
   }
-  window.addEventListener('jpilot-update-available', onUpdateAvailableEvent)
   window.addEventListener('resize', onViewportChange)
   document.addEventListener('fullscreenchange', syncFullscreenState)
   syncFullscreenState()
-  await loadUpdateStatus(false)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('jpilot-update-available', onUpdateAvailableEvent)
   window.removeEventListener('resize', onViewportChange)
   document.removeEventListener('fullscreenchange', syncFullscreenState)
 })
@@ -675,17 +622,6 @@ function isActive(item) {
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.update-banner {
-  padding-top: 0.25rem;
-}
-
-.update-banner-link {
-  margin-left: 0.35rem;
-  color: inherit;
-  font-weight: 600;
-  text-decoration: underline;
 }
 
 .app-legal {

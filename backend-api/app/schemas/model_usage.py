@@ -51,3 +51,16 @@ class ModelUsageDashboardResponse(BaseModel):
     periodKey: str
     providers: list[ProviderUsageItem]
     braveSearch: BraveUsageItem
+
+
+class UsageActivityDay(BaseModel):
+    date: str
+    label: str
+    requests: int = 0
+    tokens: int = 0
+    queries: int = 0
+
+
+class UsageActivityResponse(BaseModel):
+    days: int
+    series: list[UsageActivityDay]

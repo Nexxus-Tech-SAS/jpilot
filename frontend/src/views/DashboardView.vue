@@ -1,5 +1,27 @@
 <template>
   <div class="page">
+    <Message
+      v-if="updateInfo?.update_available"
+      severity="warn"
+      :closable="false"
+      class="update-notice mb-3"
+    >
+      <span>
+        <strong>{{ updateInfo.latest_display_version }}</strong> is available
+        (you are on {{ updateInfo.display_version }}).
+        <RouterLink to="/settings?section=about" class="update-notice-link">
+          View in About &amp; Updates
+        </RouterLink>
+        <a
+          v-if="updateInfo.release_url"
+          :href="updateInfo.release_url"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="update-notice-link"
+        >Release notes</a>
+      </span>
+    </Message>
+
     <div class="welcome-panel mb-3">
       <div class="welcome-panel-inner flex flex-column lg:flex-row lg:align-items-center lg:justify-content-between gap-2">
         <div class="welcome-copy">
@@ -84,6 +106,8 @@
       </div>
     </div>
 
+    <DashboardActivityPanel :is-admin="isAdmin" class="mb-3" />
+
     <NexxusMarketingSection pinned />
   </div>
 </template>
@@ -92,17 +116,21 @@
 import { onMounted, reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import NexxusMarketingSection from '../components/NexxusMarketingSection.vue'
+import DashboardActivityPanel from '../components/DashboardActivityPanel.vue'
 import { NEXXUS_TECH } from '../config/nexxusTech'
 import { isNetScalerVendor } from '../config/applianceVendors'
 import api from '../services/api'
 import { getDashboardQuickActions } from '../config/jpilotRecommendedActions'
 import { getMcpStatus } from '../services/mcp'
+import { checkForUpdates } from '../services/system'
 import { getStoredUser } from '../services/auth'
 
 const router = useRouter()
 const currentUser = ref(getStoredUser())
+const updateInfo = ref(null)
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 const quickActions = computed(() => getDashboardQuickActions(isAdmin.value))
 const stats = reactive({
@@ -122,15 +150,17 @@ onMounted(async () => {
     // Dashboard remains usable without role refresh.
   }
   try {
-    const [appliancesRes, providersRes, status] = await Promise.all([
+    const [appliancesRes, providersRes, status, updates] = await Promise.all([
       api.get('/appliances'),
       api.get('/ai-providers'),
-      getMcpStatus().catch(() => ({ online: false }))
+      getMcpStatus().catch(() => ({ online: false })),
+      checkForUpdates(false).catch(() => null)
     ])
     stats.netscalers = appliancesRes.data.filter((item) => isNetScalerVendor(item.vendor)).length
     stats.providers = providersRes.data.length
     stats.otherAppliances = appliancesRes.data.filter((item) => !isNetScalerVendor(item.vendor)).length
     mcpStatus.online = status.online
+    updateInfo.value = updates
   } catch {
     // Dashboard remains usable without stats
   }
@@ -171,6 +201,13 @@ onMounted(async () => {
 }
 
 .stat-link:hover {
+  text-decoration: underline;
+}
+
+.update-notice-link {
+  margin-left: 0.5rem;
+  color: inherit;
+  font-weight: 600;
   text-decoration: underline;
 }
 

@@ -5,6 +5,11 @@ export async function getModelUsageDashboard() {
   return data
 }
 
+export async function getUsageActivity(days = 30) {
+  const { data } = await api.get('/copilot/usage-activity', { params: { days } })
+  return data
+}
+
 export async function saveModelUsageLimits(payload) {
   const { data } = await api.put('/copilot/usage-limits', payload)
   return data

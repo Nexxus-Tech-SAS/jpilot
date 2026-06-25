@@ -126,8 +126,10 @@ validate_tag() {
 # Main
 # --------------------------------------------------------------------------
 
-# Ensure sentinel dir exists.
+# Ensure sentinel dir exists and is writable by the host agent user.
 mkdir -p "${UPDATE_DIR}"
+chmod ugo+rw "${UPDATE_DIR}" 2>/dev/null || true
+chmod ugo+rw "${REQUEST_FILE}" "${STATUS_FILE}" 2>/dev/null || true
 
 # Check for request file.
 if [ ! -f "${REQUEST_FILE}" ]; then
