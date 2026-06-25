@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         '/nexxus-blog': {
-          target: 'https://www.nexxus-tech.com',
+          target: 'https://nexxus-tech.com',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/nexxus-blog/, '/api/blog')
         }

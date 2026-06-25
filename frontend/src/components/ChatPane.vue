@@ -16,13 +16,24 @@
     <!-- shared hidden file inputs + attach menu -->
     <input
       ref="imageInputRef"
+      id="chat-attach-image"
+      name="chatAttachImage"
       type="file"
       accept="image/png,image/jpeg,image/webp,image/gif"
       multiple
       hidden
       @change="onImageSelected"
     />
-    <input ref="configInputRef" type="file" :accept="configAccept" multiple hidden @change="onConfigSelected" />
+    <input
+      ref="configInputRef"
+      id="chat-attach-config"
+      name="chatAttachConfig"
+      type="file"
+      :accept="configAccept"
+      multiple
+      hidden
+      @change="onConfigSelected"
+    />
     <Menu ref="attachMenu" :model="attachMenuItems" popup />
 
     <!-- Beta chat UI (Diamond ChatBox-style) -->
@@ -90,6 +101,7 @@
               <SelectButton
                 :model-value="activeRolePickerId"
                 :options="roleOptions"
+                option-label="label"
                 option-value="id"
                 data-key="id"
                 :allow-empty="false"
@@ -656,6 +668,7 @@
             <InputText
               ref="betaComposerRef"
               id="beta-message"
+              name="message"
               v-model="session.input"
               type="text"
               class="beta-input beta-composer-input flex-1 w-full"
@@ -731,6 +744,7 @@
       <SelectButton
         :model-value="activeRolePickerId"
         :options="roleOptions"
+        option-label="label"
         option-value="id"
         data-key="id"
         :allow-empty="false"
@@ -884,6 +898,8 @@
           <i class="pi pi-search glass-input-icon" />
           <input
             ref="askInputRef"
+            id="ask-message"
+            name="message"
             v-model="session.input"
             type="text"
             class="glass-input-field"
@@ -1125,6 +1141,8 @@
           @click="toggleAttachMenu"
         />
         <Textarea
+          id="chat-message"
+          name="message"
           v-model="session.input"
           rows="2"
           auto-resize
@@ -1217,7 +1235,12 @@
           <Tag severity="info" :value="calibrationSuggestedSkillLabel" />
         </div>
         <label class="calibration-checkbox">
-          <input v-model="calibrationForm.includeApplianceName" type="checkbox" />
+          <input
+            id="calibration-include-appliance"
+            name="includeApplianceName"
+            v-model="calibrationForm.includeApplianceName"
+            type="checkbox"
+          />
           Include connected appliance name in the report
         </label>
       </div>

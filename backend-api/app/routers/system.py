@@ -20,6 +20,7 @@ from app.services.license_service import (
     save_license_code,
 )
 from app.services.license_sync_service import LicenseSyncError
+from app.services.nexxus_blog_service import fetch_nexxus_blog_articles
 from app.services.update_service import (
     cancel_update_request,
     check_for_updates,
@@ -35,6 +36,17 @@ router = APIRouter(prefix="/system", tags=["system"])
 @router.get("/version", response_model=VersionResponse)
 async def read_version() -> VersionResponse:
     return get_version_info()
+
+
+@router.get("/nexxus-blog")
+async def read_nexxus_blog() -> list[dict]:
+    try:
+        return await fetch_nexxus_blog_articles()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not fetch Nexxus blog articles",
+        ) from exc
 
 
 @router.get("/portal-config", response_model=PortalConfigResponse)

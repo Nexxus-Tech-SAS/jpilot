@@ -1,6 +1,6 @@
 import { NEXXUS_BLOG_FALLBACK } from '../config/nexxusTech'
+import api from './api'
 
-const BLOG_PROXY_PATH = '/nexxus-blog'
 export const MAX_BLOG_ARTICLES = 4
 
 function normalizeArticle(article) {
@@ -17,13 +17,9 @@ function normalizeArticle(article) {
 
 export async function fetchNexxusBlogArticles() {
   try {
-    const response = await fetch(BLOG_PROXY_PATH, { credentials: 'same-origin' })
-    if (!response.ok) {
-      throw new Error(`Blog proxy returned ${response.status}`)
-    }
-    const data = await response.json()
+    const { data } = await api.get('/system/nexxus-blog', { timeout: 10000 })
     if (!Array.isArray(data) || data.length === 0) {
-      throw new Error('Blog proxy returned no articles')
+      throw new Error('Blog API returned no articles')
     }
     return data.slice(0, MAX_BLOG_ARTICLES).map(normalizeArticle)
   } catch {
