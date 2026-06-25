@@ -4,6 +4,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# ---------------------------------------------------------------------------
+# Blueprint suggestion card — surfaced when a strict match missed but a
+# relaxed/secondary match found a plausible candidate.
+# ---------------------------------------------------------------------------
+
 ChatRole = Literal["architect", "operator", "analyst"]
 
 
@@ -68,6 +73,7 @@ class ChatRequest(BaseModel):
     longTaskApproved: bool = False
     designDocumentContext: str | None = None
     includeDesignRevision: bool = False
+    skipBlueprintSkillId: str | None = None
 
 
 class CopilotApplianceItem(BaseModel):
@@ -122,6 +128,22 @@ class InputForm(BaseModel):
     fields: list[InputFormField] = []
 
 
+class BlueprintSuggestion(BaseModel):
+    """Surfaced on every turn where a blueprint is relevant.
+
+    state="applied"   — strict match hit; blueprint injected silently this turn.
+    state="suggested" — strict miss, relaxed candidate found; user can apply or skip.
+    """
+
+    skillId: str
+    label: str
+    summary: str = ""
+    confidence: int = 0
+    action: Literal["apply", "install"] = "apply"
+    applyPrompt: str
+    state: Literal["applied", "suggested"] = "suggested"
+
+
 class ChatResponse(BaseModel):
     role: str = "assistant"
     content: str
@@ -131,6 +153,7 @@ class ChatResponse(BaseModel):
     toolCalls: list[ToolCallTrace] = []
     inputForm: InputForm | None = None
     deploymentContinuation: DeploymentContinuation | None = None
+    blueprintSuggestion: BlueprintSuggestion | None = None
 
 
 class CopilotStatusResponse(BaseModel):

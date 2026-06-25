@@ -438,6 +438,120 @@ def _normalize_monitor_name(monitor: str) -> str:
     return monitor.strip()
 
 
+# NetScaler auto-binds these monitors; explicitly binding them errors.
+# Do NOT pass monitor= to create_lb when the value is one of these.
+_DEFAULT_MONITOR_NAMES: frozenset[str] = frozenset(
+    {
+        "tcp",
+        "tcp-default",
+        "ping",
+        "ping-default",
+        "http",
+        "http-default",
+        "http-ecv",
+        "dns",
+        "dns-tcp",
+        "udp",
+        "arp",
+        "citrix-web-interface",
+        "citrix-wi-extended",
+    }
+)
+
+
+def _is_default_monitor(monitor: str | None) -> bool:
+    """Return True if *monitor* is a NetScaler built-in that must not be explicitly bound."""
+    if not monitor:
+        return True
+    return monitor.strip().lower() in _DEFAULT_MONITOR_NAMES
+
+
+def classic_lb_fields_to_create_lb_args(
+    appliance_name: str,
+    fields: dict[str, Any],
+) -> dict[str, Any]:
+    """Map finalized classic-LB form/NL fields to netscaler_create_lb argument dict.
+
+    Supports single or multiple backends via backend_ip / backend_ips fields.
+    """
+    f = finalize_classic_lb_fields(fields)
+    # Multiple backends: backend_ips list takes precedence over single backend_ip
+    backend_ips: list[str] = []
+    if f.get("backend_ips"):
+        backend_ips = [str(ip).strip() for ip in f["backend_ips"] if str(ip).strip()]
+    if not backend_ips and f.get("backend_ip"):
+        backend_ips = [str(f["backend_ip"]).strip()]
+    args: dict[str, Any] = {
+        "appliance_name": appliance_name,
+        "name": str(f["vserver_name"]).strip(),
+        "vip": str(f["vip"]).strip(),
+        "servers": backend_ips,
+        "service_type": str(f.get("vserver_protocol") or "HTTP").strip().upper(),
+        "port": int(f.get("frontend_port") or 443),
+        "confirm": True,
+    }
+    backend_ports: list[int] = [int(p) for p in (f.get("backend_ports") or [])]
+    if backend_ports:
+        args["server_port"] = backend_ports[0]
+    if f.get("backend_protocol"):
+        args["server_protocol"] = str(f["backend_protocol"]).strip().upper()
+    if f.get("lb_method"):
+        args["lb_method"] = str(f["lb_method"]).strip().upper()
+    if f.get("persistence"):
+        args["persistence"] = str(f["persistence"]).strip().upper()
+    if f.get("ssl_cert"):
+        args["ssl_certkey"] = str(f["ssl_cert"]).strip()
+    monitor = str(f.get("monitor") or "").strip()
+    if monitor and not _is_default_monitor(monitor):
+        args["monitor"] = monitor
+    return args
+
+
+def http_lb_fields_to_create_lb_args(
+    appliance_name: str,
+    fields: dict[str, Any],
+) -> dict[str, Any]:
+    """Map HTTP calibration-form fields to netscaler_create_lb argument dict.
+
+    Supports multiple backends (IP:port pairs from parse_backend_server_endpoints).
+    The vserver name comes from _http_lb_resource_names.
+    """
+    base, vserver, _ = _http_lb_resource_names(str(fields["name"]))
+    vip = str(fields["virtual_ip"]).strip()
+    frontend_port_raw = str(fields.get("port") or "80").strip()
+    try:
+        frontend_port = int(frontend_port_raw)
+    except ValueError:
+        frontend_port = 80
+    protocol = str(fields.get("protocol") or "HTTP").strip().upper()
+
+    default_backend_port = frontend_port
+    if fields.get("servers_port"):
+        try:
+            default_backend_port = int(str(fields["servers_port"]).strip())
+        except ValueError:
+            pass
+
+    endpoints = parse_backend_server_endpoints(
+        fields.get("servers", ""),
+        default_port=default_backend_port,
+    )
+    server_ips = [ip for ip, _ in endpoints]
+    server_port = endpoints[0][1] if endpoints else default_backend_port
+
+    args: dict[str, Any] = {
+        "appliance_name": appliance_name,
+        "name": vserver,
+        "vip": vip,
+        "servers": server_ips,
+        "service_type": protocol,
+        "port": frontend_port,
+        "server_port": server_port,
+        "confirm": True,
+    }
+    return args
+
+
 def finalize_classic_lb_fields(fields: dict[str, Any]) -> dict[str, Any]:
     resolved = dict(fields)
     if resolved.get("monitor"):
@@ -529,24 +643,69 @@ def parse_natural_language_lb_request(user_message: str) -> dict[str, Any]:
     fields: dict[str, Any] = {}
 
     name_match = re.search(
-        r"load\s+balanc(?:er)?(?:\s+\w+){0,4}\s+for\s+([a-z][\w-]+)",
+        r"load\s+balanc(?:er)?(?:\s+\w+){0,4}\s+for\s+([\w-]+)",
         lowered,
     )
     if not name_match:
-        name_match = re.search(r"\bfor\s+([a-z][\w-]+)\b", lowered)
+        name_match = re.search(r"\bfor\s+([\w-]+)\b", lowered)
+    if not name_match:
+        # "load balancer NAME on ..." or "lb NAME ..." — name immediately follows keyword
+        name_match = re.search(
+            r"\b(?:load\s+balanc(?:er)?|lb)\s+([\w-]+)(?:\s+on\b|\s+vip\b|\s+with\b|\s+port\b)",
+            lowered,
+        )
     if name_match:
         fields["vserver_name"] = _normalize_vserver_name(name_match.group(1))
 
-    backend_match = re.search(
-        r"backend(?:\s+server)?s?\s+(\d{1,3}(?:\.\d{1,3}){3})",
+    # Capture all backend IPs from "backends IP1 and IP2 ..." or "backends IP1, IP2 ..."
+    # Strategy: grab text after "backends" keyword, then scan for IPs and the backend port.
+    backend_keyword_match = re.search(
+        r"backend(?:\s+server)?s?\s+(.+)",
         lowered,
     )
-    if backend_match:
-        fields["backend_ip"] = backend_match.group(1)
+    if backend_keyword_match:
+        after_backends = backend_keyword_match.group(1)
+        # Find all IPs in the text following "backends"
+        backend_ips = _IP_IN_TEXT_RE.findall(after_backends)
+        if backend_ips:
+            fields["backend_ip"] = backend_ips[0]
+            if len(backend_ips) > 1:
+                fields["backend_ips"] = backend_ips
+        # Look for "on port N" or "port N" immediately after IPs list (backend port context)
+        backend_port_match = re.search(r"\bon\s+port\s+(\d+)", after_backends)
+        if not backend_port_match:
+            backend_port_match = re.search(r"\bport\s+(\d+)", after_backends)
+        if backend_port_match:
+            try:
+                fields["backend_ports"] = [int(backend_port_match.group(1))]
+            except ValueError:
+                pass
+    else:
+        backend_match = re.search(
+            r"backend(?:\s+server)?s?\s+(\d{1,3}(?:\.\d{1,3}){3})",
+            lowered,
+        )
+        if backend_match:
+            fields["backend_ip"] = backend_match.group(1)
 
-    backend_ports = _parse_backend_ports_from_text(lowered)
-    if backend_ports:
-        fields["backend_ports"] = backend_ports
+    # Try to extract frontend port: "VIP IP port N" or "IP:PORT" patterns (before backends)
+    if not fields.get("frontend_port"):
+        # "on VIP 1.2.3.4 port 80" or "1.2.3.4 port 80 with backends"
+        vip_port_match = re.search(
+            r"\b(?:vip\s+)?\d{1,3}(?:\.\d{1,3}){3}\s+port\s+(\d+)",
+            lowered,
+        )
+        if vip_port_match:
+            try:
+                fields["frontend_port"] = int(vip_port_match.group(1))
+            except ValueError:
+                pass
+
+    if not fields.get("backend_ports"):
+        # Fall back to full-text port scanning if context-aware parse above found nothing
+        backend_ports_list = _parse_backend_ports_from_text(lowered)
+        if backend_ports_list:
+            fields["backend_ports"] = backend_ports_list
 
     frontend_match = re.search(
         r"front(?:\s*|-)?end\s*(?:ip\s+)?(\d{1,3}(?:\.\d{1,3}){3})",
@@ -555,9 +714,12 @@ def parse_natural_language_lb_request(user_message: str) -> dict[str, Any]:
     if frontend_match:
         fields["vip"] = frontend_match.group(1)
     else:
-        backend_ip = fields.get("backend_ip")
+        # Skip all known backend IPs when searching for the VIP
+        known_backend_ips: set[str] = set(fields.get("backend_ips") or [])
+        if fields.get("backend_ip"):
+            known_backend_ips.add(str(fields["backend_ip"]))
         for ip in _IP_IN_TEXT_RE.findall(user_message):
-            if ip != backend_ip:
+            if ip not in known_backend_ips:
                 fields["vip"] = ip
                 break
 
@@ -576,6 +738,18 @@ def parse_natural_language_lb_request(user_message: str) -> dict[str, Any]:
 
     if "no persistence" in lowered or "persistence none" in lowered or "without persistence" in lowered:
         fields["persistence"] = "NONE"
+    if "cookie" in lowered:
+        fields["persistence"] = "COOKIEINSERT"
+    if "sourceip" in lowered or "source ip" in lowered or "source-ip" in lowered:
+        fields["persistence"] = "SOURCEIP"
+
+    # LB method detection from natural language
+    if "round robin" in lowered or "roundrobin" in lowered:
+        fields["lb_method"] = "ROUNDROBIN"
+    elif "least connection" in lowered or "leastconnection" in lowered or "least conn" in lowered:
+        fields["lb_method"] = "LEASTCONNECTION"
+    elif "least response" in lowered or "leastresponsetime" in lowered:
+        fields["lb_method"] = "LEASTRESPONSETIME"
 
     if fields.get("vserver_name"):
         base = str(fields["vserver_name"]).replace("_vs", "")
@@ -710,38 +884,24 @@ async def _cleanup_commands_for_existing_lb(
     )
 
 
-async def _deploy_classic_lb(
+async def _run_cleanup_cli(
     db: AsyncIOMotorDatabase,
     *,
     appliance_name: str,
-    fields: dict[str, Any],
-    enabled_tool_names: set[str],
-) -> tuple[list[ToolCallTrace], str | None]:
-    if "netscaler_run_cli_commands" not in enabled_tool_names:
-        return [], (
-            "**Load balancer request** — enable `netscaler_run_cli_commands` in MCP settings and retry."
-        )
+    cleanup: list[str],
+    traces: list[ToolCallTrace],
+) -> str | None:
+    """Run the cleanup batch (unbind/rm of old vserver) via the battle-tested raw CLI path.
 
+    Returns an error message string if the cleanup failed hard, else None.
+    """
     from app.services.copilot_service import execute_copilot_tool
 
-    traces: list[ToolCallTrace] = []
-    fields = finalize_classic_lb_fields(fields)
-    vip = str(fields.get("vip") or "").strip()
-    existing_vips = await _existing_vip_addresses(
-        db,
-        appliance_name=appliance_name,
-        enabled_tool_names=enabled_tool_names,
-        traces=traces,
-    )
-    cleanup = await _cleanup_commands_for_existing_lb(
-        db,
-        appliance_name=appliance_name,
-        fields=fields,
-        enabled_tool_names=enabled_tool_names,
-        traces=traces,
-    )
-    commands = cleanup + build_classic_lb_commands(fields, skip_vip_add=vip in existing_vips)
-    arguments = {"appliance_name": appliance_name, "commands": commands}
+    arguments = {
+        "appliance_name": appliance_name,
+        "commands": cleanup,
+        "purpose": "Remove existing LB vserver before re-deploy",
+    }
     try:
         result = await execute_copilot_tool(
             db,
@@ -755,12 +915,174 @@ async def _deploy_classic_lb(
     traces.append(ToolCallTrace(name="netscaler_run_cli_commands", arguments=arguments, result=result))
     data = _parse_tool_result(result) or {}
     if data.get("blocked"):
+        return data.get("message") or "Cleanup was blocked."
+    if data.get("success") is False or data.get("commandFailed"):
+        message = str(data.get("message") or data.get("error") or "Cleanup failed.")
+        return f"**LB cleanup failed** — {message}"
+    return None
+
+
+async def _delete_lb_for_redeploy(
+    db: AsyncIOMotorDatabase,
+    *,
+    appliance_name: str,
+    vserver_name: str,
+    service_status_data: dict[str, Any],
+    traces: list[ToolCallTrace],
+) -> str | None:
+    """Remove an existing LB vserver and its backing services/servers using netscaler_delete_lb.
+
+    Looks for services/servers with the create_lb naming convention (<name>_svc<i>, <name>_srv<i>)
+    as well as any service groups matching <name>_sg to handle both old and new executor styles.
+    Returns an error message string if hard-failed, else None.
+    """
+    from app.services.copilot_service import execute_copilot_tool
+
+    prefix = vserver_name.lower()
+
+    # Find individual services/servers created by create_lb (naming: {vserver}_svc{i}, {vserver}_srv{i})
+    # Also find services bound to this vserver by checking the boundTo field.
+    all_services: list[str] = []
+    all_servers: list[str] = []
+
+    # Individual services from service status — include if bound to our vserver or name-prefixed
+    individual_svcs = service_status_data.get("services") or []
+    for svc in individual_svcs:
+        svc_name = str(svc.get("name") or "").strip()
+        if not svc_name:
+            continue
+        bound_to = [str(v).lower() for v in (svc.get("boundTo") or [])]
+        name_matches = svc_name.lower().startswith(prefix)
+        bound_matches = vserver_name.lower() in bound_to
+        if name_matches or bound_matches:
+            all_services.append(svc_name)
+            # Reconstruct server name from create_lb naming convention: {name}_svc{i} -> {name}_srv{i}
+            lower_svc = svc_name.lower()
+            if "_svc" in lower_svc:
+                idx = lower_svc.index("_svc")
+                srv_name = svc_name[:idx] + "_srv" + svc_name[idx + 4:]
+                all_servers.append(srv_name)
+
+    delete_args: dict[str, Any] = {
+        "appliance_name": appliance_name,
+        "name": vserver_name,
+        "confirm": True,
+    }
+    if all_services:
+        delete_args["services"] = all_services
+    if all_servers:
+        delete_args["servers"] = all_servers
+
+    try:
+        result = await execute_copilot_tool(
+            db,
+            "netscaler_delete_lb",
+            delete_args,
+            default_appliance_name=appliance_name,
+        )
+    except Exception as exc:
+        result = json.dumps({"success": False, "message": str(exc)}, indent=2)
+
+    traces.append(ToolCallTrace(name="netscaler_delete_lb", arguments=delete_args, result=result))
+    data = _parse_tool_result(result) or {}
+    if data.get("blocked"):
+        return data.get("message") or "LB delete was blocked."
+    # delete_lb uses apply_cli_config; warning-tolerant so success=True even on minor errors
+    if data.get("success") is False:
+        message = str(data.get("message") or data.get("error") or "LB delete failed.")
+        return f"**LB cleanup (delete) failed** — {message}"
+    return None
+
+
+async def _deploy_classic_lb(
+    db: AsyncIOMotorDatabase,
+    *,
+    appliance_name: str,
+    fields: dict[str, Any],
+    enabled_tool_names: set[str],
+) -> tuple[list[ToolCallTrace], str | None]:
+    if "netscaler_create_lb" not in enabled_tool_names:
+        return [], (
+            "**Load balancer request** — enable `netscaler_create_lb` in MCP settings and retry."
+        )
+
+    from app.services.copilot_service import execute_copilot_tool
+
+    traces: list[ToolCallTrace] = []
+    fields = finalize_classic_lb_fields(fields)
+    vserver_name = str(fields.get("vserver_name") or "").strip()
+
+    # --- Idempotency: discover existing VIPs + stale vserver for cleanup ---
+    await _existing_vip_addresses(
+        db,
+        appliance_name=appliance_name,
+        enabled_tool_names=enabled_tool_names,
+        traces=traces,
+    )
+
+    # Check if vserver already exists
+    vserver_exists = False
+    service_status_data: dict[str, Any] = {}
+    if "netscaler_list_virtual_servers" in enabled_tool_names and vserver_name:
+        vs_args = {"appliance_name": appliance_name}
+        try:
+            vs_result = await execute_copilot_tool(
+                db, "netscaler_list_virtual_servers", vs_args, default_appliance_name=appliance_name,
+            )
+        except Exception:
+            vs_result = ""
+        if vs_result:
+            traces.append(ToolCallTrace(name="netscaler_list_virtual_servers", arguments=vs_args, result=vs_result))
+            inventory = _parse_tool_result(vs_result) or {}
+            present = {str(item.get("name") or "").lower() for item in inventory.get("virtualServers") or []}
+            vserver_exists = vserver_name.lower() in present
+
+    if vserver_exists:
+        # Collect service status to identify services/servers bound to the old vserver
+        if "netscaler_list_service_status" in enabled_tool_names:
+            sg_args = {"appliance_name": appliance_name, "down_only": False}
+            try:
+                sg_result = await execute_copilot_tool(
+                    db, "netscaler_list_service_status", sg_args, default_appliance_name=appliance_name,
+                )
+                traces.append(ToolCallTrace(name="netscaler_list_service_status", arguments=sg_args, result=sg_result))
+                service_status_data = _parse_tool_result(sg_result) or {}
+            except Exception:
+                service_status_data = {}
+
+        # Remove existing vserver via netscaler_delete_lb (handles both service and serviceGroup styles)
+        cleanup_err = await _delete_lb_for_redeploy(
+            db,
+            appliance_name=appliance_name,
+            vserver_name=vserver_name,
+            service_status_data=service_status_data,
+            traces=traces,
+        )
+        if cleanup_err:
+            return traces, cleanup_err
+
+    # --- Write via netscaler_create_lb (single executor) ---
+    create_args = classic_lb_fields_to_create_lb_args(appliance_name, fields)
+    try:
+        result = await execute_copilot_tool(
+            db,
+            "netscaler_create_lb",
+            create_args,
+            default_appliance_name=appliance_name,
+        )
+    except Exception as exc:
+        result = json.dumps({"success": False, "message": str(exc)}, indent=2)
+
+    traces.append(ToolCallTrace(name="netscaler_create_lb", arguments=create_args, result=result))
+    data = _parse_tool_result(result) or {}
+    if data.get("blocked"):
         return traces, data.get("message") or "Classic LB deploy was blocked."
 
     if data.get("success") is False or data.get("commandFailed"):
         message = str(data.get("message") or data.get("error") or "Classic LB deploy failed.")
         return traces, f"**Classic LB deploy failed** — {message}"
 
+    # --- Post-write verify ---
     verify_data: dict[str, Any] | None = None
     if "netscaler_list_virtual_servers" in enabled_tool_names:
         verify_args = {"appliance_name": appliance_name}
@@ -821,9 +1143,14 @@ def format_classic_lb_response(
     vip = str(fields["vip"]).strip()
     frontend_port = int(fields.get("frontend_port") or 443)
     ssl_cert = str(fields.get("ssl_cert") or "").strip()
-    backend_ip = str(fields["backend_ip"]).strip()
+    # Support multiple backends (backend_ips list) or single backend_ip
+    if fields.get("backend_ips"):
+        all_backend_ips = [str(ip).strip() for ip in fields["backend_ips"]]
+    else:
+        all_backend_ips = [str(fields.get("backend_ip") or "").strip()]
     backend_ports = fields.get("backend_ports") or []
-    backend_text = ", ".join(f"`{backend_ip}:{port}`" for port in backend_ports)
+    port_str = f":{backend_ports[0]}" if backend_ports else ""
+    backend_text = ", ".join(f"`{ip}{port_str}`" for ip in all_backend_ips if ip)
 
     state, server_count = _vserver_state_from_list(verify_data or {}, vserver)
     state_upper = state.upper()
@@ -856,9 +1183,14 @@ def format_classic_lb_plan(appliance_name: str, fields: dict[str, Any]) -> str:
     vip = str(fields.get("vip") or "").strip()
     frontend_port = int(fields.get("frontend_port") or 443)
     ssl_cert = str(fields.get("ssl_cert") or "").strip()
-    backend_ip = str(fields.get("backend_ip") or "").strip()
+    # Support multiple backends
+    if fields.get("backend_ips"):
+        all_backend_ips = [str(ip).strip() for ip in fields["backend_ips"]]
+    else:
+        all_backend_ips = [str(fields.get("backend_ip") or "").strip()]
     backend_ports = fields.get("backend_ports") or []
-    backend_text = ", ".join(f"`{backend_ip}:{port}`" for port in backend_ports) or "_none_"
+    port_str = f":{backend_ports[0]}" if backend_ports else ""
+    backend_text = ", ".join(f"`{ip}{port_str}`" for ip in all_backend_ips if ip) or "_none_"
     monitor = str(fields.get("monitor") or "tcp")
     lb_method = str(fields.get("lb_method") or "LEASTCONNECTION")
 
@@ -906,14 +1238,14 @@ async def try_auto_deploy_http_lb(
     appliance_name: str,
     enabled_tool_names: set[str],
 ) -> tuple[list[ToolCallTrace], str | None]:
-    """Apply calibration HTTP LB form via classic server + serviceGroup + vserver CLI."""
+    """Apply calibration HTTP LB form via netscaler_create_lb (single executor)."""
     if not appliance_name:
         return [], None
     if not detect_http_lb_form_submission(user_message):
         return [], None
-    if "netscaler_run_cli_commands" not in enabled_tool_names:
+    if "netscaler_create_lb" not in enabled_tool_names:
         return [], (
-            "**HTTP Load Balancer form received** — enable `netscaler_run_cli_commands` "
+            "**HTTP Load Balancer form received** — enable `netscaler_create_lb` "
             "in MCP settings and retry."
         )
 
@@ -921,38 +1253,64 @@ async def try_auto_deploy_http_lb(
 
     fields = parse_configuration_form_fields(user_message)
     _, vserver, _ = _http_lb_resource_names(str(fields["name"]))
-    vip = str(fields["virtual_ip"]).strip()
     traces: list[ToolCallTrace] = []
-    existing_vips = await _existing_vip_addresses(
+
+    # --- Idempotency: discover existing VIPs + stale vserver for cleanup ---
+    await _existing_vip_addresses(
         db,
         appliance_name=appliance_name,
         enabled_tool_names=enabled_tool_names,
         traces=traces,
     )
-    cleanup = await _cleanup_commands_for_existing_lb(
-        db,
-        appliance_name=appliance_name,
-        fields={"vserver_name": vserver, "vip": vip},
-        enabled_tool_names=enabled_tool_names,
-        traces=traces,
-    )
-    commands = cleanup + build_http_lb_commands(fields, skip_vip_add=vip in existing_vips)
-    arguments = {
-        "appliance_name": appliance_name,
-        "commands": commands,
-        "purpose": "Deploy HTTP load balancer from calibration form",
-    }
+
+    # Check if vserver already exists and clean up if so
+    if "netscaler_list_virtual_servers" in enabled_tool_names:
+        vs_args = {"appliance_name": appliance_name}
+        try:
+            vs_result = await execute_copilot_tool(
+                db, "netscaler_list_virtual_servers", vs_args, default_appliance_name=appliance_name,
+            )
+        except Exception:
+            vs_result = ""
+        if vs_result:
+            traces.append(ToolCallTrace(name="netscaler_list_virtual_servers", arguments=vs_args, result=vs_result))
+            inventory = _parse_tool_result(vs_result) or {}
+            present = {str(item.get("name") or "").lower() for item in inventory.get("virtualServers") or []}
+            if vserver.lower() in present:
+                service_status_data: dict[str, Any] = {}
+                if "netscaler_list_service_status" in enabled_tool_names:
+                    sg_args = {"appliance_name": appliance_name, "down_only": False}
+                    try:
+                        sg_result = await execute_copilot_tool(
+                            db, "netscaler_list_service_status", sg_args, default_appliance_name=appliance_name,
+                        )
+                        traces.append(ToolCallTrace(name="netscaler_list_service_status", arguments=sg_args, result=sg_result))
+                        service_status_data = _parse_tool_result(sg_result) or {}
+                    except Exception:
+                        service_status_data = {}
+                cleanup_err = await _delete_lb_for_redeploy(
+                    db,
+                    appliance_name=appliance_name,
+                    vserver_name=vserver,
+                    service_status_data=service_status_data,
+                    traces=traces,
+                )
+                if cleanup_err:
+                    return traces, cleanup_err
+
+    # --- Write via netscaler_create_lb (single executor) ---
+    create_args = http_lb_fields_to_create_lb_args(appliance_name, fields)
     try:
         result = await execute_copilot_tool(
             db,
-            "netscaler_run_cli_commands",
-            arguments,
+            "netscaler_create_lb",
+            create_args,
             default_appliance_name=appliance_name,
         )
     except Exception as exc:
         result = json.dumps({"success": False, "message": str(exc)}, indent=2)
 
-    traces.append(ToolCallTrace(name="netscaler_run_cli_commands", arguments=arguments, result=result))
+    traces.append(ToolCallTrace(name="netscaler_create_lb", arguments=create_args, result=result))
     data = _parse_tool_result(result) or {}
     if data.get("blocked"):
         return traces, data.get("message") or "HTTP load balancer deploy was blocked."
@@ -961,6 +1319,7 @@ async def try_auto_deploy_http_lb(
         message = str(data.get("message") or data.get("error") or "HTTP load balancer deploy failed.")
         return traces, f"**HTTP load balancer deploy failed** — {message}"
 
+    # --- Post-write verify ---
     verify_data: dict[str, Any] | None = None
     if "netscaler_list_virtual_servers" in enabled_tool_names:
         verify_args = {"appliance_name": appliance_name}
@@ -987,7 +1346,7 @@ async def try_auto_deploy_http_lb(
     backend_text = ", ".join(f"`{ip}:{port}`" for ip, port in endpoints)
     state, server_count = _vserver_state_from_list(verify_data or {}, vserver)
     lines = [
-        f"**{appliance_name}** — HTTP load balancer `{vserver}` deployed via classic CLI.",
+        f"**{appliance_name}** — HTTP load balancer `{vserver}` deployed via `netscaler_create_lb`.",
         "",
         f"- Frontend VIP: `{vip}:{fields.get('port', '80')}` ({fields.get('protocol', 'HTTP')})",
         f"- Backends: {backend_text}",

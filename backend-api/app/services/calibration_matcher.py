@@ -306,3 +306,62 @@ def resolve_blueprint_turn_context(
         matched_skill_ids=skill_ids,
         stack_calibration_reviewed=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Relaxed-candidate helper for blueprint suggestion cards.
+# Called when the strict match returned relevant=False.  Returns ONE candidate
+# (the highest-scored installed skill for this role/vendor) when its score meets
+# a minimum floor — so only plausible matches surface a suggestion card.
+# ---------------------------------------------------------------------------
+
+_RELAXED_CONFIDENCE_FLOOR = 1  # priority > 0 OR any manifest label hit counts
+
+
+def find_relaxed_blueprint_candidate(
+    *,
+    user_message: str,
+    role: str,
+    vendor: str,
+    installed: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the single best installed skill for role/vendor as a suggestion candidate.
+
+    Uses a lenient scoring path: trigger score 0 is accepted when the skill has a
+    positive priority (priority score alone meets the floor).  Requires at least one
+    installed skill to exist for the role/vendor (caller should gate on
+    ``has_installed_skills_for_chat`` first).
+
+    Returns None when no candidate meets the floor.
+    """
+    scoped = _installed_for_chat(installed, role=role, vendor=vendor)
+    if not scoped:
+        return None
+
+    best_score = -1
+    best_row: dict[str, Any] | None = None
+
+    for row in scoped:
+        manifest = row.get("manifest") or {}
+        triggers = manifest.get("triggers") or {}
+        score = 0
+        if _message_matches_triggers(user_message, triggers):
+            score += 100
+        score += int(manifest.get("priority") or 0)
+        # Also do a lightweight memory search hit boost — if a memory search finds this
+        # skill it gets +50 on top of existing score.
+        # (Avoid the full async search here; use synchronous trigger-only path.)
+        if score > best_score:
+            best_score = score
+            best_row = row
+
+    if best_row is None or best_score < _RELAXED_CONFIDENCE_FLOOR:
+        return None
+
+    manifest = best_row.get("manifest") or {}
+    return {
+        "skillId": str(best_row.get("skillId") or ""),
+        "label": str(manifest.get("label") or best_row.get("skillId") or ""),
+        "summary": str(manifest.get("description") or manifest.get("summary") or ""),
+        "confidence": min(best_score, 100),
+    }

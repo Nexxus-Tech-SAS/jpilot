@@ -1854,8 +1854,12 @@ async def _nitro_post_nsconfig_save(
         json={"nsconfig": {}},
         headers={**headers, "Content-Type": "application/json"},
     )
-    payload = response.json()
-    if response.status_code >= 400 or payload.get("errorcode", 0) != 0:
+    # NITRO returns 200/201 with an empty body on success; tolerate non-JSON bodies.
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {"message": response.text.strip()} if response.text.strip() else {}
+    if response.status_code >= 400 or payload.get("errorcode", 0) not in (0, None):
         message = payload.get("message") or _extract_error_message(response)
         raise ValueError(message or f"save ns config failed with HTTP {response.status_code}")
     return payload
@@ -1900,8 +1904,12 @@ async def add_ip_address(
             json=body,
             headers={**headers, "Content-Type": "application/json"},
         )
-        payload = response.json()
-        if response.status_code >= 400 or payload.get("errorcode", 0) != 0:
+        # NITRO returns 201 Created with an empty body on success; tolerate non-JSON bodies.
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {"message": response.text.strip()} if response.text.strip() else {}
+        if response.status_code >= 400 or payload.get("errorcode", 0) not in (0, None):
             message = payload.get("message") or _extract_error_message(response)
             raise ValueError(message or f"add ns ip failed with HTTP {response.status_code}")
 
@@ -2055,3 +2063,1010 @@ async def generate_ssl_self_signed(
 
 def format_tool_result(data: Any) -> str:
     return json.dumps(data, indent=2, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Shared helper — safety gate: nothing executes unless confirm=True
+# ---------------------------------------------------------------------------
+
+async def apply_cli_config(
+    host: str,
+    username: str,
+    password: str,
+    commands: list[str],
+    *,
+    dry_run: bool,
+    confirm: bool,
+    save: bool = True,
+) -> dict[str, Any]:
+    """Execute a list of classic CLI commands with an explicit confirm gate.
+
+    - If dry_run is True OR confirm is False → return a preview without touching the appliance.
+    - If confirm is True (and not dry_run) → execute via run_cli_commands; optionally save config.
+    """
+    if dry_run or not confirm:
+        return {
+            "success": True,
+            "dryRun": True,
+            "commands": commands,
+            "message": "Preview only — re-run with confirm=true to apply.",
+        }
+
+    # Use stop_on_error=False so that NetScaler warning-only exit-code-1 responses
+    # do not abort the sequence. We re-evaluate success by checking for actual ERRORs.
+    result = await run_cli_commands(host, username, password, commands, stop_on_error=False)
+
+    # Recompute success: a step is truly failed only if its output contains "ERROR:"
+    import re as _re
+    truly_failed = [
+        r for r in result.get("results", [])
+        if not r.get("success") and _re.search(r"\bERROR\b", r.get("output", "") + r.get("stderr", ""), _re.IGNORECASE)
+    ]
+    if not truly_failed:
+        result["success"] = True
+        result["warnings"] = [
+            r["command"] for r in result.get("results", []) if not r.get("success")
+        ]
+
+    if result.get("success") and save:
+        save_result = await run_cli_command(host, username, password, "save ns config")
+        result["saveResult"] = save_result
+    result["applied"] = result.get("success", False)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# netscaler_create_lb
+# ---------------------------------------------------------------------------
+
+async def create_lb(
+    host: str,
+    username: str,
+    password: str,
+    name: str,
+    vip: str,
+    servers: list[str],
+    *,
+    service_type: str = "HTTP",
+    port: int = 80,
+    server_port: int | None = None,
+    server_protocol: str | None = None,
+    lb_method: str | None = None,
+    persistence: str | None = None,
+    persistence_timeout: int | None = None,
+    ssl_certkey: str | None = None,
+    monitor: str | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Build an LB vserver with backend servers/services using the classic CLI."""
+    if not name:
+        raise ValueError("name is required")
+    if not vip:
+        raise ValueError("vip (virtual IP) is required")
+    if not servers:
+        raise ValueError("servers list must contain at least one backend IP")
+
+    effective_server_port = server_port if server_port is not None else port
+    effective_server_protocol = server_protocol if server_protocol else service_type
+
+    service_names: list[str] = []
+    server_names: list[str] = []
+    commands: list[str] = ["enable ns feature LB"]
+
+    for i, ip in enumerate(servers, start=1):
+        srv_name = f"{name}_srv{i}"
+        svc_name = f"{name}_svc{i}"
+        server_names.append(srv_name)
+        service_names.append(svc_name)
+        commands.append(f"add server {srv_name} {ip}")
+        commands.append(
+            f"add service {svc_name} {srv_name} {effective_server_protocol} {effective_server_port}"
+        )
+        if monitor:
+            commands.append(f"bind service {svc_name} -monitorName {monitor}")
+
+    commands.append(f"add lb vserver {name} {service_type} {vip} {port}")
+
+    for svc_name in service_names:
+        commands.append(f"bind lb vserver {name} {svc_name}")
+
+    if lb_method:
+        commands.append(f"set lb vserver {name} -lbMethod {lb_method}")
+
+    if persistence:
+        set_persistence = f"set lb vserver {name} -persistenceType {persistence}"
+        if persistence_timeout is not None:
+            set_persistence += f" -timeout {persistence_timeout}"
+        commands.append(set_persistence)
+
+    if ssl_certkey:
+        commands.append(f"bind ssl vserver {name} -certkeyName {ssl_certkey}")
+
+    result = await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+    result["vserverName"] = name
+    result["serviceNames"] = service_names
+    result["serverNames"] = server_names
+    return result
+
+
+# ---------------------------------------------------------------------------
+# netscaler_modify_lb
+# ---------------------------------------------------------------------------
+
+async def modify_lb(
+    host: str,
+    username: str,
+    password: str,
+    name: str,
+    *,
+    lb_method: str | None = None,
+    persistence: str | None = None,
+    persistence_timeout: int | None = None,
+    comment: str | None = None,
+    state: str | None = None,
+    add_servers: list[str] | None = None,
+    remove_services: list[str] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Modify an existing LB vserver: change method/persistence, enable/disable, add/remove backends."""
+    if not name:
+        raise ValueError("name is required")
+
+    commands: list[str] = []
+
+    # set lb vserver parameters
+    set_parts: list[str] = []
+    if lb_method:
+        set_parts.append(f"-lbMethod {lb_method}")
+    if persistence:
+        set_parts.append(f"-persistenceType {persistence}")
+        if persistence_timeout is not None:
+            set_parts.append(f"-timeout {persistence_timeout}")
+    if comment is not None:
+        set_parts.append(f"-comment {shlex.quote(comment)}")
+    if set_parts:
+        commands.append(f"set lb vserver {name} " + " ".join(set_parts))
+
+    # enable / disable
+    if state:
+        s = state.strip().lower()
+        if s == "enable":
+            commands.append(f"enable lb vserver {name}")
+        elif s == "disable":
+            commands.append(f"disable lb vserver {name}")
+        else:
+            raise ValueError("state must be 'enable' or 'disable'")
+
+    # remove services: unbind then rm
+    for svc in (remove_services or []):
+        commands.append(f"unbind lb vserver {name} {svc}")
+        commands.append(f"rm service {svc}")
+
+    # add new backend servers and services
+    new_service_names: list[str] = []
+    new_server_names: list[str] = []
+    if add_servers:
+        # use a timestamp-like suffix to avoid name collisions
+        import time as _time
+        suffix = str(int(_time.time()))[-6:]
+        for i, ip in enumerate(add_servers, start=1):
+            srv_name = f"{name}_srv{suffix}_{i}"
+            svc_name = f"{name}_svc{suffix}_{i}"
+            new_server_names.append(srv_name)
+            new_service_names.append(svc_name)
+            commands.append(f"add server {srv_name} {ip}")
+            commands.append(f"add service {svc_name} {srv_name} HTTP 80")
+            commands.append(f"bind lb vserver {name} {svc_name}")
+
+    if not commands:
+        return {
+            "success": False,
+            "message": "No modifications specified. Provide at least one of: lb_method, persistence, state, add_servers, remove_services, comment.",
+        }
+
+    result = await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+    if new_service_names:
+        result["addedServiceNames"] = new_service_names
+        result["addedServerNames"] = new_server_names
+    return result
+
+
+# ---------------------------------------------------------------------------
+# netscaler_delete_lb
+# ---------------------------------------------------------------------------
+
+async def delete_lb(
+    host: str,
+    username: str,
+    password: str,
+    name: str,
+    *,
+    services: list[str] | None = None,
+    servers: list[str] | None = None,
+    remove_backends: bool = True,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Safely remove an LB vserver and optionally its backing services and servers."""
+    if not name:
+        raise ValueError("name is required")
+
+    commands: list[str] = [f"disable lb vserver {name}"]
+
+    for svc in (services or []):
+        commands.append(f"unbind lb vserver {name} {svc}")
+
+    commands.append(f"rm lb vserver {name}")
+
+    if remove_backends:
+        for svc in (services or []):
+            commands.append(f"rm service {svc}")
+        for srv in (servers or []):
+            commands.append(f"rm server {srv}")
+
+    return await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+
+
+# ---------------------------------------------------------------------------
+# netscaler_create_cs
+# ---------------------------------------------------------------------------
+
+async def create_cs(
+    host: str,
+    username: str,
+    password: str,
+    name: str,
+    vip: str,
+    *,
+    service_type: str = "HTTP",
+    port: int = 80,
+    policies: list[dict[str, Any]] | None = None,
+    default_lb_vserver: str | None = None,
+    ssl_certkey: str | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Create a CS vserver with content-switching policies using the classic CLI.
+
+    CLI order:
+      enable ns feature CS
+      add cs vserver <name> <service_type> <vip> <port>
+      for each policy:
+        add cs policy <policy_name> -rule '<rule>'
+        bind cs vserver <name> -policyName <policy_name> -targetLBVserver <target_lb_vserver> -priority <priority>
+      if default_lb_vserver:
+        set cs vserver <name> -lbvserver <default_lb_vserver>
+      if ssl_certkey:
+        bind ssl vserver <name> -certkeyName <ssl_certkey>
+
+    Rules may contain double-quotes; wrap them in single quotes in the CLI string.
+    """
+    if not name:
+        raise ValueError("name is required")
+    if not vip:
+        raise ValueError("vip (virtual IP) is required")
+
+    commands: list[str] = ["enable ns feature CS"]
+    commands.append(f"add cs vserver {name} {service_type} {vip} {port}")
+
+    policy_names: list[str] = []
+    for policy in (policies or []):
+        pol_name = policy.get("policy_name", "").strip()
+        rule = policy.get("rule", "").strip()
+        target_lb = policy.get("target_lb_vserver", "").strip()
+        priority = int(policy.get("priority", 100))
+        if not pol_name:
+            raise ValueError("Each policy must have a policy_name")
+        if not rule:
+            raise ValueError(f"Policy '{pol_name}' must have a rule")
+        if not target_lb:
+            raise ValueError(f"Policy '{pol_name}' must have a target_lb_vserver")
+        policy_names.append(pol_name)
+        commands.append(f"add cs policy {pol_name} -rule '{rule}'")
+        commands.append(
+            f"bind cs vserver {name} -policyName {pol_name}"
+            f" -targetLBVserver {target_lb} -priority {priority}"
+        )
+
+    if default_lb_vserver:
+        # The default LB vserver is set by binding the CS vserver without a policy name.
+        commands.append(f"bind cs vserver {name} -lbvserver {default_lb_vserver}")
+
+    if ssl_certkey:
+        commands.append(f"bind ssl vserver {name} -certkeyName {ssl_certkey}")
+
+    result = await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+    result["vserverName"] = name
+    result["policyNames"] = policy_names
+    return result
+
+
+# ---------------------------------------------------------------------------
+# netscaler_modify_cs
+# ---------------------------------------------------------------------------
+
+async def modify_cs(
+    host: str,
+    username: str,
+    password: str,
+    name: str,
+    *,
+    set_policy_rule: dict[str, Any] | None = None,
+    rebind_policy: dict[str, Any] | None = None,
+    default_lb_vserver: str | None = None,
+    state: str | None = None,
+    add_policy: dict[str, Any] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Modify an existing CS vserver: update policy rules, rebind policies, set default LB, or toggle state."""
+    if not name:
+        raise ValueError("name is required")
+
+    commands: list[str] = []
+
+    # Update rule on an existing CS policy
+    if set_policy_rule:
+        pol_name = set_policy_rule.get("policy_name", "").strip()
+        rule = set_policy_rule.get("rule", "").strip()
+        if not pol_name:
+            raise ValueError("set_policy_rule.policy_name is required")
+        if not rule:
+            raise ValueError("set_policy_rule.rule is required")
+        commands.append(f"set cs policy {pol_name} -rule '{rule}'")
+
+    # Unbind then re-bind a policy (e.g. to change target or priority)
+    if rebind_policy:
+        pol_name = rebind_policy.get("policy_name", "").strip()
+        target_lb = rebind_policy.get("target_lb_vserver", "").strip()
+        priority = int(rebind_policy.get("priority", 100))
+        if not pol_name:
+            raise ValueError("rebind_policy.policy_name is required")
+        if not target_lb:
+            raise ValueError("rebind_policy.target_lb_vserver is required")
+        commands.append(f"unbind cs vserver {name} -policyName {pol_name}")
+        commands.append(
+            f"bind cs vserver {name} -policyName {pol_name}"
+            f" -targetLBVserver {target_lb} -priority {priority}"
+        )
+
+    # Change default LB vserver (bind cs vserver -lbvserver is the correct syntax)
+    if default_lb_vserver:
+        commands.append(f"bind cs vserver {name} -lbvserver {default_lb_vserver}")
+
+    # Enable / disable the CS vserver
+    if state:
+        s = state.strip().lower()
+        if s == "enable":
+            commands.append(f"enable cs vserver {name}")
+        elif s == "disable":
+            commands.append(f"disable cs vserver {name}")
+        else:
+            raise ValueError("state must be 'enable' or 'disable'")
+
+    # Add a brand-new policy and bind it
+    if add_policy:
+        pol_name = add_policy.get("policy_name", "").strip()
+        rule = add_policy.get("rule", "").strip()
+        target_lb = add_policy.get("target_lb_vserver", "").strip()
+        priority = int(add_policy.get("priority", 100))
+        if not pol_name:
+            raise ValueError("add_policy.policy_name is required")
+        if not rule:
+            raise ValueError("add_policy.rule is required")
+        if not target_lb:
+            raise ValueError("add_policy.target_lb_vserver is required")
+        commands.append(f"add cs policy {pol_name} -rule '{rule}'")
+        commands.append(
+            f"bind cs vserver {name} -policyName {pol_name}"
+            f" -targetLBVserver {target_lb} -priority {priority}"
+        )
+
+    if not commands:
+        return {
+            "success": False,
+            "message": (
+                "No modifications specified. Provide at least one of: "
+                "set_policy_rule, rebind_policy, default_lb_vserver, state, add_policy."
+            ),
+        }
+
+    return await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+
+
+# ---------------------------------------------------------------------------
+# netscaler_delete_cs
+# ---------------------------------------------------------------------------
+
+async def delete_cs(
+    host: str,
+    username: str,
+    password: str,
+    name: str,
+    *,
+    policies: list[str] | None = None,
+    remove_policies: bool = True,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Safely remove a CS vserver and optionally its bound CS policies.
+
+    Safe deletion order:
+      disable cs vserver <name>
+      for each policy: unbind cs vserver <name> -policyName <p>
+      rm cs vserver <name>
+      if remove_policies: rm cs policy <p> for each policy
+    """
+    if not name:
+        raise ValueError("name is required")
+
+    commands: list[str] = [f"disable cs vserver {name}"]
+
+    for pol in (policies or []):
+        commands.append(f"unbind cs vserver {name} -policyName {pol}")
+
+    commands.append(f"rm cs vserver {name}")
+
+    if remove_policies:
+        for pol in (policies or []):
+            commands.append(f"rm cs policy {pol}")
+
+    return await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+
+
+# ---------------------------------------------------------------------------
+# netscaler_create_rewrite
+# ---------------------------------------------------------------------------
+
+async def create_rewrite(
+    host: str,
+    username: str,
+    password: str,
+    action_name: str,
+    action_type: str,
+    target: str,
+    policy_name: str,
+    rule: str,
+    *,
+    expression: str | None = None,
+    bind_to: dict[str, Any] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Create a rewrite action + policy and optionally bind it to an LB/CS vserver."""
+    if not action_name:
+        raise ValueError("action_name is required")
+    if not action_type:
+        raise ValueError("action_type is required")
+    if not target:
+        raise ValueError("target is required")
+    if not policy_name:
+        raise ValueError("policy_name is required")
+    if not rule:
+        raise ValueError("rule is required")
+
+    valid_action_types = {"insert_http_header", "delete_http_header", "replace"}
+    at = action_type.strip().lower()
+    if at not in valid_action_types:
+        raise ValueError(f"action_type must be one of: {', '.join(sorted(valid_action_types))}")
+
+    commands: list[str] = ["enable ns feature REWRITE"]
+
+    # Build 'add rewrite action' command.
+    # The expression is a NS policy expression that often contains double-quotes;
+    # wrap it in single-quotes so the NetScaler CLI shell treats it as a literal string.
+    if at == "insert_http_header":
+        # target = header name, expression = value expr e.g. '"SAMEORIGIN"'
+        if not expression:
+            raise ValueError("expression is required for insert_http_header")
+        commands.append(f"add rewrite action {action_name} insert_http_header {target} '{expression}'")
+    elif at == "delete_http_header":
+        # target = header name, no expression
+        commands.append(f"add rewrite action {action_name} delete_http_header {target}")
+    elif at == "replace":
+        # target = expr to replace, expression = new value — both wrapped in single-quotes
+        if not expression:
+            raise ValueError("expression is required for replace")
+        commands.append(f"add rewrite action {action_name} replace '{target}' '{expression}'")
+
+    # Build 'add rewrite policy' command — rule may contain double-quotes, wrap in single quotes
+    commands.append(f"add rewrite policy {policy_name} '{rule}' {action_name}")
+
+    # Optional bind
+    if bind_to:
+        entity_type = str(bind_to.get("entity_type", "lb")).strip().lower()
+        vserver = str(bind_to.get("vserver", "")).strip()
+        bind_point = str(bind_to.get("bind_point", "REQUEST")).strip().upper()
+        priority = int(bind_to.get("priority", 100))
+        if not vserver:
+            raise ValueError("bind_to.vserver is required")
+        commands.append(
+            f"bind {entity_type} vserver {vserver}"
+            f" -policyName {policy_name} -priority {priority} -type {bind_point}"
+        )
+
+    result = await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+    result["actionName"] = action_name
+    result["policyName"] = policy_name
+    return result
+
+
+# ---------------------------------------------------------------------------
+# netscaler_modify_rewrite
+# ---------------------------------------------------------------------------
+
+async def modify_rewrite(
+    host: str,
+    username: str,
+    password: str,
+    policy_name: str,
+    *,
+    set_rule: str | None = None,
+    rebind: dict[str, Any] | None = None,
+    unbind: dict[str, Any] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Modify a rewrite policy: update rule, rebind to new vserver, or unbind from a vserver."""
+    if not policy_name:
+        raise ValueError("policy_name is required")
+
+    commands: list[str] = []
+
+    if set_rule is not None:
+        commands.append(f"set rewrite policy {policy_name} -rule '{set_rule}'")
+
+    if unbind:
+        entity_type = str(unbind.get("entity_type", "lb")).strip().lower()
+        vserver = str(unbind.get("vserver", "")).strip()
+        bind_point = str(unbind.get("bind_point", "REQUEST")).strip().upper()
+        if not vserver:
+            raise ValueError("unbind.vserver is required")
+        commands.append(
+            f"unbind {entity_type} vserver {vserver} -policyName {policy_name} -type {bind_point}"
+        )
+
+    if rebind:
+        entity_type = str(rebind.get("entity_type", "lb")).strip().lower()
+        vserver = str(rebind.get("vserver", "")).strip()
+        bind_point = str(rebind.get("bind_point", "REQUEST")).strip().upper()
+        priority = int(rebind.get("priority", 100))
+        if not vserver:
+            raise ValueError("rebind.vserver is required")
+        # unbind first, then bind with new params
+        commands.append(
+            f"unbind {entity_type} vserver {vserver} -policyName {policy_name} -type {bind_point}"
+        )
+        commands.append(
+            f"bind {entity_type} vserver {vserver}"
+            f" -policyName {policy_name} -priority {priority} -type {bind_point}"
+        )
+
+    if not commands:
+        return {
+            "success": False,
+            "message": (
+                "No modifications specified. Provide at least one of: set_rule, rebind, unbind."
+            ),
+        }
+
+    return await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+
+
+# ---------------------------------------------------------------------------
+# netscaler_delete_rewrite
+# ---------------------------------------------------------------------------
+
+async def delete_rewrite(
+    host: str,
+    username: str,
+    password: str,
+    policy_name: str,
+    *,
+    action_name: str | None = None,
+    unbind_from: list[dict[str, Any]] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Remove a rewrite policy and optionally its action, unbinding from vservers first."""
+    if not policy_name:
+        raise ValueError("policy_name is required")
+
+    commands: list[str] = []
+
+    # 1. Unbind from each vserver
+    for binding in (unbind_from or []):
+        entity_type = str(binding.get("entity_type", "lb")).strip().lower()
+        vserver = str(binding.get("vserver", "")).strip()
+        bind_point = str(binding.get("bind_point", "REQUEST")).strip().upper()
+        if not vserver:
+            raise ValueError("Each unbind_from entry must have a vserver")
+        commands.append(
+            f"unbind {entity_type} vserver {vserver} -policyName {policy_name} -type {bind_point}"
+        )
+
+    # 2. Remove policy
+    commands.append(f"rm rewrite policy {policy_name}")
+
+    # 3. Remove action (if provided)
+    if action_name:
+        commands.append(f"rm rewrite action {action_name}")
+
+    return await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+
+
+# ---------------------------------------------------------------------------
+# netscaler_create_responder
+# ---------------------------------------------------------------------------
+
+async def create_responder(
+    host: str,
+    username: str,
+    password: str,
+    action_name: str,
+    action_type: str,
+    policy_name: str,
+    rule: str,
+    *,
+    expression: str | None = None,
+    bind_to: dict[str, Any] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Create a responder action + policy and optionally bind it to an LB/CS vserver."""
+    if not action_name:
+        raise ValueError("action_name is required")
+    if not action_type:
+        raise ValueError("action_type is required")
+    if not policy_name:
+        raise ValueError("policy_name is required")
+    if not rule:
+        raise ValueError("rule is required")
+
+    valid_action_types = {"redirect", "respondwith", "drop", "noop"}
+    at = action_type.strip().lower()
+    if at not in valid_action_types:
+        raise ValueError(f"action_type must be one of: {', '.join(sorted(valid_action_types))}")
+
+    # drop and noop take no expression
+    if at in ("redirect", "respondwith") and not expression:
+        raise ValueError(f"expression is required for action_type '{at}'")
+
+    commands: list[str] = ["enable ns feature RESPONDER"]
+
+    # Build 'add responder action' command
+    if at in ("drop", "noop"):
+        commands.append(f"add responder action {action_name} {at}")
+    else:
+        # expression may contain double-quotes — single-quote it
+        commands.append(f"add responder action {action_name} {at} '{expression}'")
+
+    # Build 'add responder policy' command
+    commands.append(f"add responder policy {policy_name} '{rule}' {action_name}")
+
+    # Optional bind — responder bindings have NO -type flag
+    if bind_to:
+        entity_type = str(bind_to.get("entity_type", "lb")).strip().lower()
+        vserver = str(bind_to.get("vserver", "")).strip()
+        priority = int(bind_to.get("priority", 100))
+        if not vserver:
+            raise ValueError("bind_to.vserver is required")
+        commands.append(
+            f"bind {entity_type} vserver {vserver} -policyName {policy_name} -priority {priority}"
+        )
+
+    result = await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+    result["actionName"] = action_name
+    result["policyName"] = policy_name
+    return result
+
+
+# ---------------------------------------------------------------------------
+# netscaler_modify_responder
+# ---------------------------------------------------------------------------
+
+async def modify_responder(
+    host: str,
+    username: str,
+    password: str,
+    policy_name: str,
+    *,
+    set_rule: str | None = None,
+    set_action_expression: dict[str, Any] | None = None,
+    rebind: dict[str, Any] | None = None,
+    unbind: dict[str, Any] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Modify a responder policy: update rule, update action expression, rebind, or unbind."""
+    if not policy_name:
+        raise ValueError("policy_name is required")
+
+    commands: list[str] = []
+
+    if set_rule is not None:
+        commands.append(f"set responder policy {policy_name} -rule '{set_rule}'")
+
+    if set_action_expression:
+        act_name = str(set_action_expression.get("action_name", "")).strip()
+        expr = str(set_action_expression.get("expression", "")).strip()
+        if not act_name:
+            raise ValueError("set_action_expression.action_name is required")
+        if not expr:
+            raise ValueError("set_action_expression.expression is required")
+        commands.append(f"set responder action {act_name} -target '{expr}'")
+
+    if unbind:
+        entity_type = str(unbind.get("entity_type", "lb")).strip().lower()
+        vserver = str(unbind.get("vserver", "")).strip()
+        if not vserver:
+            raise ValueError("unbind.vserver is required")
+        commands.append(
+            f"unbind {entity_type} vserver {vserver} -policyName {policy_name}"
+        )
+
+    if rebind:
+        entity_type = str(rebind.get("entity_type", "lb")).strip().lower()
+        vserver = str(rebind.get("vserver", "")).strip()
+        priority = int(rebind.get("priority", 100))
+        if not vserver:
+            raise ValueError("rebind.vserver is required")
+        commands.append(
+            f"unbind {entity_type} vserver {vserver} -policyName {policy_name}"
+        )
+        commands.append(
+            f"bind {entity_type} vserver {vserver} -policyName {policy_name} -priority {priority}"
+        )
+
+    if not commands:
+        return {
+            "success": False,
+            "message": (
+                "No modifications specified. Provide at least one of: "
+                "set_rule, set_action_expression, rebind, unbind."
+            ),
+        }
+
+    return await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+
+
+# ---------------------------------------------------------------------------
+# netscaler_delete_responder
+# ---------------------------------------------------------------------------
+
+async def delete_responder(
+    host: str,
+    username: str,
+    password: str,
+    policy_name: str,
+    *,
+    action_name: str | None = None,
+    unbind_from: list[dict[str, Any]] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    """Remove a responder policy and optionally its action, unbinding from vservers first."""
+    if not policy_name:
+        raise ValueError("policy_name is required")
+
+    commands: list[str] = []
+
+    # 1. Unbind from each vserver (responder bindings have no -type flag)
+    for binding in (unbind_from or []):
+        entity_type = str(binding.get("entity_type", "lb")).strip().lower()
+        vserver = str(binding.get("vserver", "")).strip()
+        if not vserver:
+            raise ValueError("Each unbind_from entry must have a vserver")
+        commands.append(
+            f"unbind {entity_type} vserver {vserver} -policyName {policy_name}"
+        )
+
+    # 2. Remove policy
+    commands.append(f"rm responder policy {policy_name}")
+
+    # 3. Remove action (if provided)
+    if action_name:
+        commands.append(f"rm responder action {action_name}")
+
+    return await apply_cli_config(
+        host, username, password, commands, dry_run=dry_run, confirm=confirm
+    )
+
+
+# ---------------------------------------------------------------------------
+# netscaler_get_logs
+# ---------------------------------------------------------------------------
+
+_ALLOWED_LOG_FILES: frozenset[str] = frozenset({"ns.log", "messages", "nsvpn.log", "newnslog"})
+_LOG_MAX_LINES = 2000
+
+
+async def get_logs(
+    host: str,
+    username: str,
+    password: str,
+    logfile: str = "ns.log",
+    lines: int = 100,
+) -> dict[str, Any]:
+    """Return the last N lines of a NetScaler syslog file (read-only, via shell tail)."""
+    from app.services.config_service import get_runtime_config
+    from app.services.ssh_service import run_prevalidated_command
+
+    # Allowlist: only these log files are permitted
+    cleaned_logfile = (logfile or "ns.log").strip()
+    if cleaned_logfile not in _ALLOWED_LOG_FILES:
+        raise ValueError(
+            f"Logfile '{logfile}' is not allowed. Permitted names: {', '.join(sorted(_ALLOWED_LOG_FILES))}"
+        )
+
+    # Clamp lines to 1..2000
+    n = max(1, min(int(lines), _LOG_MAX_LINES))
+
+    config = get_runtime_config()
+    if not config.ssh_fallback_enabled:
+        raise ValueError("SSH access is disabled in MCP configuration")
+
+    # Build a safe, internally-constructed shell command (no user-controlled shell chars)
+    command = f"shell tail -n {n} /var/log/{cleaned_logfile}"
+
+    result = await run_prevalidated_command(
+        command,
+        host,
+        username,
+        password,
+        port=config.ssh_port,
+        timeout=float(config.ssh_timeout_seconds),
+    )
+    result["tool"] = "get_logs"
+    result["logFile"] = f"/var/log/{cleaned_logfile}"
+    result["requestedLines"] = n
+    return result
+
+
+# ---------------------------------------------------------------------------
+# netscaler_search_config
+# ---------------------------------------------------------------------------
+
+_KEYWORD_SAFE_RE = _re.compile(r"^[A-Za-z0-9_.:\-/]+$")
+
+
+async def search_config(
+    host: str,
+    username: str,
+    password: str,
+    keyword: str,
+) -> dict[str, Any]:
+    """Grep the running configuration for a keyword (read-only)."""
+    cleaned = (keyword or "").strip()
+    if not cleaned:
+        raise ValueError("keyword is required")
+    if not _KEYWORD_SAFE_RE.match(cleaned):
+        raise ValueError(
+            "keyword contains unsafe characters. "
+            "Only letters, digits, and the characters _ . : - / are allowed."
+        )
+
+    # run_cli_command uses run_ssh_command with allow_writes=True, which is fine;
+    # the command itself is read-only (show ... | grep).
+    result = await run_cli_command(host, username, password, f"show ns runningConfig | grep -i {cleaned}")
+
+    # Count matching lines (non-empty output lines)
+    output = result.get("output", "") or ""
+    matching_lines = [ln for ln in output.splitlines() if ln.strip()]
+    result["tool"] = "search_config"
+    result["keyword"] = cleaned
+    result["matchCount"] = len(matching_lines)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# netscaler_force_failover
+# ---------------------------------------------------------------------------
+
+async def force_failover(
+    host: str,
+    username: str,
+    password: str,
+    *,
+    confirm: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """
+    Trigger an HA force-failover on a NetScaler appliance.
+
+    Always runs 'show ha node' first.  If the appliance is standalone (not in an HA
+    pair), returns haConfigured=false without touching anything.  On a configured HA
+    pair, requires confirm=true to issue 'force HA failover -force'.
+    """
+    # Step 1: precheck — is HA configured?
+    ha_result = await run_cli_command(host, username, password, "show ha node")
+    ha_output = ha_result.get("output", "") or ""
+
+    # Heuristics for standalone detection:
+    # - No peer / only one "Node" block / "INC" disabled with no peer lines
+    # A real HA pair shows two Node sections (Node 0 ... Node 1) or a peer IP.
+    ha_configured = _detect_ha_configured(ha_output)
+
+    if not ha_configured:
+        return {
+            "success": True,
+            "haConfigured": False,
+            "message": (
+                "Appliance is not in an HA pair; force failover not applicable."
+            ),
+            "haNodeOutput": ha_output,
+        }
+
+    # HA is configured.
+    if dry_run or not confirm:
+        return {
+            "success": True,
+            "haConfigured": True,
+            "dryRun": True,
+            "command": "force HA failover -force",
+            "message": (
+                "Preview — appliance is in an HA pair. "
+                "Re-run with confirm=true (and dry_run=false) to trigger failover."
+            ),
+            "haNodeOutput": ha_output,
+        }
+
+    # Actually trigger failover
+    failover_result = await run_cli_command(host, username, password, "force HA failover -force")
+    return {
+        "success": failover_result.get("success", True),
+        "haConfigured": True,
+        "dryRun": False,
+        "command": "force HA failover -force",
+        "output": failover_result.get("output", ""),
+        "haNodeOutput": ha_output,
+    }
+
+
+def _detect_ha_configured(ha_output: str) -> bool:
+    """
+    Return True if the 'show ha node' output indicates an HA pair is configured.
+
+    On a standalone appliance the output typically contains only a single "Node" entry
+    with no peer, and may show 'INC' as 'DISABLED' and no Remote Node lines.
+    """
+    if not ha_output.strip():
+        return False
+
+    lowered = ha_output.lower()
+
+    # Each configured HA node is listed as a "Node ID:" entry. A standalone appliance
+    # lists only its own node (Node ID: 0); an HA pair lists two or more. Counting
+    # "node id:" is robust — unlike matching "node"/"master"/"primary", which also
+    # appear in a standalone node's own status lines (e.g. "Master State: Primary").
+    if lowered.count("node id:") >= 2:
+        return True
+    # Explicit peer indicators on some firmware variants.
+    if "peer node" in lowered or "remote node" in lowered:
+        return True
+
+    return False

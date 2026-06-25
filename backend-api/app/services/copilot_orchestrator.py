@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import re
@@ -18,7 +19,7 @@ if not logger.handlers:
     logger.addHandler(_handler)
     logger.propagate = False
 
-from app.schemas.copilot import ChatResponse, ChatAttachment, CopilotSettings, DeploymentContinuation, ToolCallTrace
+from app.schemas.copilot import BlueprintSuggestion, ChatResponse, ChatAttachment, CopilotSettings, DeploymentContinuation, ToolCallTrace
 from app.services.copilot_attachment_service import (
     build_anthropic_user_content,
     build_gemini_user_parts,
@@ -55,8 +56,10 @@ from app.services.copilot_memory_gate import (
     F5_CLI_MEMORY_SEARCH_TOOL,
     MEMORY_SEARCH_TOOL,
     SDX_CLI_MEMORY_SEARCH_TOOL,
+    block_result_for_lb_provision_backstop,
     block_result_for_unconfirmed_destructive,
     destructive_confirmation_required,
+    lb_provision_backstop_blocked,
 )
 from app.services.copilot_architect_discovery import (
     architect_discovery_should_retry,
@@ -72,13 +75,15 @@ from app.services.copilot_roles import (
     normalize_role,
     role_requires_appliance,
 )
-from app.services.copilot_tool_router import route_copilot_tools
+from app.services.copilot_tool_router import has_dedicated_config_or_read_intent, route_copilot_tools
 from app.services.copilot_vendors import copilot_vendor_is_supported
 from app.services.vendor_registry import resolve_chat_vendor
 from app.services.encryption_service import decrypt_value
 
 from app.services.calibration_matcher import (
     BLUEPRINT_FIRST_NUDGE,
+    find_relaxed_blueprint_candidate,
+    has_installed_skills_for_chat,
     resolve_blueprint_turn_context,
 )
 from app.services.calibration_sync_service import list_installed_skills
@@ -159,6 +164,19 @@ WRITE_EXEC_TOOL_NAMES = frozenset(
         "netscaler_run_cli_command",
         "netscaler_run_cli_commands",
         "netscaler_nextgen_request",
+        "netscaler_create_lb",
+        "netscaler_modify_lb",
+        "netscaler_delete_lb",
+        "netscaler_create_cs",
+        "netscaler_modify_cs",
+        "netscaler_delete_cs",
+        "netscaler_create_rewrite",
+        "netscaler_modify_rewrite",
+        "netscaler_delete_rewrite",
+        "netscaler_create_responder",
+        "netscaler_modify_responder",
+        "netscaler_delete_responder",
+        "netscaler_force_failover",
     }
 )
 
@@ -310,23 +328,52 @@ def _apply_blueprint_context(
     user_message: str,
     role: str,
     vendor: str | None,
-) -> tuple[str, bool, bool]:
+    skip_blueprint_skill_id: str | None = None,
+) -> tuple[str, bool, bool, dict | None]:
+    """Return (system_prompt, blueprint_relevant, stack_calibration_reviewed, blueprint_candidate).
+
+    ``blueprint_candidate`` is a dict with keys {skillId, label, summary, confidence, state}:
+    - state="applied"   — strict match hit and blueprint injected this turn.
+    - state="suggested" — strict miss, relaxed candidate found; nothing injected.
+
+    When skip_blueprint_skill_id is set, that skill is suppressed: it will not be
+    injected and no card is emitted for it.  This is how "Skip → re-run without blueprint"
+    works.
+    """
     from app.services.knowledge_pack_runtime import resolve_knowledge_pack_turn_context
     from app.services.knowledge_pack_service import get_active_pack_dir
 
+    effective_vendor = vendor or "netscaler"
     if get_active_pack_dir():
         ctx, _tool_policy = resolve_knowledge_pack_turn_context(
             user_message=user_message,
             role=role,
-            vendor=vendor or "netscaler",
+            vendor=effective_vendor,
         )
     else:
+        installed = list_installed_skills()
         ctx = resolve_blueprint_turn_context(
             user_message=user_message,
             role=role,
-            vendor=vendor or "netscaler",
-            installed=list_installed_skills(),
+            vendor=effective_vendor,
+            installed=installed,
         )
+
+    # If the skipped skill is among the matched ones, strip it and re-resolve without it.
+    skip_id = (skip_blueprint_skill_id or "").strip()
+    if skip_id and ctx.relevant and skip_id in ctx.matched_skill_ids:
+        # Re-run context resolution with the skipped skill filtered out.
+        installed_filtered = [
+            s for s in list_installed_skills()
+            if str(s.get("skillId") or "") != skip_id
+        ]
+        ctx = resolve_blueprint_turn_context(
+            user_message=user_message,
+            role=role,
+            vendor=effective_vendor,
+            installed=installed_filtered,
+        )
+
     if ctx.injection_block:
         system_prompt = f"{system_prompt}\n\n{ctx.injection_block}"
     if ctx.relevant:
@@ -334,7 +381,49 @@ def _apply_blueprint_context(
     reviewed = ctx.stack_calibration_reviewed
     if ctx.relevant and ctx.injection_block:
         reviewed = True
-    return system_prompt, ctx.relevant, reviewed
+
+    # Build blueprint candidate for the suggestion card.
+    blueprint_candidate: dict | None = None
+
+    if ctx.relevant and ctx.matched_skill_ids and not get_active_pack_dir():
+        # Strict HIT — look up the first matched skill to build the "applied" card.
+        first_skill_id = ctx.matched_skill_ids[0]
+        installed_all = list_installed_skills()
+        skill_row = next(
+            (s for s in installed_all if str(s.get("skillId") or "") == first_skill_id),
+            None,
+        )
+        if skill_row:
+            from pathlib import Path as _Path
+            from app.services.calibration_matcher import _load_manifest as _lm
+            skill_dir = _Path(skill_row.get("path") or "")
+            manifest = _lm(skill_dir) if skill_dir.is_dir() else {}
+            label = str((manifest or {}).get("label") or skill_row.get("skillId") or "")
+            summary = str((manifest or {}).get("description") or (manifest or {}).get("summary") or "")
+            blueprint_candidate = {
+                "skillId": first_skill_id,
+                "label": label,
+                "summary": summary,
+                "confidence": 100,
+                "state": "applied",
+            }
+
+    elif not ctx.relevant and not get_active_pack_dir():
+        # Strict MISS — probe for relaxed suggestion candidate.
+        _eff_installed = list_installed_skills()
+        if skip_id:
+            _eff_installed = [s for s in _eff_installed if str(s.get("skillId") or "") != skip_id]
+        if has_installed_skills_for_chat(role=role, vendor=effective_vendor, installed=_eff_installed):
+            relaxed = find_relaxed_blueprint_candidate(
+                user_message=user_message,
+                role=role,
+                vendor=effective_vendor,
+                installed=_eff_installed,
+            )
+            if relaxed:
+                blueprint_candidate = {**relaxed, "state": "suggested"}
+
+    return system_prompt, ctx.relevant, reviewed, blueprint_candidate
 
 
 def _append_skill_calibration(
@@ -343,12 +432,14 @@ def _append_skill_calibration(
     user_message: str,
     role: str,
     vendor: str | None,
+    skip_blueprint_skill_id: str | None = None,
 ) -> str:
-    prompt, _, _ = _apply_blueprint_context(
+    prompt, _, _, _ = _apply_blueprint_context(
         system_prompt,
         user_message=user_message,
         role=role,
         vendor=vendor,
+        skip_blueprint_skill_id=skip_blueprint_skill_id,
     )
     return prompt
 
@@ -567,6 +658,10 @@ def guard_incomplete_lb_success(
         return content
     if not content or not _LB_SUCCESS_CLAIM_RE.search(content):
         return content
+    # Only warn after an actual LB write this turn. A pure read/listing of existing
+    # (possibly DOWN) vservers is not an incomplete deployment — don't nag on `show`.
+    if not any(trace_is_state_changing(trace) for trace in tool_traces):
+        return content
 
     inventory: dict[str, Any] | None = None
     for trace in reversed(tool_traces):
@@ -615,6 +710,16 @@ def guard_fabricated_execution(
 ) -> str:
     """Prepend a warning when the reply claims a config change that no tool actually performed."""
     if normalize_role(role) == JPilotRole.ARCHITECT:
+        return content
+
+    # A successful read-only turn that merely echoes config/log lines is not a fabricated
+    # write. When every tool that ran was non-state-changing AND at least one read succeeded,
+    # the model is quoting fetched data — do not fire the unexecuted-action banner.
+    if (
+        tool_traces
+        and not any(trace_is_state_changing(t) for t in tool_traces)
+        and any(trace_executed_successfully(t) for t in tool_traces)
+    ):
         return content
 
     if _claims_config_change(content) and not _had_successful_action(tool_traces):
@@ -694,6 +799,156 @@ def _dedupe_read_result(
     return _truncate_tool_result(result, max_chars)
 
 
+# ---------------------------------------------------------------------------
+# R1 + R6: Dedicated dry_run plan marker — embed + recover
+# ---------------------------------------------------------------------------
+# When a dedicated tool (create_*/modify_*/delete_*) runs with dry_run=true and
+# succeeds, we embed a hidden HTML comment in the assistant's text response so
+# the next affirmation turn can recover the exact tool+args and re-execute with
+# confirm=true — without relying on the model to re-derive the call.
+# ---------------------------------------------------------------------------
+
+_PLAN_MARKER_PREFIX = "<!-- jpilot-plan: "
+_PLAN_MARKER_SUFFIX = " -->"
+_PLAN_MARKER_RE = re.compile(
+    r"<!--\s*jpilot-plan:\s*([A-Za-z0-9+/=]+)\s*-->", re.IGNORECASE
+)
+
+# Dedicated tools that support dry_run → confirm flow (R1/R6).
+_DEDICATED_DRY_RUN_TOOLS = frozenset(
+    {
+        "netscaler_create_lb",
+        "netscaler_modify_lb",
+        "netscaler_delete_lb",
+        "netscaler_create_cs",
+        "netscaler_modify_cs",
+        "netscaler_delete_cs",
+        "netscaler_create_rewrite",
+        "netscaler_modify_rewrite",
+        "netscaler_delete_rewrite",
+        "netscaler_create_responder",
+        "netscaler_modify_responder",
+        "netscaler_delete_responder",
+    }
+)
+
+
+def _embed_dry_run_plan_marker(content: str, tool_traces: list[ToolCallTrace]) -> str:
+    """R6: Append a hidden marker to the response when a dedicated dry_run preview ran.
+
+    The marker encodes the tool name + arguments so the next affirmation turn can
+    recover them deterministically (R1) and call the same tool with confirm=true.
+    """
+    for trace in reversed(tool_traces):
+        if trace.name not in _DEDICATED_DRY_RUN_TOOLS:
+            continue
+        args = trace.arguments or {}
+        if not args.get("dry_run"):
+            continue  # only mark a dry_run preview
+        # Verify the dry_run actually produced a non-blocked result
+        try:
+            payload = json.loads(trace.result)
+            if isinstance(payload, dict) and (
+                payload.get("blocked") or payload.get("success") is False
+            ):
+                continue
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # Encode: strip dry_run flag so the confirm call has clean args
+        confirm_args = {k: v for k, v in args.items() if k != "dry_run"}
+        confirm_args["confirm"] = True
+        plan_payload = json.dumps({"tool": trace.name, "args": confirm_args})
+        encoded = base64.b64encode(plan_payload.encode("utf-8")).decode("ascii")
+        marker = f"{_PLAN_MARKER_PREFIX}{encoded}{_PLAN_MARKER_SUFFIX}"
+        return f"{content}\n{marker}" if content else marker
+    return content
+
+
+def _extract_prior_dedicated_plan(history: list[dict]) -> tuple[str, dict] | None:
+    """R1: Scan recent history for a dry_run plan marker in the last assistant message.
+
+    Returns (tool_name, arguments_with_confirm_true) or None if not found.
+    """
+    for item in reversed(history):
+        if str(item.get("role") or "").lower() != "assistant":
+            continue
+        content = str(item.get("content") or "")
+        m = _PLAN_MARKER_RE.search(content)
+        if m:
+            try:
+                decoded = base64.b64decode(m.group(1).encode("ascii")).decode("utf-8")
+                payload = json.loads(decoded)
+                tool = str(payload.get("tool") or "")
+                args = dict(payload.get("args") or {})
+                if tool in _DEDICATED_DRY_RUN_TOOLS:
+                    return tool, args
+            except (ValueError, KeyError, json.JSONDecodeError):
+                pass
+        break  # only check the last assistant message
+    return None
+
+
+# ---------------------------------------------------------------------------
+# End R1+R6 helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_blueprint_suggestion(
+    blueprint_candidate: dict | None,
+    *,
+    role: str,
+    chat_role: "JPilotRole",
+    history: list[dict],
+    user_message: str,
+) -> "BlueprintSuggestion | None":
+    """Build a BlueprintSuggestion from a blueprint candidate if gating conditions are met.
+
+    Gating (applied equally to both applied and suggested states):
+    - architect: only at conversation start (no planning-form submissions in history yet).
+    - operator/analyst: only when the user message maps to a dedicated config/read intent.
+
+    state="applied"   — strict match hit; blueprint was injected this turn.
+    state="suggested" — strict miss; relaxed candidate surfaced for user to apply or skip.
+    """
+    if not blueprint_candidate:
+        return None
+
+    candidate_state = blueprint_candidate.get("state", "suggested")
+
+    if chat_role == JPilotRole.ARCHITECT:
+        from app.services.copilot_architect_discovery import count_planning_form_submissions
+
+        # Build a combined conversation text from history to count prior form submissions.
+        conv_parts = [m.get("content") or "" for m in (history or []) if m.get("role") == "assistant"]
+        conv_text = "\n".join(conv_parts)
+        if count_planning_form_submissions(conv_text) > 0:
+            # Not at conversation start — don't nag after discovery has begun.
+            return None
+        if candidate_state == "applied":
+            apply_prompt = f"Start from the {blueprint_candidate['label']} blueprint"
+        else:
+            apply_prompt = f"Start from the {blueprint_candidate['label']} blueprint"
+    elif chat_role in (JPilotRole.OPERATOR, JPilotRole.ANALYST):
+        if candidate_state == "suggested" and not has_dedicated_config_or_read_intent(user_message, role):
+            return None
+        if candidate_state == "applied":
+            apply_prompt = f"Apply the {blueprint_candidate['label']} blueprint to this request"
+        else:
+            apply_prompt = f"Apply the {blueprint_candidate['label']} blueprint to this request"
+    else:
+        return None
+
+    return BlueprintSuggestion(
+        skillId=blueprint_candidate["skillId"],
+        label=blueprint_candidate["label"],
+        summary=blueprint_candidate.get("summary", ""),
+        confidence=blueprint_candidate.get("confidence", 0),
+        action="apply",
+        applyPrompt=apply_prompt,
+        state=candidate_state,
+    )
+
+
 def _finalize_chat_response(
     content: str,
     *,
@@ -704,9 +959,13 @@ def _finalize_chat_response(
     user_message: str = "",
     role: str | None = None,
     deployment_continuation: DeploymentContinuation | None = None,
+    blueprint_suggestion: BlueprintSuggestion | None = None,
 ) -> ChatResponse:
     if normalize_role(role) == JPilotRole.ARCHITECT:
         content = sanitize_architect_reply(content)
+    # R6: embed a hidden plan marker when a dedicated dry_run preview ran, so the next
+    # affirmation turn can deterministically recover the tool+args and confirm (R1).
+    content = _embed_dry_run_plan_marker(content, tool_traces)
     cleaned, input_form = parse_input_form(content)
     cleaned, input_form = attach_default_lb_form_if_missing(
         user_message, cleaned, input_form, role=role
@@ -719,6 +978,7 @@ def _finalize_chat_response(
         toolCalls=tool_traces,
         inputForm=to_response_input_form(input_form),
         deploymentContinuation=deployment_continuation,
+        blueprintSuggestion=blueprint_suggestion,
     )
 
 
@@ -844,10 +1104,24 @@ async def _execute_tool_with_memory_gate(
         stack_calibration_reviewed=stack_calibration_reviewed,
         nextgen_memory_reviewed=nextgen_memory_reviewed,
         cli_memory_reviewed=cli_memory_reviewed,
+        tool_arguments=arguments,
     )
     if not allowed and blocked:
         logger.info("tool_call name=%s BLOCKED (memory/blueprint review not satisfied)", name)
         return blocked, nextgen_memory_reviewed, cli_memory_reviewed, stack_calibration_reviewed
+
+    # §4.2 — LB-provisioning backstop: block raw CLI hand-building LB objects and redirect
+    # to the dedicated netscaler_create_lb / netscaler_modify_lb / netscaler_delete_lb tools.
+    # Only fires for netscaler_run_cli_command(s) with LB-provisioning verbs (add/bind lb
+    # vserver, add serviceGroup, add service); read-only verbs (show lb vserver) pass through.
+    if lb_provision_backstop_blocked(name, arguments):
+        logger.info("tool_call name=%s BLOCKED (lb_provision_backstop — redirect to create_lb)", name)
+        return (
+            block_result_for_lb_provision_backstop(name, arguments),
+            nextgen_memory_reviewed,
+            cli_memory_reviewed,
+            stack_calibration_reviewed,
+        )
 
     if destructive_confirmation_required(name, arguments):
         logger.info("tool_call name=%s BLOCKED (awaiting destructive-op confirmation)", name)
@@ -858,9 +1132,27 @@ async def _execute_tool_with_memory_gate(
             stack_calibration_reviewed,
         )
 
-    result = await execute_copilot_tool(
-        db, name, arguments, default_appliance_name=appliance_name, role=role, vendor=vendor
-    )
+    try:
+        result = await execute_copilot_tool(
+            db, name, arguments, default_appliance_name=appliance_name, role=role, vendor=vendor
+        )
+    except ValueError as exc:
+        # Bad/missing tool arguments from the model (e.g. "name is required"). Return a clean
+        # tool-error result so the model corrects and retries, instead of an unhandled
+        # exception that logs a misleading ERROR + traceback every turn.
+        logger.warning("tool_call name=%s rejected (bad arguments): %s", name, exc)
+        return (
+            json.dumps(
+                {
+                    "success": False,
+                    "error": str(exc),
+                    "hint": "Re-call the tool with the required arguments filled in.",
+                }
+            ),
+            nextgen_memory_reviewed,
+            cli_memory_reviewed,
+            stack_calibration_reviewed,
+        )
     logger.info("tool_call name=%s executed result=%s", name, (result or "")[:600])
     if name == MEMORY_SEARCH_TOOL:
         nextgen_memory_reviewed = True
@@ -937,6 +1229,7 @@ async def run_copilot_chat(
     design_document_context: str | None = None,
     include_design_revision: bool = False,
     persona_system_prompt: str | None = None,
+    skip_blueprint_skill_id: str | None = None,
 ) -> ChatResponse:
     from app.services.copilot_service import set_web_search_allowed
 
@@ -987,6 +1280,7 @@ async def run_copilot_chat(
         user_message=user_message,
         attachment_names=[a.name for a in attachment_list],
         vendor=chat_vendor,
+        history=history,
     )
     enabled_tool_names = {tool["name"] for tool in enabled_tools}
     logger.info(
@@ -1006,11 +1300,12 @@ async def run_copilot_chat(
     # Layer the custom persona's system prompt on top of the base role prompt.
     if persona_system_prompt and persona_system_prompt.strip():
         system_prompt = f"{system_prompt}\n\n## Custom Persona Instructions\n{persona_system_prompt.strip()}"
-    system_prompt, blueprint_relevant, stack_calibration_reviewed = _apply_blueprint_context(
+    system_prompt, blueprint_relevant, stack_calibration_reviewed, blueprint_candidate = _apply_blueprint_context(
         system_prompt,
         user_message=user_message,
         role=chat_role.value,
         vendor=chat_vendor,
+        skip_blueprint_skill_id=skip_blueprint_skill_id,
     )
     from app.services.copilot_platform_service import ensure_default_settings
 
@@ -1092,6 +1387,63 @@ async def run_copilot_chat(
             confirmed = is_affirmation(user_message)
             effective_msg = last_user_message(history) if confirmed else user_message
             provider_name = provider["providerName"]
+
+            # R1: On a short affirmation turn, check whether the prior assistant reply
+            # contained a hidden dry_run plan marker (R6). If so, re-execute the same
+            # dedicated tool with confirm=true (deterministic recovery — no model
+            # re-derivation needed), mirroring the copilot_deploy confirm recovery path.
+            if confirmed:
+                prior_plan = _extract_prior_dedicated_plan(history)
+                if prior_plan is not None:
+                    plan_tool_name, plan_args = prior_plan
+                    # Inject the appliance name if the stored plan carries a placeholder
+                    if appliance_name and not plan_args.get("appliance_name"):
+                        plan_args = {**plan_args, "appliance_name": appliance_name}
+                    logger.info(
+                        "r1_confirm_dedicated_plan tool=%s args=%s",
+                        plan_tool_name,
+                        json.dumps(plan_args, default=str)[:400],
+                    )
+                    try:
+                        confirm_result, _, _, _ = await _execute_tool_with_memory_gate(
+                            db,
+                            plan_tool_name,
+                            plan_args,
+                            appliance_name,
+                            True,   # nextgen_memory_reviewed — dedicated tools don't need search
+                            True,   # cli_memory_reviewed
+                            stack_calibration_reviewed,
+                            blueprint_relevant,
+                            role=chat_role.value,
+                            vendor=chat_vendor,
+                        )
+                    except Exception as exc:
+                        logger.exception("r1_confirm_dedicated_plan tool=%s failed", plan_tool_name)
+                        confirm_result = json.dumps({"success": False, "errorMessage": str(exc)})
+                    auto_traces.append(
+                        ToolCallTrace(name=plan_tool_name, arguments=plan_args, result=confirm_result)
+                    )
+                    try:
+                        result_payload = json.loads(confirm_result)
+                        if isinstance(result_payload, dict) and result_payload.get("success") is False:
+                            confirm_summary = (
+                                f"**{plan_tool_name} failed.** "
+                                + (result_payload.get("errorMessage") or result_payload.get("message") or "")
+                            )
+                        else:
+                            confirm_summary = f"**Configuration applied** via `{plan_tool_name}`."
+                    except (json.JSONDecodeError, TypeError):
+                        confirm_summary = f"**Configuration applied** via `{plan_tool_name}`."
+                    tool_traces.extend(auto_traces)
+                    return _finalize_chat_response(
+                        confirm_summary,
+                        provider_name=provider_name,
+                        provider_type=provider_type,
+                        model=model,
+                        tool_traces=tool_traces,
+                        user_message=user_message,
+                        role=chat_role.value,
+                    )
 
             lb_fields = parse_natural_language_lb_request(effective_msg)
             if detect_natural_language_lb_request(effective_msg, lb_fields):
@@ -1332,6 +1684,13 @@ async def run_copilot_chat(
             deliverable_ready=deliverable_ready_from_content(content),
         )
 
+    blueprint_suggestion = _build_blueprint_suggestion(
+        blueprint_candidate,
+        role=chat_role.value,
+        chat_role=chat_role,
+        history=history,
+        user_message=user_message,
+    )
     return _finalize_chat_response(
         content,
         provider_name=provider["providerName"],
@@ -1341,6 +1700,7 @@ async def run_copilot_chat(
         user_message=user_message,
         role=chat_role.value,
         deployment_continuation=orchestration.pause,
+        blueprint_suggestion=blueprint_suggestion,
     )
 
 

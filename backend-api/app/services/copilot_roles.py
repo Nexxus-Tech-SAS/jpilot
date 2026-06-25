@@ -104,6 +104,10 @@ _ANALYST_TOOLS = _PLANNING_TOOLS | frozenset(
         "netscaler_collect_nsconmsg",
         "netscaler_ssh_run_command",
         "netscaler_run_cli_command",
+        # Dedicated read-only SSH tools: log tail and config grep.
+        # These let the analyst use purpose-built read tools instead of raw SSH.
+        "netscaler_get_logs",
+        "netscaler_search_config",
     }
 )
 
@@ -189,13 +193,33 @@ def build_system_prompt(
             f"{base}\n"
             f"Active appliance: {appliance_name}\n"
             f"SSH connectivity is confirmed. Always pass appliance_name \"{appliance_name}\" to tool calls.\n"
-            "Official CLI behavioral rules are loaded on demand — do not assume syntax without searching first."
+            "To make ANY configuration change you MUST call the matching dedicated tool: "
+            "netscaler_create_lb/modify_lb/delete_lb, netscaler_create_cs/modify_cs/delete_cs, "
+            "netscaler_create_rewrite/modify_rewrite/delete_rewrite, "
+            "netscaler_create_responder/modify_responder/delete_responder; and use "
+            "netscaler_get_logs / netscaler_search_config / netscaler_force_failover for those tasks. "
+            "These tools already encode the correct syntax, so you do NOT need to search the CLI "
+            "reference before calling them. Call the tool with dry_run=true to PREVIEW the exact "
+            "commands, then call it again with confirm=true to APPLY. NEVER answer a configuration "
+            "request by only describing CLI commands in prose — always invoke the dedicated tool. "
+            "Use raw netscaler_run_cli_command(s) or the search tools ONLY when no dedicated tool "
+            "covers the request (and only then search for syntax first)."
         )
     return (
         f"{base}\n"
         f"Active appliance: {appliance_name}\n"
         f"Next-Gen API login is confirmed. Always pass appliance_name \"{appliance_name}\" to NetScaler tools.\n"
-        "Official CLI/API behavioral rules are loaded on demand — do not assume syntax without searching first."
+        "To make ANY configuration change you MUST call the matching dedicated tool: "
+        "netscaler_create_lb/modify_lb/delete_lb, netscaler_create_cs/modify_cs/delete_cs, "
+        "netscaler_create_rewrite/modify_rewrite/delete_rewrite, "
+        "netscaler_create_responder/modify_responder/delete_responder; and use "
+        "netscaler_get_logs / netscaler_search_config / netscaler_force_failover for those tasks. "
+        "These tools already encode the correct syntax, so you do NOT need to search the CLI/API "
+        "reference before calling them. Call the tool with dry_run=true to PREVIEW the exact "
+        "commands, then call it again with confirm=true to APPLY. NEVER answer a configuration "
+        "request by only describing CLI commands in prose — always invoke the dedicated tool. "
+        "Use raw netscaler_run_cli_command(s) or the search tools ONLY when no dedicated tool "
+        "covers the request (and only then search for syntax first)."
     )
 
 

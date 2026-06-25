@@ -39,6 +39,9 @@ READ_ONLY_OPERATOR_TOOLS = frozenset(
         "netscaler_telnet",
         "netscaler_collect_nsconmsg",
         "jpilot_check_doc_connectivity",
+        # SSH-backed read tools — log tail and config grep are strictly read-only
+        "netscaler_get_logs",
+        "netscaler_search_config",
     }
 )
 
@@ -76,6 +79,20 @@ WRITE_EXEC_TOOL_NAMES = frozenset(
         "sdx_run_cli_commands",
         "f5_run_tmsh_command",
         "f5_run_tmsh_commands",
+        # Dedicated LB/CS/rewrite/responder config tools — these perform writes internally
+        "netscaler_create_lb",
+        "netscaler_modify_lb",
+        "netscaler_delete_lb",
+        "netscaler_create_cs",
+        "netscaler_modify_cs",
+        "netscaler_delete_cs",
+        "netscaler_create_rewrite",
+        "netscaler_modify_rewrite",
+        "netscaler_delete_rewrite",
+        "netscaler_create_responder",
+        "netscaler_modify_responder",
+        "netscaler_delete_responder",
+        "netscaler_force_failover",
     }
 )
 
@@ -276,6 +293,13 @@ def tool_result_is_failure(result: str) -> bool:
     except (json.JSONDecodeError, TypeError, ValueError):
         return False
     if not isinstance(data, dict):
+        return False
+    # A memory-review gate block is a recoverable redirect, not an appliance failure.
+    # The model can satisfy the gate or route to a dedicated tool. Don't count it.
+    if data.get("blocked") and not data.get("commandFailed"):
+        return False
+    # Waiting on user confirmation is not "stuck" either.
+    if data.get("needsConfirmation"):
         return False
     if data.get("success") is False or data.get("commandFailed"):
         return True
@@ -542,7 +566,8 @@ def _build_operator_progress_subtasks(
     write_started = any(trace_is_state_changing(trace) for trace in tool_traces)
     saved = _classic_config_saved(tool_traces)
     nextgen_done = _nextgen_write_succeeded(tool_traces)
-    write_complete = saved or nextgen_done
+    dedicated_done = _dedicated_write_succeeded(tool_traces)  # R5: dedicated create/modify/delete
+    write_complete = saved or nextgen_done or dedicated_done
 
     if review_docs:
         reference_done = memory_reviewed
@@ -563,6 +588,8 @@ def _build_operator_progress_subtasks(
     if saved:
         save_status = "completed"
     elif nextgen_done:
+        save_status = "completed"
+    elif dedicated_done:
         save_status = "completed"
     elif write_started:
         save_status = "in_progress"
@@ -639,8 +666,52 @@ def _nextgen_write_succeeded(tool_traces: list[ToolCallTrace]) -> bool:
     return False
 
 
+_DEDICATED_WRITE_TOOLS = frozenset(
+    {
+        "netscaler_create_lb",
+        "netscaler_modify_lb",
+        "netscaler_delete_lb",
+        "netscaler_create_cs",
+        "netscaler_modify_cs",
+        "netscaler_delete_cs",
+        "netscaler_create_rewrite",
+        "netscaler_modify_rewrite",
+        "netscaler_delete_rewrite",
+        "netscaler_create_responder",
+        "netscaler_modify_responder",
+        "netscaler_delete_responder",
+    }
+)
+
+
+def _dedicated_write_succeeded(tool_traces: list[ToolCallTrace]) -> bool:
+    """True when a dedicated config tool (create_*/modify_*/delete_*) ran with confirm=true
+    and returned success.  A dry_run=true call (preview only) does NOT qualify.
+
+    R5: recognise a successful dedicated create_* as a completed write so a one-call
+    create_lb(confirm=true) marks the deployment 'done' and prevents a spurious
+    'continue?' long-task pause.
+    """
+    for trace in tool_traces:
+        if trace.name not in _DEDICATED_WRITE_TOOLS:
+            continue
+        args = trace.arguments or {}
+        # dry_run=true → preview only, not a real write
+        if args.get("dry_run"):
+            continue
+        # Must have been called with confirm=true (or without confirm, which also applies)
+        if not trace_executed_successfully(trace):
+            continue
+        return True
+    return False
+
+
 def deployment_write_complete(tool_traces: list[ToolCallTrace]) -> bool:
-    return _classic_config_saved(tool_traces) or _nextgen_write_succeeded(tool_traces)
+    return (
+        _classic_config_saved(tool_traces)
+        or _nextgen_write_succeeded(tool_traces)
+        or _dedicated_write_succeeded(tool_traces)
+    )
 
 
 def should_offer_long_task_consent(

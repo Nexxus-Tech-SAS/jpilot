@@ -90,6 +90,7 @@ def apply_tool_review_gates(
     stack_calibration_reviewed: bool,
     nextgen_memory_reviewed: bool,
     cli_memory_reviewed: bool,
+    tool_arguments: dict | None = None,
 ) -> tuple[bool, str | None]:
     allowed, blocked = apply_blueprint_review_gate(
         tool_name,
@@ -101,4 +102,4 @@ def apply_tool_review_gates(
 
     from app.services.copilot_memory_gate import apply_memory_review_gates
 
-    return apply_memory_review_gates(tool_name, nextgen_memory_reviewed, cli_memory_reviewed)
+    return apply_memory_review_gates(tool_name, nextgen_memory_reviewed, cli_memory_reviewed, tool_arguments=tool_arguments)

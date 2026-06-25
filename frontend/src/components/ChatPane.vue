@@ -531,6 +531,13 @@
                       @click="resumeDeployment"
                     />
                   </div>
+                  <ChatBlueprintSuggestion
+                    v-if="msg.blueprintSuggestion && !msg.blueprintSuggestionDismissed && !isGenerating"
+                    :suggestion="msg.blueprintSuggestion"
+                    :disabled="isGenerating"
+                    @apply="applyBlueprintSuggestion(msg)"
+                    @skip="skipBlueprintSuggestion(msg)"
+                  />
                   <ChatToolTrace v-if="msg.toolCalls?.length" :tools="msg.toolCalls" />
                   <p class="beta-message-time">
                     <span
@@ -1044,6 +1051,13 @@
                 @click="resumeDeployment"
               />
             </div>
+            <ChatBlueprintSuggestion
+              v-if="msg.blueprintSuggestion && !msg.blueprintSuggestionDismissed && !isGenerating"
+              :suggestion="msg.blueprintSuggestion"
+              :disabled="isGenerating"
+              @apply="applyBlueprintSuggestion(msg)"
+              @skip="skipBlueprintSuggestion(msg)"
+            />
             <ChatToolTrace v-if="msg.toolCalls?.length" :tools="msg.toolCalls" />
             <p
               v-if="msg.role === 'assistant' && formatMessageGenerationStats(msg.generationStats)"
@@ -1241,6 +1255,7 @@ import AskJpilotCommandMenu from './AskJpilotCommandMenu.vue'
 import BetaWelcome from './BetaWelcome.vue'
 import ChatMarkdown from './ChatMarkdown.vue'
 import ChatToolTrace from './ChatToolTrace.vue'
+import ChatBlueprintSuggestion from './ChatBlueprintSuggestion.vue'
 import ChatDeploymentSubtasks from './ChatDeploymentSubtasks.vue'
 import TriArcLoader from './TriArcLoader.vue'
 import { isDeploymentContinueMessage, messageNeedsDeploymentContinuation } from '../utils/deploymentContinuation'
@@ -2373,7 +2388,8 @@ async function runChat(content, attachments, runOptions = {}) {
         deploymentContinuation: Boolean(runOptions.deploymentContinuation),
         longTaskApproved: Boolean(runOptions.longTaskApproved),
         designDocumentContext: resolveDesignDocumentContext(runOptions),
-        includeDesignRevision: Boolean(runOptions.includeDesignRevision)
+        includeDesignRevision: Boolean(runOptions.includeDesignRevision),
+        ...(runOptions.skipBlueprintSkillId ? { skipBlueprintSkillId: runOptions.skipBlueprintSkillId } : {})
       },
       {
         signal: controller.signal,
@@ -2402,7 +2418,9 @@ async function runChat(content, attachments, runOptions = {}) {
       generationStats: lastGenerationStats,
       deploymentContinuation: data.deploymentContinuation || null,
       deploymentSubtasks: data.deploymentContinuation?.subtasks || liveDeploymentSubtasks.value,
-      progressTitle: liveProgressTitle.value
+      progressTitle: liveProgressTitle.value,
+      blueprintSuggestion: data.blueprintSuggestion || null,
+      blueprintSuggestionDismissed: false
     })
   } catch (error) {
     if (session.designDocument) {
@@ -2480,6 +2498,46 @@ async function submitConfigForm(values, messageIndex) {
   } finally {
     submittingFormIndex.value = null
   }
+}
+
+/**
+ * Skip: find the original user message that triggered this assistant turn and
+ * re-send it with skipBlueprintSkillId so the backend answers without that blueprint.
+ * Dismiss the card immediately so it doesn't re-render on the old message.
+ */
+async function skipBlueprintSuggestion(msg) {
+  if (isGenerating.value || !msg.blueprintSuggestion) return
+  const skillId = msg.blueprintSuggestion.skillId
+  msg.blueprintSuggestionDismissed = true
+
+  // Find the index of this assistant message in the messages array.
+  const msgIndex = session.messages.indexOf(msg)
+  if (msgIndex < 0) return
+
+  // Walk backwards to find the immediately preceding user message.
+  let originalUserMsg = null
+  for (let i = msgIndex - 1; i >= 0; i--) {
+    if (session.messages[i].role === 'user') {
+      originalUserMsg = session.messages[i]
+      break
+    }
+  }
+  if (!originalUserMsg || !originalUserMsg.content) return
+
+  // Re-send the original user message with skipBlueprintSkillId.
+  const originalText = originalUserMsg.content
+  const originalAttachments = originalUserMsg.attachments || []
+  await sendMessage(originalText, originalAttachments, {
+    skipRoleInference: true,
+    skipBlueprintSkillId: skillId
+  })
+}
+
+async function applyBlueprintSuggestion(msg) {
+  if (isGenerating.value || !msg.blueprintSuggestion) return
+  msg.blueprintSuggestionDismissed = true
+  const prompt = msg.blueprintSuggestion.applyPrompt
+  await sendMessage(prompt, null, { skipRoleInference: true })
 }
 
 async function resumeDeployment() {

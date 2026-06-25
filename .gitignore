@@ -50,6 +50,9 @@ temp/
 # Docker volumes (local data)
 mongodb_data/
 
+# Backend runtime data (downloaded calibrations/personas — not product source)
+backend-api/data/
+
 # Self-update sentinel runtime files (keep dir skeleton, ignore generated files)
 /var/update/request.json
 /var/update/status.json
