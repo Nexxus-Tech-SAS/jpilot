@@ -111,13 +111,22 @@ def cli_memory_review_required(tool_name: str, command: str | None = None) -> bo
     if tool_name not in gated_tools:
         return False
 
-    # Arg-aware exemption: single-command read verbs don't need a memory search.
-    if command is not None and tool_name in {CLI_WRITE_TOOL, CISCO_CLI_WRITE_TOOL, SDX_CLI_WRITE_TOOL, F5_CLI_WRITE_TOOL}:
+    # Arg-aware exemption: single-command read verbs don't need a memory search. This
+    # also covers the read-only SSH tools (*_ssh_run_command) — a `show`/`stat`/`get`
+    # over SSH shouldn't force a CLI-reference round-trip.
+    if command is not None and tool_name in {
+        CLI_WRITE_TOOL, CISCO_CLI_WRITE_TOOL, SDX_CLI_WRITE_TOOL, F5_CLI_WRITE_TOOL,
+        SSH_TOOL, CISCO_SSH_TOOL, SDX_SSH_TOOL, F5_SSH_TOOL,
+    }:
         classifier = {
             CLI_WRITE_TOOL: classify_cli_command,
             CISCO_CLI_WRITE_TOOL: classify_cisco_command,
             SDX_CLI_WRITE_TOOL: classify_sdx_command,
             F5_CLI_WRITE_TOOL: classify_f5_command,
+            SSH_TOOL: classify_cli_command,
+            CISCO_SSH_TOOL: classify_cisco_command,
+            SDX_SSH_TOOL: classify_sdx_command,
+            F5_SSH_TOOL: classify_f5_command,
         }[tool_name]
         if classifier(command) == "read":
             return False
