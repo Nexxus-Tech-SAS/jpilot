@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.109` (beta) — **Theme tied to cookie consent.** Light/dark mode is saved in `localStorage` only after **Accept all** on the cookie banner (same rule as login terms). **Essential only** keeps theme changes for the current session and clears any stored preference on reload; until you choose, toggles follow the OS default without persisting.
+**Current release:** `v0.110` (beta) — **Redesigned Plans page.** The `/plans` page has a cleaner, more premium look in both light and dark mode: a compact hero, consistent neutral plan cards with subtle per-tier accents (replacing the heavy gradient fills and neon CTA), concise bullets per tier, and a lighter feature comparison — a sticky-header grouped table on desktop and keyboard-accessible accordions on tablet/mobile. Trust highlights and the Enterprise contact card were restyled to match. Plan data, pricing display, current-plan/trial state, and all contact links/actions are unchanged.
+
+**Previous release:** `v0.109` (beta) — **Theme tied to cookie consent.** Light/dark mode is saved in `localStorage` only after **Accept all** on the cookie banner (same rule as login terms). **Essential only** keeps theme changes for the current session and clears any stored preference on reload; until you choose, toggles follow the OS default without persisting.
 
 **Previous release:** `v0.108` (beta) — **Production self-update mode fix.** One-click Update now reads **`NSAGENT_DEPLOY_MODE`** from the container environment and mounted `.env` (same source as `./compose.sh`) instead of a missing `.compose-mode` file, so production installs rebuild with **`docker-compose.prod.yml`** and show **“Rebuilding production stack…”** instead of always defaulting to dev. The host agent also prefers the install’s `.env` when `request.json` has the wrong mode.
 
@@ -151,6 +153,16 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.110
+
+| Area | Highlights |
+|------|------------|
+| **Plans hero** | Compact hero ("Plans built for secure ADC operations") emphasizing on-prem, multi-NetScaler/ADC, and customer-controlled credentials — no oversized gradient banner. |
+| **Plan cards** | Neutral cards with soft borders, equal height, and a thin per-tier accent (emerald / blue / violet) instead of full gradient fills; concise feature bullets per tier and a clean primary CTA replace the long paragraph and neon button. Current-plan / Trial badge preserved. |
+| **Comparison** | Desktop keeps a readable table with a sticky header, grouped sections, and softer borders; tablet/mobile switch to keyboard-accessible `<details>` accordions per feature group (no horizontal table overflow). All feature content and footnotes retained. |
+| **Trust + Enterprise CTA** | Platform highlights restyled as compact icon cards; the Enterprise contact card uses a subtle brand gradient and a clean button. |
+| **Unchanged** | Plan data, pricing labels, routing, license/current-plan logic, and every contact link/action are untouched — presentation only. |
 
 ## What's new in v0.109
 
