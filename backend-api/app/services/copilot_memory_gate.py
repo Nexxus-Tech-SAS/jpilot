@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any
 
 NEXTGEN_API_TOOLS = frozenset(
@@ -396,6 +397,97 @@ def block_result_for_missing_cli_memory(tool_name: str) -> str:
         },
         indent=2,
     )
+
+
+# ---------------------------------------------------------------------------
+# §4.2 — LB-provisioning backstop: block raw CLI that hand-builds LB objects.
+#
+# Only intercepts LB-provisioning verbs on the two raw CLI tools.
+# Read-only verbs (show lb vserver) and non-LB writes pass through unchanged.
+# ---------------------------------------------------------------------------
+
+# Matches raw LB-object provisioning verbs. Covers the known hallucinated patterns.
+# Does NOT match `show lb vserver` or other read verbs (those start with "show"/"stat").
+_LB_PROVISION_RE = re.compile(
+    r"\b(add|set|bind|rm|enable)\s+(lb\s+vserver|serviceGroup|service\b)",
+    re.IGNORECASE,
+)
+
+# Tighter patterns that are specifically LB-create/bind operations the model should
+# never hand-build (these are the ones that produce invalid args like -purpose).
+_LB_CREATE_PROVISION_RE = re.compile(
+    r"\badd\s+(lb\s+vserver|serviceGroup|service\b)",
+    re.IGNORECASE,
+)
+_LB_BIND_RE = re.compile(r"\bbind\s+lb\s+vserver\b", re.IGNORECASE)
+
+# The corrective redirect message returned when the backstop fires.
+_LB_BACKSTOP_MESSAGE = (
+    "Do NOT hand-build LB CLI. Use netscaler_create_lb (dry_run=true to preview, "
+    "then confirm=true to apply) / netscaler_modify_lb / netscaler_delete_lb — "
+    "they encode correct syntax (no invalid args like -purpose; separate "
+    "`set lb vserver -lbMethod/-persistenceType`)."
+)
+
+_LB_BACKSTOP_TOOLS = frozenset({CLI_WRITE_TOOL, CLI_BATCH_TOOL})
+
+
+def _lb_provision_command_blocked(command: str) -> bool:
+    """Return True when a single CLI command string is an LB-provisioning verb.
+
+    Returns False for read-only commands (show lb vserver, stat …) so that
+    legitimate diagnostic reads are never blocked.
+    """
+    stripped = (command or "").strip()
+    verb = stripped.lower().split()[0] if stripped else ""
+    if verb in READONLY_CLI_VERBS:
+        return False
+    return bool(_LB_CREATE_PROVISION_RE.search(stripped) or _LB_BIND_RE.search(stripped))
+
+
+def lb_provision_backstop_blocked(tool_name: str, arguments: dict[str, Any]) -> bool:
+    """Return True when the call is a raw CLI attempt to hand-build LB objects.
+
+    Only fires for netscaler_run_cli_command / netscaler_run_cli_commands whose
+    command(s) contain an LB-provisioning verb (add lb vserver, add serviceGroup,
+    add service, bind lb vserver).  Read-only CLI is never blocked.
+    """
+    if tool_name not in _LB_BACKSTOP_TOOLS:
+        return False
+    if tool_name == CLI_WRITE_TOOL:
+        return _lb_provision_command_blocked(arguments.get("command", ""))
+    # CLI_BATCH_TOOL — block if ANY command in the batch is an LB-provisioning verb
+    for cmd in arguments.get("commands") or []:
+        if _lb_provision_command_blocked(str(cmd)):
+            return True
+    return False
+
+
+def block_result_for_lb_provision_backstop(tool_name: str, arguments: dict[str, Any]) -> str:
+    """Return the blocked JSON result with the redirect hint for the LB backstop."""
+    if tool_name == CLI_WRITE_TOOL:
+        operation = arguments.get("command", "")
+    else:
+        operation = "; ".join(str(c) for c in (arguments.get("commands") or []))
+    return json.dumps(
+        {
+            "success": False,
+            "blocked": True,
+            "lbProvisioningBlocked": True,
+            "operation": operation,
+            "message": _LB_BACKSTOP_MESSAGE,
+            "requiredAction": (
+                "Call netscaler_create_lb with dry_run=true to preview, "
+                "present the plan to the user, then call with confirm=true after they confirm."
+            ),
+        },
+        indent=2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# End §4.2 LB backstop
+# ---------------------------------------------------------------------------
 
 
 def apply_memory_review_gates(

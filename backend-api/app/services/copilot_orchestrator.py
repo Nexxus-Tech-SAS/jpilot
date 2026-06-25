@@ -56,8 +56,10 @@ from app.services.copilot_memory_gate import (
     F5_CLI_MEMORY_SEARCH_TOOL,
     MEMORY_SEARCH_TOOL,
     SDX_CLI_MEMORY_SEARCH_TOOL,
+    block_result_for_lb_provision_backstop,
     block_result_for_unconfirmed_destructive,
     destructive_confirmation_required,
+    lb_provision_backstop_blocked,
 )
 from app.services.copilot_architect_discovery import (
     architect_discovery_should_retry,
@@ -1108,6 +1110,19 @@ async def _execute_tool_with_memory_gate(
         logger.info("tool_call name=%s BLOCKED (memory/blueprint review not satisfied)", name)
         return blocked, nextgen_memory_reviewed, cli_memory_reviewed, stack_calibration_reviewed
 
+    # §4.2 — LB-provisioning backstop: block raw CLI hand-building LB objects and redirect
+    # to the dedicated netscaler_create_lb / netscaler_modify_lb / netscaler_delete_lb tools.
+    # Only fires for netscaler_run_cli_command(s) with LB-provisioning verbs (add/bind lb
+    # vserver, add serviceGroup, add service); read-only verbs (show lb vserver) pass through.
+    if lb_provision_backstop_blocked(name, arguments):
+        logger.info("tool_call name=%s BLOCKED (lb_provision_backstop — redirect to create_lb)", name)
+        return (
+            block_result_for_lb_provision_backstop(name, arguments),
+            nextgen_memory_reviewed,
+            cli_memory_reviewed,
+            stack_calibration_reviewed,
+        )
+
     if destructive_confirmation_required(name, arguments):
         logger.info("tool_call name=%s BLOCKED (awaiting destructive-op confirmation)", name)
         return (
@@ -1247,6 +1262,7 @@ async def run_copilot_chat(
         user_message=user_message,
         attachment_names=[a.name for a in attachment_list],
         vendor=chat_vendor,
+        history=history,
     )
     enabled_tool_names = {tool["name"] for tool in enabled_tools}
     logger.info(
