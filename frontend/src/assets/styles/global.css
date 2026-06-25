@@ -542,6 +542,61 @@ html.app-dark .chat-pane {
 }
 
 /* ---------------------------------------------------------------------------
+   Atmosphere pages — frosted-glass surfaces over the animated orbit backdrop.
+   The backdrop is rendered once in MainLayout (behind .main-view) for routes
+   flagged meta.atmosphere; here we make the views' solid panels translucent so
+   the moving background reads through. Tokens are theme-relative so a single
+   value works in light and dark. Reused by DashboardView and applied to Plans,
+   Calibration Studio, and Settings via .main-content-atmosphere.
+   --------------------------------------------------------------------------- */
+:root {
+  --glass-panel-bg: color-mix(in srgb, var(--p-content-background) 55%, transparent);
+  --glass-panel-border: color-mix(in srgb, var(--p-content-border-color) 55%, transparent);
+  --glass-panel-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 2px 4px rgba(2, 6, 23, 0.06),
+    0 14px 32px rgba(2, 6, 23, 0.1);
+}
+
+html.app-dark {
+  --glass-panel-bg: color-mix(in srgb, var(--p-content-background) 34%, transparent);
+  --glass-panel-border: rgba(255, 255, 255, 0.1);
+  --glass-panel-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 16px 36px rgba(0, 0, 0, 0.4);
+}
+
+/* Reusable utility (used directly by the home view). */
+.glass-panel {
+  background: var(--glass-panel-bg);
+  border: 1px solid var(--glass-panel-border);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  box-shadow: var(--glass-panel-shadow);
+}
+
+/* Re-skin the existing solid container surfaces inside atmosphere routes.
+   Targets only top-level panels/cards — not inputs, tags, or table cells. */
+@media (min-width: 992px) {
+  /* Note: .plan-card uses .glass-panel directly for per-tier hover glow. */
+  .main-content-atmosphere :is(
+    .content-panel,
+    .stat-card,
+    .stat-tile,
+    .welcome-panel,
+    .settings-rail,
+    .settings-detail
+  ) {
+    background: var(--glass-panel-bg) !important;
+    border-color: var(--glass-panel-border) !important;
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    box-shadow: var(--glass-panel-shadow) !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Page transitions (router-view) — used by both App.vue and MainLayout.vue.
    Must be global (not scoped) so Vue's <Transition> can apply them to the
    child component's root element.

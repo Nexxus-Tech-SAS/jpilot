@@ -2,19 +2,10 @@
   <div class="page plans-page">
     <!-- Hero -->
     <header class="plans-hero">
-      <div class="plans-hero-brand">
-        <img :src="logoSrc" alt="JPilot" class="plans-hero-logo" width="36" height="36" />
-        <p class="plans-hero-eyebrow m-0">
-          <span class="plans-hero-product">JPilot</span>
-          <span class="plans-hero-separator" aria-hidden="true">·</span>
-          <a
-            :href="NEXXUS_TECH.websiteUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="plans-hero-vendor"
-          >Nexxus Tech</a>
-        </p>
-      </div>
+      <p class="plans-eyebrow m-0">
+        <i class="pi pi-tags" aria-hidden="true" />
+        Plans
+      </p>
       <h1 class="plans-hero-title m-0">Plans built for secure ADC operations</h1>
       <p class="plans-hero-copy m-0">
         JPilot runs <strong>on-premises</strong> with Docker, manages
@@ -29,7 +20,7 @@
       <article
         v-for="plan in PRICING_PLANS"
         :key="plan.id"
-        class="plan-card"
+        class="plan-card glass-panel"
         :class="[
           `plan-card--${plan.id}`,
           {
@@ -77,7 +68,7 @@
           + {{ planMoreCount(plan) }} more in the comparison below
         </p>
 
-        <div class="plan-card__cta">
+        <div v-if="plan.ctaLabel" class="plan-card__cta">
           <Button
             v-if="plan.ctaHref"
             as="a"
@@ -101,169 +92,176 @@
       </article>
     </section>
 
-    <!-- Feature comparison -->
-    <section class="plans-compare" aria-labelledby="compare-heading">
-      <div class="plans-compare__head">
-        <h2 id="compare-heading" class="plans-section-title m-0">What's included</h2>
-        <p class="plans-section-copy m-0">
-          Each tier builds on the one before it. Compare side by side, or expand a group to see the details.
-        </p>
-      </div>
+    <!-- Comparison + platform highlights -->
+    <div class="plans-details">
+      <section class="plans-compare" aria-labelledby="compare-heading">
+        <div class="plans-compare__head">
+          <h2 id="compare-heading" class="plans-section-title m-0">What's included</h2>
+          <p class="plans-section-copy m-0">
+            Each tier builds on the one before it. Compare side by side, or expand a group to see the details.
+          </p>
+        </div>
 
-      <!-- Desktop / wide: table -->
-      <div class="compare-table-card content-panel">
-        <div class="compare-table-scroll">
-          <table class="compare-table">
-            <thead>
-              <tr>
-                <th scope="col" class="compare-table__feature-head">Feature</th>
-                <th
-                  v-for="plan in PRICING_PLANS"
-                  :key="plan.id"
-                  scope="col"
-                  class="compare-table__plan-head"
-                  :class="{ 'is-current': isCurrentPlan(plan) }"
-                >
-                  <span class="compare-table__plan-name">{{ plan.name }}</span>
-                  <Tag
-                    v-if="isCurrentPlan(plan)"
-                    :value="currentPlanTagLabel(plan)"
-                    :severity="currentPlanTagSeverity(plan)"
-                    class="compare-table__plan-tag"
-                  />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <template v-for="group in PLAN_FEATURE_GROUPS" :key="group.id">
-                <tr class="compare-table__group">
-                  <th scope="rowgroup" :colspan="PRICING_PLANS.length + 1">
-                    <span class="compare-table__group-title">{{ group.title }}</span>
-                    <span class="compare-table__group-sub">{{ group.subtitle }}</span>
-                  </th>
-                </tr>
-                <tr
-                  v-for="feature in group.features"
-                  :key="`${group.id}-${featureKey(feature)}`"
-                  class="compare-table__row"
-                >
-                  <th scope="row" class="compare-table__feature">{{ featureLabel(feature) }}</th>
-                  <td
+        <!-- Desktop / wide: table -->
+        <div class="compare-table-card content-panel">
+          <div class="compare-table-scroll">
+            <table class="compare-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="compare-table__feature-head">Feature</th>
+                  <th
                     v-for="plan in PRICING_PLANS"
-                    :key="`${group.id}-${featureKey(feature)}-${plan.id}`"
-                    class="compare-table__cell"
+                    :key="plan.id"
+                    scope="col"
+                    class="compare-table__plan-head"
                     :class="{ 'is-current': isCurrentPlan(plan) }"
                   >
-                    <i
-                      v-if="planIncludesGroup(plan.id, group)"
-                      class="pi pi-check compare-check"
-                      role="img"
-                      aria-label="Included"
+                    <span class="compare-table__plan-name">{{ plan.name }}</span>
+                    <Tag
+                      v-if="isCurrentPlan(plan)"
+                      :value="currentPlanTagLabel(plan)"
+                      :severity="currentPlanTagSeverity(plan)"
+                      class="compare-table__plan-tag"
                     />
-                    <span v-else class="compare-dash" role="img" aria-label="Not included">—</span>
-                  </td>
+                  </th>
                 </tr>
-              </template>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                <template v-for="group in PLAN_FEATURE_GROUPS" :key="group.id">
+                  <tr class="compare-table__group">
+                    <th scope="rowgroup" :colspan="PRICING_PLANS.length + 1">
+                      <span class="compare-table__group-title">{{ group.title }}</span>
+                      <span class="compare-table__group-sub">{{ group.subtitle }}</span>
+                    </th>
+                  </tr>
+                  <tr
+                    v-for="feature in group.features"
+                    :key="`${group.id}-${featureKey(feature)}`"
+                    class="compare-table__row"
+                  >
+                    <th scope="row" class="compare-table__feature">{{ featureLabel(feature) }}</th>
+                    <td
+                      v-for="plan in PRICING_PLANS"
+                      :key="`${group.id}-${featureKey(feature)}-${plan.id}`"
+                      class="compare-table__cell"
+                      :class="{ 'is-current': isCurrentPlan(plan) }"
+                    >
+                      <i
+                        v-if="planIncludesGroup(plan.id, group)"
+                        class="pi pi-check compare-check"
+                        role="img"
+                        aria-label="Included"
+                      />
+                      <span v-else class="compare-dash" role="img" aria-label="Not included">—</span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="planFootnotes.length" class="compare-footnotes">
+            <p
+              v-for="(footnote, index) in planFootnotes"
+              :key="index"
+              class="compare-footnote m-0"
+            >
+              <span class="compare-footnote__marker">{{ footnote.marker }}</span>
+              {{ footnote.text }}
+            </p>
+          </div>
         </div>
-        <div v-if="planFootnotes.length" class="compare-footnotes">
-          <p
-            v-for="(footnote, index) in planFootnotes"
-            :key="index"
-            class="compare-footnote m-0"
-          >
-            <span class="compare-footnote__marker">{{ footnote.marker }}</span>
-            {{ footnote.text }}
-          </p>
-        </div>
-      </div>
 
-      <!-- Tablet / mobile: accordions -->
-      <div class="compare-accordion">
-        <details
-          v-for="(group, index) in PLAN_FEATURE_GROUPS"
-          :key="group.id"
-          class="compare-acc"
-          :class="`compare-acc--${group.id}`"
-          :open="index === 0"
-        >
-          <summary class="compare-acc__summary">
-            <span class="compare-acc__heading">
-              <span class="compare-acc__title">{{ group.title }}</span>
-              <span class="compare-acc__sub">{{ group.subtitle }}</span>
+        <!-- Tablet / mobile: accordions -->
+        <div class="compare-accordion">
+          <details
+            v-for="(group, index) in PLAN_FEATURE_GROUPS"
+            :key="group.id"
+            class="compare-acc"
+            :class="`compare-acc--${group.id}`"
+            :open="index === 0"
+          >
+            <summary class="compare-acc__summary">
+              <span class="compare-acc__heading">
+                <span class="compare-acc__title">{{ group.title }}</span>
+                <span class="compare-acc__sub">{{ group.subtitle }}</span>
+              </span>
+              <i class="pi pi-chevron-down compare-acc__chevron" aria-hidden="true" />
+            </summary>
+            <ul class="compare-acc__list m-0 p-0">
+              <li v-for="feature in group.features" :key="featureKey(feature)">
+                <i class="pi pi-check" aria-hidden="true" />
+                <span>{{ featureLabel(feature) }}</span>
+              </li>
+            </ul>
+          </details>
+          <div v-if="planFootnotes.length" class="compare-footnotes compare-footnotes--accordion">
+            <p
+              v-for="(footnote, index) in planFootnotes"
+              :key="index"
+              class="compare-footnote m-0"
+            >
+              <span class="compare-footnote__marker">{{ footnote.marker }}</span>
+              {{ footnote.text }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="plans-details__aside">
+        <section class="plans-trust" aria-label="Platform highlights">
+          <div
+            v-for="item in PLATFORM_HIGHLIGHTS"
+            :key="item.title"
+            class="trust-card glass-panel"
+          >
+            <span class="trust-card__icon" aria-hidden="true">
+              <i :class="item.icon" />
             </span>
-            <i class="pi pi-chevron-down compare-acc__chevron" aria-hidden="true" />
-          </summary>
-          <ul class="compare-acc__list m-0 p-0">
-            <li v-for="feature in group.features" :key="featureKey(feature)">
-              <i class="pi pi-check" aria-hidden="true" />
-              <span>{{ featureLabel(feature) }}</span>
-            </li>
-          </ul>
-        </details>
-        <div v-if="planFootnotes.length" class="compare-footnotes compare-footnotes--accordion">
-          <p
-            v-for="(footnote, index) in planFootnotes"
-            :key="index"
-            class="compare-footnote m-0"
-          >
-            <span class="compare-footnote__marker">{{ footnote.marker }}</span>
-            {{ footnote.text }}
-          </p>
-        </div>
-      </div>
-    </section>
+            <div class="trust-card__body min-w-0">
+              <h3 class="trust-card__title m-0">{{ item.title }}</h3>
+              <p class="trust-card__copy m-0">{{ item.description }}</p>
+            </div>
+          </div>
+        </section>
 
-    <!-- Trust highlights -->
-    <section class="plans-trust" aria-label="Platform highlights">
-      <div
-        v-for="item in PLATFORM_HIGHLIGHTS"
-        :key="item.title"
-        class="trust-card"
-      >
-        <span class="trust-card__icon" aria-hidden="true">
-          <i :class="item.icon" />
-        </span>
-        <div class="trust-card__body min-w-0">
-          <h3 class="trust-card__title m-0">{{ item.title }}</h3>
-          <p class="trust-card__copy m-0">{{ item.description }}</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Enterprise CTA -->
-    <section class="plans-enterprise" aria-label="Enterprise contact">
-      <div class="enterprise-cta content-panel">
-        <div class="enterprise-cta__body">
-          <h2 class="plans-section-title m-0">Need Enterprise?</h2>
-          <p class="plans-section-copy enterprise-cta__copy m-0">
-            Nexxus Tech can add SSO, custom runbooks, WAF/GSLB programs, engineer-led
-            rollouts, migrations, health checks, and security enablements for F5, NetScaler,
-            NGINX, and CVAD — on-premises, AWS, or Azure.
-          </p>
-        </div>
-        <Button
-          as="a"
-          :href="NEXXUS_TECH.contactUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          label="Contact us"
-          icon="pi pi-arrow-up-right"
-          icon-pos="right"
-          class="enterprise-cta__btn"
-        />
-      </div>
-    </section>
+        <section class="plans-enterprise" aria-label="Enterprise contact">
+          <div class="enterprise-cta glass-panel">
+            <span class="enterprise-cta__accent" aria-hidden="true" />
+            <div class="enterprise-cta__head">
+              <span class="enterprise-cta__icon" aria-hidden="true">
+                <i class="pi pi-building-columns" />
+              </span>
+              <div class="enterprise-cta__body min-w-0">
+                <h2 class="enterprise-cta__title m-0">Need Enterprise?</h2>
+                <p class="enterprise-cta__copy m-0">
+                  Nexxus Tech can add SSO, custom runbooks, WAF/GSLB programs, engineer-led
+                  rollouts, migrations, health checks, and security enablements for F5, NetScaler,
+                  NGINX, and CVAD — on-premises, AWS, or Azure. Contact us for Enterprise or
+                  Enterprise Pro pricing.
+                </p>
+              </div>
+            </div>
+            <Button
+              as="a"
+              :href="NEXXUS_TECH.contactUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              label="Contact us"
+              icon="pi pi-arrow-up-right"
+              icon-pos="right"
+              class="enterprise-cta__btn"
+            />
+          </div>
+        </section>
+      </aside>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-import logoLight from '../assets/JPilot-logo-big.svg'
-import logoDark from '../assets/JPilot-logo-big-black.svg'
 import { licenseTypeToPlanId, resolveLicensePlanTheme } from '../config/licensePlanThemes'
 import { NEXXUS_TECH } from '../config/nexxusTech'
 import {
@@ -276,14 +274,10 @@ import {
   PRICING_PLANS
 } from '../config/pricingPlans'
 import { getLicense } from '../services/system'
-import { getTheme } from '../services/theme'
 
 const PLAN_CARD_BULLET_LIMIT = 4
 
 const license = ref(null)
-const theme = ref(getTheme())
-
-const logoSrc = computed(() => (theme.value === 'dark' ? logoDark : logoLight))
 
 const activePlanId = computed(() => {
   if (!license.value?.hasLicenseCode) return 'free'
@@ -343,89 +337,57 @@ function planInheritNote(plan) {
 }
 
 onMounted(async () => {
-  window.addEventListener('jpilot-theme-change', onThemeChange)
   try {
     license.value = await getLicense()
   } catch {
     // Plans page works without license data.
   }
 })
-
-onUnmounted(() => {
-  window.removeEventListener('jpilot-theme-change', onThemeChange)
-})
-
-function onThemeChange(event) {
-  theme.value = event.detail
-}
 </script>
 
 <style scoped>
 .plans-page {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 0.9rem;
+  padding: 1.25rem 1.25rem 0.5rem;
   animation: page-in 0.35s ease;
+  flex: 1;
+  min-height: 0;
 }
 
 /* ---------- Hero ---------- */
 .plans-hero {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-}
-
-.plans-hero-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.plans-hero-logo {
-  display: block;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex-shrink: 0;
-}
-
-.plans-hero-eyebrow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: 0.35rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+}
+
+.plans-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
   color: var(--p-text-muted-color);
 }
 
-.plans-hero-product {
-  color: var(--p-text-color);
-}
-
-.plans-hero-separator {
-  opacity: 0.55;
-}
-
-.plans-hero-vendor {
+.plans-eyebrow .pi {
   color: var(--p-primary-color);
-  text-decoration: none;
-}
-
-.plans-hero-vendor:hover {
-  text-decoration: underline;
 }
 
 .plans-hero-title {
-  font-size: 1.65rem;
+  font-size: clamp(1.5rem, 1rem + 2vw, 2.1rem);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   line-height: 1.2;
   color: var(--p-text-color);
 }
 
 .plans-hero-copy {
-  font-size: 0.9375rem;
+  font-size: 0.9rem;
   line-height: 1.6;
   color: var(--p-text-muted-color);
   max-width: 46rem;
@@ -466,24 +428,26 @@ function onThemeChange(event) {
   flex-direction: column;
   gap: 1rem;
   padding: 1.5rem;
-  background: var(--p-content-background);
-  border: 1px solid var(--p-content-border-color);
   border-radius: var(--content-radius);
   overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-  /* Per-tier accent, used only as a thin bar + check color. */
+  transition:
+    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Per-tier accent — drives top bar, checks, and hover glow. */
   --tier-accent: var(--p-primary-color);
-  --tier-accent-soft: color-mix(in srgb, var(--p-primary-color) 12%, transparent);
+  --tier-accent-soft: color-mix(in srgb, var(--p-primary-color) 14%, transparent);
+  --card-accent: var(--tier-accent);
 }
 
 .plan-card--enterprise {
   --tier-accent: #3b82f6;
-  --tier-accent-soft: rgba(59, 130, 246, 0.12);
+  --tier-accent-soft: color-mix(in srgb, #3b82f6 14%, transparent);
 }
 
 .plan-card--enterprise-pro {
   --tier-accent: #8b5cf6;
-  --tier-accent-soft: rgba(139, 92, 246, 0.12);
+  --tier-accent-soft: color-mix(in srgb, #8b5cf6 14%, transparent);
 }
 
 .plan-card__accent {
@@ -495,20 +459,22 @@ function onThemeChange(event) {
 }
 
 @media (hover: hover) {
-  .plan-card:hover {
-    border-color: color-mix(in srgb, var(--tier-accent) 45%, var(--p-content-border-color));
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.06);
+  .plan-card:hover,
+  .trust-card:hover,
+  .enterprise-cta:hover {
     transform: translateY(-3px);
-  }
-
-  html.app-dark .plan-card:hover {
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+    border-color: color-mix(in srgb, var(--card-accent) 50%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 12px 28px color-mix(in srgb, var(--card-accent) 22%, rgba(2, 6, 23, 0.12));
   }
 }
 
 .plan-card--current {
-  border-color: color-mix(in srgb, var(--tier-accent) 55%, var(--p-content-border-color));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tier-accent) 45%, transparent);
+  border-color: color-mix(in srgb, var(--card-accent) 50%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 12px 28px color-mix(in srgb, var(--card-accent) 22%, rgba(2, 6, 23, 0.12));
 }
 
 .plan-card--current .plan-card__accent {
@@ -601,6 +567,20 @@ function onThemeChange(event) {
   margin-top: auto;
 }
 
+/* ---------- Comparison + highlights layout ---------- */
+.plans-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.plans-details__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 /* ---------- Comparison ---------- */
 .plans-compare {
   display: flex;
@@ -615,6 +595,10 @@ function onThemeChange(event) {
 .compare-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.compare-table-card .compare-table-scroll {
+  border-radius: var(--content-radius) var(--content-radius) 0 0;
 }
 
 .compare-table {
@@ -836,28 +820,22 @@ function onThemeChange(event) {
 
 /* ---------- Trust highlights ---------- */
 .plans-trust {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
 }
 
 .trust-card {
+  --card-accent: var(--p-primary-color);
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
   padding: 1rem 1.1rem;
-  background: var(--p-content-background);
-  border: 1px solid var(--p-content-border-color);
   border-radius: var(--content-radius);
-  transition: border-color 0.2s ease;
-}
-
-.trust-card:hover {
-  border-color: var(--p-primary-200);
-}
-
-html.app-dark .trust-card:hover {
-  border-color: var(--p-primary-700);
+  transition:
+    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .trust-card__icon {
@@ -868,8 +846,8 @@ html.app-dark .trust-card:hover {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 0.6rem;
-  background: color-mix(in srgb, var(--p-primary-color) 12%, transparent);
-  color: var(--p-primary-color);
+  background: color-mix(in srgb, var(--card-accent) 14%, transparent);
+  color: var(--card-accent);
 }
 
 .trust-card__icon i {
@@ -891,36 +869,128 @@ html.app-dark .trust-card:hover {
 
 /* ---------- Enterprise CTA ---------- */
 .enterprise-cta {
+  --card-accent: #3b82f6;
+  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  padding: 1.5rem 1.75rem;
-  background: linear-gradient(
-    135deg,
-    var(--p-content-background) 0%,
-    color-mix(in srgb, var(--p-primary-50) 45%, var(--p-content-background)) 100%
-  );
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--content-radius);
+  overflow: hidden;
+  transition:
+    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-html.app-dark .enterprise-cta {
-  background: linear-gradient(
-    135deg,
-    var(--p-content-background) 0%,
-    color-mix(in srgb, var(--p-primary-900) 32%, var(--p-content-background)) 100%
-  );
+.enterprise-cta__accent {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--card-accent);
+  opacity: 0.85;
+}
+
+.enterprise-cta__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.enterprise-cta__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--card-accent) 14%, transparent);
+  color: var(--card-accent);
+}
+
+.enterprise-cta__icon i {
+  font-size: 0.95rem;
+}
+
+.enterprise-cta__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--p-text-color);
 }
 
 .enterprise-cta__copy {
-  margin-top: 0.4rem;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--p-text-muted-color);
 }
 
 .enterprise-cta__btn {
-  flex-shrink: 0;
-  white-space: nowrap;
+  width: 100%;
 }
 
 /* ---------- Responsive ---------- */
+@media (min-width: 992px) {
+  .plans-details__aside {
+    justify-content: flex-end;
+    min-height: 100%;
+  }
+
+  .compare-table-scroll {
+    max-height: calc(100vh - 22rem);
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 1101px) {
+  .plans-page {
+    overflow: hidden;
+    gap: 1.25rem;
+  }
+
+  .plans-hero,
+  .plans-cards {
+    flex-shrink: 0;
+  }
+
+  .plans-details {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .plans-compare {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .plans-details__aside {
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+
+  .compare-table-card {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .compare-footnotes {
+    flex-shrink: 0;
+  }
+
+  .compare-table-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+}
+
 @media (max-width: 1100px) {
   .plans-cards {
     grid-template-columns: 1fr;
@@ -928,6 +998,14 @@ html.app-dark .enterprise-cta {
 }
 
 @media (max-width: 991px) {
+  .plans-page {
+    padding: 0.25rem 0.25rem 1rem;
+  }
+
+  .plans-details {
+    grid-template-columns: 1fr;
+  }
+
   .compare-table-card {
     display: none;
   }
@@ -937,7 +1015,16 @@ html.app-dark .enterprise-cta {
   }
 
   .plans-trust {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .plan-card.glass-panel,
+  .trust-card.glass-panel,
+  .enterprise-cta.glass-panel {
+    background: var(--p-content-background);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .plans-hero-title {
@@ -948,16 +1035,6 @@ html.app-dark .enterprise-cta {
 @media (max-width: 640px) {
   .plans-trust {
     grid-template-columns: 1fr;
-  }
-
-  .enterprise-cta {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-  }
-
-  .enterprise-cta__btn {
-    width: 100%;
   }
 }
 
@@ -978,8 +1055,16 @@ html.app-dark .enterprise-cta {
   }
 
   .plan-card,
+  .trust-card,
+  .enterprise-cta,
   .compare-acc__chevron {
     transition: none;
+  }
+
+  .plan-card:hover,
+  .trust-card:hover,
+  .enterprise-cta:hover {
+    transform: none;
   }
 }
 </style>

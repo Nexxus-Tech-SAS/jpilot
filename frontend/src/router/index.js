@@ -53,7 +53,7 @@ const router = createRouter({
       component: MainLayout,
       meta: { requiresAuth: true },
       children: [
-        { path: '', name: 'dashboard', component: DashboardView },
+        { path: '', name: 'dashboard', component: DashboardView, meta: { atmosphere: true } },
         { path: 'jpilot', name: 'jpilot', component: CopilotBetaView, meta: { chatNamespace: 'lab' } },
         { path: 'jpilot/beta', redirect: '/jpilot' },
         { path: 'copilot', redirect: '/jpilot' },
@@ -68,9 +68,9 @@ const router = createRouter({
         { path: 'next-gen-api', redirect: { path: '/settings', query: { section: 'nextgen' } } },
         { path: 'beta-features', redirect: { path: '/settings', query: { section: 'nextgen', tab: 'beta' } } },
         { path: 'users', redirect: { path: '/settings', query: { section: 'users' } } },
-        { path: 'plans', name: 'plans', component: PricingView },
-        { path: 'calibration-studio', name: 'calibration-studio', component: CalibrationStudioView },
-        { path: 'settings', name: 'settings', component: SettingsBetaView },
+        { path: 'plans', name: 'plans', component: PricingView, meta: { atmosphere: true } },
+        { path: 'calibration-studio', name: 'calibration-studio', component: CalibrationStudioView, meta: { atmosphere: true } },
+        { path: 'settings', name: 'settings', component: SettingsBetaView, meta: { atmosphere: true } },
         { path: 'settings-beta', redirect: '/settings' }
       ]
     }

@@ -711,12 +711,13 @@ onMounted(() => {
 .studio {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 0.5rem 0.5rem 1.5rem;
+  gap: 0.9rem;
+  flex: 1;
+  min-height: 0;
+  padding: 1.25rem 1.25rem 0.5rem;
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  min-height: 0;
 }
 
 /* Header */
@@ -990,6 +991,12 @@ onMounted(() => {
 }
 
 /* ---------- Mobile ---------- */
+@media (max-width: 991px) {
+  .studio {
+    padding: 0.25rem 0.25rem 1rem;
+  }
+}
+
 @media (max-width: 900px) {
   .studio-stats {
     grid-template-columns: repeat(2, 1fr);
@@ -997,11 +1004,6 @@ onMounted(() => {
 }
 
 @media (max-width: 640px) {
-  .studio {
-    padding: 0.25rem 0.25rem 1rem;
-    gap: 1rem;
-  }
-
   .studio-header-actions {
     width: 100%;
   }

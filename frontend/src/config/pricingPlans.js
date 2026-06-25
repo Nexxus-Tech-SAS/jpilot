@@ -1,5 +1,3 @@
-import { NEXXUS_TECH } from './nexxusTech'
-
 export const PRICING_PLAN_ORDER = ['free', 'enterprise', 'enterprise-pro']
 
 export const PRICING_PLANS = [
@@ -23,8 +21,8 @@ export const PRICING_PLANS = [
     priceLabel: null,
     priceDetail: 'Custom quote',
     highlighted: false,
-    ctaLabel: 'Contact us',
-    ctaHref: NEXXUS_TECH.contactUrl,
+    ctaLabel: null,
+    ctaHref: null,
     ctaDisabled: false
   },
   {
@@ -35,8 +33,8 @@ export const PRICING_PLANS = [
     priceLabel: null,
     priceDetail: 'Support Credits included',
     highlighted: false,
-    ctaLabel: 'Contact us',
-    ctaHref: NEXXUS_TECH.contactUrl,
+    ctaLabel: null,
+    ctaHref: null,
     ctaDisabled: false
   }
 ]
@@ -109,7 +107,7 @@ export const PLATFORM_HIGHLIGHTS = [
     description: 'Full platform access. No appliance or user limits.'
   },
   {
-    icon: 'pi pi-infinity',
+    icon: 'pi pi-th-large',
     title: 'Unlimited',
     description: 'As many appliances and LLM providers as you need (e.g., NetScaler).'
   },

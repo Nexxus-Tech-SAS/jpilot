@@ -182,7 +182,11 @@
       </div>
     </Drawer>
 
-    <main class="main-content flex-1 flex flex-column">
+    <main
+      class="main-content flex-1 flex flex-column"
+      :class="{ 'main-content-atmosphere': showAtmosphere }"
+    >
+      <BetaChatBackground v-if="showAtmosphere" background-id="orbit" class="main-atmosphere" />
       <div class="main-view">
         <router-view v-slot="{ Component, route }">
           <Transition name="page-fade" mode="out-in">
@@ -230,6 +234,7 @@ import Drawer from 'primevue/drawer'
 import Menu from 'primevue/menu'
 import Tag from 'primevue/tag'
 import Toast from 'primevue/toast'
+import BetaChatBackground from '../components/BetaChatBackground.vue'
 import TriArcLoader from '../components/TriArcLoader.vue'
 import { NEXXUS_TECH } from '../config/nexxusTech'
 import api from '../services/api'
@@ -259,6 +264,7 @@ const fullscreenLabel = computed(() =>
 const fullscreenTooltip = computed(() => fullscreenLabel.value)
 
 const isImmersiveBetaChat = computed(() => route.name === 'jpilot')
+const showAtmosphere = computed(() => route.meta.atmosphere === true)
 
 function closeMobileNav() {
   mobileNavOpen.value = false
@@ -601,12 +607,35 @@ function isActive(item) {
 }
 
 .main-content {
+  position: relative;
   height: calc(100vh - 3rem);
   min-height: calc(100vh - 3rem);
   max-height: calc(100vh - 3rem);
   padding: 0 0.5rem 0;
   gap: 0.75rem;
   overflow: hidden;
+}
+
+/* Shared animated backdrop for atmosphere routes: fixed behind the scrolling
+   view so panels (made translucent in global.css) float over moving orbits. */
+.main-atmosphere {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: var(--content-radius);
+  overflow: hidden;
+}
+
+.main-content-atmosphere .main-view,
+.main-content-atmosphere .app-legal {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 991px) {
+  .main-atmosphere {
+    display: none;
+  }
 }
 
 .main-view {
