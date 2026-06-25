@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.111` (beta) — **Atmosphere UI across Home, Plans, and Studio.** Dashboard, Plans, Calibration Studio, and Settings share an animated orbit backdrop with frosted-glass panels (matching the Architect/Operator/Analyst role tiles). The **home dashboard** is redesigned: personalized greeting, role launch tiles, usage activity, and Nexxus articles in a tighter layout. The **Plans** page adds a two-column compare + highlights layout (scrollable feature matrix, bottom-aligned sidebar, single **Contact us** CTA), glass plan/trust cards with tier-colored hover glow, and page padding aligned with Home. **Calibration Studio** uses the same page inset spacing.
+**Current release:** `v0.112` (beta) — **Plans page responsive polish.** iPad and tablet get a dedicated layout: compact plan headers with full feature lists underneath each tier, a bottom row with **What's included** (opens a comparison drawer) and **Need Enterprise** (gradient Contact us CTA). iPhone fixes natural vertical scrolling (no overlapping footer), tier separators, and a mobile-optimized comparison drawer (sticky feature column, compact plan headers, safe-area insets). Early Access card copy cleaned up; Enterprise / Enterprise Pro use blue and violet tier accents throughout cards and the compare table.
+
+**Previous release:** `v0.111` (beta) — **Atmosphere UI across Home, Plans, and Studio.** Dashboard, Plans, Calibration Studio, and Settings share an animated orbit backdrop with frosted-glass panels (matching the Architect/Operator/Analyst role tiles). The **home dashboard** is redesigned: personalized greeting, role launch tiles, usage activity, and Nexxus articles in a tighter layout. The **Plans** page adds a two-column compare + highlights layout (scrollable feature matrix, bottom-aligned sidebar, single **Contact us** CTA), glass plan/trust cards with tier-colored hover glow, and page padding aligned with Home. **Calibration Studio** uses the same page inset spacing.
 
 **Previous release:** `v0.110` (beta) — **Redesigned Plans page.** The `/plans` page has a cleaner, more premium look in both light and dark mode: a compact hero, consistent neutral plan cards with subtle per-tier accents (replacing the heavy gradient fills and neon CTA), concise bullets per tier, and a lighter feature comparison — a sticky-header grouped table on desktop and keyboard-accessible accordions on tablet/mobile. Trust highlights and the Enterprise contact card were restyled to match. Plan data, pricing display, current-plan/trial state, and all contact links/actions are unchanged.
 
@@ -155,6 +157,16 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.112
+
+| Area | Highlights |
+|------|------------|
+| **iPad / tablet** | Three-column plan headers with features listed below each tier; equal-height header cards; footer pinned to the bottom with **What's included** (title, hint, View comparison action) on the left and **Need Enterprise** on the right. |
+| **iPhone / mobile** | Document-flow layout replaces viewport-pinned footer (fixes overlap with plan tiers); stacked footer cards; tier dividers between Early Access, Enterprise, and Enterprise Pro. |
+| **Comparison drawer** | Bottom sheet tuned for phones: full width, safe-area padding, compact column headers (Early / Ent. / Ent. Pro), sticky feature column for horizontal scroll, tighter table spacing. |
+| **Plan cards** | Removed duplicate Early Access price line and overlay price subtitles; tier-colored borders and checkmarks; single **Contact us** button with blue→violet gradient. |
+| **Refactor** | `PlansCompareTable` and `PlansTrustCards` extracted; enterprise CTA copy centralized in `nexxusTech.js`. |
 
 ## What's new in v0.110
 

@@ -2,7 +2,11 @@ export const NEXXUS_TECH = {
   name: 'Nexxus Tech',
   websiteUrl: 'https://www.nexxus-tech.com',
   blogUrl: 'https://www.nexxus-tech.com/blog',
-  contactUrl: 'https://www.nexxus-tech.com/contact'
+  contactUrl: 'https://www.nexxus-tech.com/contact',
+  enterpriseCtaCopy:
+    'Nexxus Tech can add SSO, custom runbooks, WAF/GSLB programs, engineer-led rollouts, migrations, health checks, and security enablements for F5, NetScaler, NGINX, and CVAD — on-premises, AWS, or Azure. Contact us for Enterprise or Enterprise Pro pricing.',
+  enterpriseCtaCopyShort:
+    'SSO, premium blueprints, WAF/GSLB programs, and engineer-led ADC rollout for Enterprise and Enterprise Pro.'
 }
 
 /** Curated from https://www.nexxus-tech.com/api/blog — used when the proxy is unavailable. */

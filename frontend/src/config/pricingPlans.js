@@ -4,22 +4,24 @@ export const PRICING_PLANS = [
   {
     id: 'free',
     name: 'Early Access',
-    shortName: 'Early Access',
+    shortName: 'Early',
     tagline: 'Everything you need to start',
-    priceLabel: 'Early access',
+    priceLabel: null,
     priceDetail: 'Unlimited · on-prem',
+    accent: null,
     highlighted: false,
-    ctaLabel: 'You are here',
+    ctaLabel: null,
     ctaHref: null,
     ctaDisabled: true
   },
   {
     id: 'enterprise',
     name: 'Enterprise',
-    shortName: 'Enterprise',
+    shortName: 'Ent.',
     tagline: 'Identity, premium blueprints, and guided ADC rollout',
     priceLabel: null,
     priceDetail: 'Custom quote',
+    accent: '#3b82f6',
     highlighted: false,
     ctaLabel: null,
     ctaHref: null,
@@ -32,12 +34,23 @@ export const PRICING_PLANS = [
     tagline: 'Customize personas & blueprints, with on-demand expert support',
     priceLabel: null,
     priceDetail: 'Support Credits included',
+    accent: '#8b5cf6',
     highlighted: false,
     ctaLabel: null,
     ctaHref: null,
     ctaDisabled: false
   }
 ]
+
+export function planAccentVars(plan) {
+  if (!plan?.accent) return undefined
+  return {
+    '--plan-accent': plan.accent,
+    '--tier-accent': plan.accent,
+    '--tier-accent-soft': `color-mix(in srgb, ${plan.accent} 14%, transparent)`,
+    '--card-accent': plan.accent
+  }
+}
 
 export const PLAN_FEATURE_FOOTNOTES = {
   'llm-data-residency': {
