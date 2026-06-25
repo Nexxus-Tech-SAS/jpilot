@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.107` (beta) — **Dashboard activity + update reliability + chat polish.** The home dashboard now includes **usage activity charts** (daily chat rounds, tokens, and Brave searches over the last 30 days, plus monthly provider breakdown) backed by a new `GET /copilot/usage-activity` API and per-day counters recorded from chat and search usage. **About & updates** is more reliable: stale update sentinels are reconciled automatically, admins can **cancel a stuck update request**, the host path unit watches **PathChanged** (not PathExists), and sentinel files are made writable for the host agent. The global update banner was removed; available updates appear on the **dashboard** instead. Chat no longer flashes “No enabled AI provider” before providers load; **welcome quick actions and blueprints auto-send** on click (no extra Send press). API calls use a 30s timeout and auth no longer logs you out on transient 503s.
+**Current release:** `v0.108` (beta) — **Production self-update mode fix.** One-click Update now reads **`NSAGENT_DEPLOY_MODE`** from the container environment and mounted `.env` (same source as `./compose.sh`) instead of a missing `.compose-mode` file, so production installs rebuild with **`docker-compose.prod.yml`** and show **“Rebuilding production stack…”** instead of always defaulting to dev. The host agent also prefers the install’s `.env` when `request.json` has the wrong mode.
+
+**Previous release:** `v0.107` (beta) — **Dashboard activity + update reliability + chat polish.** The home dashboard now includes **usage activity charts** (daily chat rounds, tokens, and Brave searches over the last 30 days, plus monthly provider breakdown) backed by a new `GET /copilot/usage-activity` API and per-day counters recorded from chat and search usage. **About & updates** is more reliable: stale update sentinels are reconciled automatically, admins can **cancel a stuck update request**, the host path unit watches **PathChanged** (not PathExists), and sentinel files are made writable for the host agent. The global update banner was removed; available updates appear on the **dashboard** instead. Chat no longer flashes “No enabled AI provider” before providers load; **welcome quick actions and blueprints auto-send** on click (no extra Send press). API calls use a 30s timeout and auth no longer logs you out on transient 503s.
 
 **Previous release:** `v0.106` (beta) — **Safer two-step login + cookie consent.** The login form now asks for **username first** (Continue / Enter), then reveals passkey + QR or password only after an explicit lookup — reducing passive username probing. Terms acceptance sits on step 1; with cookie consent, JPilot can remember that choice on this device. A site-wide **cookie consent** banner (Essential only / Accept all) gates preference storage; the Privacy Policy link is included. Enter advances Continue on step 1 and submits sign-in on the password step.
 
@@ -147,6 +149,14 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.108
+
+| Area | Highlights |
+|------|------------|
+| **Prod update mode** | `request.json` now carries `mode: prod` when `NSAGENT_DEPLOY_MODE=prod` in `.env` (read from container env or `/app/.env`), matching `./compose.sh`. |
+| **Host agent fallback** | `update-agent.sh` reconciles mode from the install’s `.env` if the backend wrote `dev` by mistake. |
+| **Symptom fixed** | Production servers no longer show “Rebuilding development stack…” or run dev-only compose when updating. |
 
 ## What's new in v0.107
 

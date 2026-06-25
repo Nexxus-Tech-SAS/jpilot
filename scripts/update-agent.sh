@@ -159,6 +159,28 @@ with open('${REQUEST_FILE}') as f:
 print(d.get('mode', 'dev'))
 " 2>/dev/null) || MODE="dev"
 
+# Host .env is ground truth (same as ./compose.sh). Prefer it when the backend
+# wrote the wrong mode (e.g. before NSAGENT_DEPLOY_MODE was read from /app/.env).
+read_env_deploy_mode() {
+  for envfile in "${COMPOSE_ROOT}/.env" "${COMPOSE_ROOT}/jpilot/.env" "${ROOT}/.env"; do
+    if [ -f "${envfile}" ]; then
+      _m=$(grep -E '^NSAGENT_DEPLOY_MODE=' "${envfile}" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '"' | tr -d "'" | tr '[:upper:]' '[:lower:]') || true
+      case "${_m}" in
+        prod|production) printf '%s' "prod"; return 0 ;;
+        dev|development) printf '%s' "dev"; return 0 ;;
+      esac
+    fi
+  done
+  return 1
+}
+
+if ENV_MODE=$(read_env_deploy_mode); then
+  if [ "${MODE}" != "${ENV_MODE}" ]; then
+    log "Using host deploy mode ${ENV_MODE} (request.json had mode=${MODE})"
+    MODE="${ENV_MODE}"
+  fi
+fi
+
 log "Update request received: tag=${TARGET_TAG} mode=${MODE} requestedAt=${REQUESTED_AT}"
 
 # Validate the tag — CRITICAL security check.

@@ -1,6 +1,7 @@
 from app.services.update_service import (
     _normalize_version,
     _pick_latest_semver_tag,
+    _read_compose_mode,
     _read_installed_version,
     cancel_update_request,
     is_newer_version,
@@ -64,3 +65,29 @@ def test_cancel_update_request_clears_sentinels(tmp_path, monkeypatch):
     assert result.state == "idle"
     assert not (update_dir / "request.json").is_file()
     assert not (update_dir / "status.json").is_file()
+
+
+def test_read_compose_mode_from_env_var(monkeypatch):
+    monkeypatch.setenv("NSAGENT_DEPLOY_MODE", "prod")
+    assert _read_compose_mode() == "prod"
+
+
+def test_read_compose_mode_from_mounted_env_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("NSAGENT_DEPLOY_MODE", raising=False)
+    env_path = tmp_path / ".env"
+    env_path.write_text('NSAGENT_DEPLOY_MODE=prod\n', encoding="utf-8")
+    monkeypatch.setattr(
+        "app.services.update_service._ENV_FILE_CANDIDATES",
+        (env_path,),
+    )
+    assert _read_compose_mode() == "prod"
+
+
+def test_read_compose_mode_defaults_to_dev(tmp_path, monkeypatch):
+    monkeypatch.delenv("NSAGENT_DEPLOY_MODE", raising=False)
+    monkeypatch.setattr("app.services.update_service._ENV_FILE_CANDIDATES", ())
+    monkeypatch.setattr(
+        "app.services.update_service._COMPOSE_MODE_PATH",
+        tmp_path / "missing",
+    )
+    assert _read_compose_mode() == "dev"

@@ -268,6 +268,59 @@ _UPDATE_DIR_ENV = "JPILOT_UPDATE_DIR"
 _DEFAULT_UPDATE_DIR = "/var/jpilot/update"
 
 _COMPOSE_MODE_PATH = Path(__file__).resolve().parents[3] / ".compose-mode"
+_ENV_FILE_CANDIDATES = (
+    Path("/app/.env"),
+    Path(__file__).resolve().parents[2] / ".env",
+    _COMPOSE_MODE_PATH.parent / ".env",
+)
+
+
+def _normalize_deploy_mode(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    value = raw.strip().strip('"').strip("'").lower()
+    if value in ("prod", "production"):
+        return "prod"
+    if value in ("dev", "development"):
+        return "dev"
+    return None
+
+
+def _parse_deploy_mode_from_env_file(path: Path) -> str | None:
+    try:
+        if not path.is_file():
+            return None
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("NSAGENT_DEPLOY_MODE="):
+                return _normalize_deploy_mode(stripped.split("=", 1)[1])
+    except OSError:
+        return None
+    return None
+
+
+def _read_compose_mode() -> str:
+    """Match ./compose.sh: NSAGENT_DEPLOY_MODE in the container env or mounted .env."""
+    from_env = _normalize_deploy_mode(os.environ.get("NSAGENT_DEPLOY_MODE"))
+    if from_env:
+        return from_env
+
+    for candidate in _ENV_FILE_CANDIDATES:
+        parsed = _parse_deploy_mode_from_env_file(candidate)
+        if parsed:
+            return parsed
+
+    try:
+        if _COMPOSE_MODE_PATH.is_file():
+            legacy = _normalize_deploy_mode(_COMPOSE_MODE_PATH.read_text(encoding="utf-8"))
+            if legacy:
+                return legacy
+    except OSError:
+        pass
+
+    return "dev"
 
 
 def _update_dir() -> Path:
@@ -330,15 +383,6 @@ def _request_file() -> Path:
 
 def _status_file() -> Path:
     return _update_dir() / "status.json"
-
-
-def _read_compose_mode() -> str:
-    try:
-        if _COMPOSE_MODE_PATH.is_file():
-            return _COMPOSE_MODE_PATH.read_text(encoding="utf-8").strip() or "dev"
-    except OSError:
-        pass
-    return "dev"
 
 
 def is_update_agent_armed() -> bool:
