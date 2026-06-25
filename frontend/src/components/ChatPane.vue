@@ -4421,7 +4421,7 @@ onUnmounted(() => {
   display: none;
 }
 
-@media (max-width: 991px) {
+@media (max-width: 767px), (max-width: 991px) and (max-height: 500px) {
   .beta-shell-compact {
     --beta-mobile-bg: #f8fafc;
     --beta-mobile-surface: #ffffff;

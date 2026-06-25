@@ -86,7 +86,7 @@
     >
       <div class="beta-chats-drawer-head">
         <div class="ld-cursor beta-chats-drawer-title">Chats</div>
-        <button type="button" class="beta-chats-drawer-close" aria-label="Close chats" @click="mobileChatsOpen = false">
+        <button type="button" class="beta-chats-drawer-close" aria-label="Close chats" @click.stop="mobileChatsOpen = false">
           <i class="pi pi-times" />
         </button>
       </div>
@@ -132,6 +132,7 @@ import {
   setBetaChatBackground
 } from '../services/copilot'
 import { getCopilotPlatformSettings } from '../services/copilotPlatform'
+import { MOBILE_CHAT_LAYOUT_MQL } from '../utils/responsiveLayout'
 
 const toast = useToast()
 const confirm = useConfirm()
@@ -196,7 +197,7 @@ function onDesignPanelVisibleChange(visible) {
   }
 }
 
-const MOBILE_LAYOUT_MQL = typeof window !== 'undefined' ? window.matchMedia('(max-width: 991px)') : null
+const MOBILE_LAYOUT_MQL = typeof window !== 'undefined' ? window.matchMedia(MOBILE_CHAT_LAYOUT_MQL) : null
 const isMobileLayout = ref(MOBILE_LAYOUT_MQL?.matches ?? false)
 
 function syncMobileLayout() {

@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.112` (beta) — **Plans page responsive polish.** iPad and tablet get a dedicated layout: compact plan headers with full feature lists underneath each tier, a bottom row with **What's included** (opens a comparison drawer) and **Need Enterprise** (gradient Contact us CTA). iPhone fixes natural vertical scrolling (no overlapping footer), tier separators, and a mobile-optimized comparison drawer (sticky feature column, compact plan headers, safe-area insets). Early Access card copy cleaned up; Enterprise / Enterprise Pro use blue and violet tier accents throughout cards and the compare table.
+**Current release:** `v0.113` (beta) — **iPad chat navigation fix.** Portrait iPad keeps the desktop chat header (role toggle, no hamburger app menu). Sidebar navigation to Chat replaces browser history so Safari’s back/close control does not return to Settings after Settings → Chat. PWA meta tags improve the Home Screen experience with less Safari chrome.
+
+**Previous release:** `v0.112` (beta) — **Plans page responsive polish.** iPad and tablet get a dedicated layout: compact plan headers with full feature lists underneath each tier, a bottom row with **What's included** (opens a comparison drawer) and **Need Enterprise** (gradient Contact us CTA). iPhone fixes natural vertical scrolling (no overlapping footer), tier separators, and a mobile-optimized comparison drawer (sticky feature column, compact plan headers, safe-area insets). Early Access card copy cleaned up; Enterprise / Enterprise Pro use blue and violet tier accents throughout cards and the compare table.
 
 **Previous release:** `v0.111` (beta) — **Atmosphere UI across Home, Plans, and Studio.** Dashboard, Plans, Calibration Studio, and Settings share an animated orbit backdrop with frosted-glass panels (matching the Architect/Operator/Analyst role tiles). The **home dashboard** is redesigned: personalized greeting, role launch tiles, usage activity, and Nexxus articles in a tighter layout. The **Plans** page adds a two-column compare + highlights layout (scrollable feature matrix, bottom-aligned sidebar, single **Contact us** CTA), glass plan/trust cards with tier-colored hover glow, and page padding aligned with Home. **Calibration Studio** uses the same page inset spacing.
 
@@ -157,6 +159,12 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.113
+
+| Area | Highlights |
+|------|------------|
+| **iPad / tablet chat** | Portrait iPad uses the desktop chat chrome (role toggle, no hamburger app menu). Sidebar navigation to Chat replaces browser history so Safari’s back/close control does not land on Settings after Settings → Chat. PWA meta tags improve the Home Screen experience with less Safari chrome. |
 
 ## What's new in v0.112
 

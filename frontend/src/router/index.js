@@ -77,7 +77,7 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach(async (to) => {
+router.beforeEach(async (to, from) => {
   const authenticated = Boolean(getToken())
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth)
   const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin)
@@ -122,6 +122,12 @@ router.beforeEach(async (to) => {
     } catch {
       // If license status cannot be loaded, do not block navigation.
     }
+  }
+
+  const openingChat = to.name === 'jpilot' || to.name === 'jpilot-beta'
+  const fromInApp = from.matched.some((record) => record.meta.requiresAuth)
+  if (openingChat && fromInApp && from.name && from.name !== to.name) {
+    return { ...to, replace: true }
   }
 
   return true

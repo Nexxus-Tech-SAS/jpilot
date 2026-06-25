@@ -41,6 +41,7 @@
             :key="item.path"
             v-tooltip.right="navTooltip(item)"
             :to="item.path"
+            replace
             class="nav-btn"
             :class="{
               'nav-btn-active': isActive(item),
@@ -60,6 +61,7 @@
           :key="item.path"
           v-tooltip.right="navTooltip(item)"
           :to="item.path"
+          replace
           class="nav-btn"
           :class="{ 'nav-btn-active': isActive(item.path), 'nav-btn-beta': item.beta }"
         >
@@ -122,7 +124,7 @@
             type="button"
             class="mobile-nav-close"
             aria-label="Close menu"
-            @click="closeMobileNav"
+            @click.stop="closeMobileNav"
           >
             <i class="pi pi-times" />
           </button>
@@ -135,6 +137,7 @@
               v-for="item in group.items"
               :key="item.path"
               :to="item.path"
+              replace
               class="mobile-nav-link"
               active-class=""
               exact-active-class=""
@@ -158,6 +161,7 @@
             v-for="item in bottomNavItems"
             :key="item.path"
             :to="item.path"
+            replace
             class="mobile-nav-link"
             active-class=""
             exact-active-class=""
