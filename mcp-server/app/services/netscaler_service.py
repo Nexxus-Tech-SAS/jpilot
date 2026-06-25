@@ -2135,6 +2135,7 @@ async def create_lb(
     persistence: str | None = None,
     persistence_timeout: int | None = None,
     ssl_certkey: str | None = None,
+    monitor: str | None = None,
     dry_run: bool = False,
     confirm: bool = False,
 ) -> dict[str, Any]:
@@ -2162,6 +2163,8 @@ async def create_lb(
         commands.append(
             f"add service {svc_name} {srv_name} {effective_server_protocol} {effective_server_port}"
         )
+        if monitor:
+            commands.append(f"bind service {svc_name} -monitorName {monitor}")
 
     commands.append(f"add lb vserver {name} {service_type} {vip} {port}")
 

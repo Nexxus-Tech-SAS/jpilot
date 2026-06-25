@@ -538,6 +538,10 @@ COPILOT_TOOLS = [
                     "type": "string",
                     "description": "SSL certkey name to bind (for HTTPS/SSL vservers)",
                 },
+                "monitor": {
+                    "type": "string",
+                    "description": "Optional health monitor name to bind to the backend services, e.g. tcp-default / http",
+                },
                 "dry_run": {
                     "type": "boolean",
                     "description": "If true, return command list without executing (default false)",
@@ -2117,6 +2121,8 @@ async def execute_copilot_tool(
             mcp_args["persistence_timeout"] = int(arguments["persistence_timeout"])
         if arguments.get("ssl_certkey"):
             mcp_args["ssl_certkey"] = arguments["ssl_certkey"].strip()
+        if arguments.get("monitor"):
+            mcp_args["monitor"] = arguments["monitor"].strip()
         if "dry_run" in arguments:
             mcp_args["dry_run"] = arguments["dry_run"]
         if "confirm" in arguments:

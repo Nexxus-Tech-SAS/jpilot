@@ -93,6 +93,53 @@ def test_create_lb_confirm_false_also_previews():
     assert "commands" in result
 
 
+def test_create_lb_monitor_binds_per_service():
+    """When monitor is provided, each service gets a bind service -monitorName command."""
+    result = asyncio.run(
+        create_lb(H, U, P, "my_lb", "10.0.0.1", ["192.168.1.1", "192.168.1.2"],
+                  monitor="tcp-default", dry_run=True)
+    )
+    cmds = result["commands"]
+
+    # There should be a bind service command for each backend service with the monitor
+    bind_mon_cmds = [c for c in cmds if "-monitorName tcp-default" in c]
+    assert len(bind_mon_cmds) == 2, f"Expected 2 monitor binds, got {len(bind_mon_cmds)}: {cmds}"
+
+    # Each bind command should reference the correct service name
+    assert any("bind service my_lb_svc1 -monitorName tcp-default" in c for c in cmds)
+    assert any("bind service my_lb_svc2 -monitorName tcp-default" in c for c in cmds)
+
+    # Monitor bind must follow immediately after the corresponding add service
+    for i, svc in enumerate(["my_lb_svc1", "my_lb_svc2"], start=1):
+        add_idx = next(j for j, c in enumerate(cmds) if f"add service {svc}" in c)
+        bind_idx = next(j for j, c in enumerate(cmds) if f"bind service {svc} -monitorName" in c)
+        assert add_idx < bind_idx, f"bind service {svc} -monitorName must come after add service"
+
+
+def test_create_lb_no_monitor_omits_bind_service_monitorname():
+    """When monitor is omitted, no bind service -monitorName line is emitted."""
+    result = asyncio.run(
+        create_lb(H, U, P, "my_lb", "10.0.0.1", ["192.168.1.1"],
+                  lb_method="ROUNDROBIN", dry_run=True)
+    )
+    cmds = result["commands"]
+    assert not any("-monitorName" in c for c in cmds), (
+        f"Expected no -monitorName in commands, got: {cmds}"
+    )
+
+
+def test_create_lb_monitor_single_backend():
+    """Single backend with monitor: exactly one bind service -monitorName line."""
+    result = asyncio.run(
+        create_lb(H, U, P, "lb1", "10.1.1.1", ["10.2.2.2"],
+                  monitor="http", dry_run=True)
+    )
+    cmds = result["commands"]
+    bind_mon_cmds = [c for c in cmds if "-monitorName http" in c]
+    assert len(bind_mon_cmds) == 1
+    assert "bind service lb1_svc1 -monitorName http" in bind_mon_cmds[0]
+
+
 # ===========================================================================
 # 2. create_cs — dry_run with single-quoting of rules
 # ===========================================================================

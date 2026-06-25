@@ -574,6 +574,10 @@ NETSCALER_TOOLS = [
                     "type": "string",
                     "description": "SSL certkey name to bind (for HTTPS/SSL vservers)",
                 },
+                "monitor": {
+                    "type": "string",
+                    "description": "Optional health monitor name to bind to the backend services, e.g. tcp-default / http",
+                },
                 "dry_run": {
                     "type": "boolean",
                     "description": "If true, return command list without executing (default false)",
@@ -1593,6 +1597,7 @@ async def call_netscaler_tool(name: str, arguments: dict) -> list[types.TextCont
                 persistence=str(arguments.get("persistence")).strip() if arguments.get("persistence") else None,
                 persistence_timeout=int(persistence_timeout) if persistence_timeout is not None else None,
                 ssl_certkey=str(arguments.get("ssl_certkey")).strip() if arguments.get("ssl_certkey") else None,
+                monitor=str(arguments.get("monitor")).strip() if arguments.get("monitor") else None,
                 dry_run=bool(arguments.get("dry_run", False)),
                 confirm=bool(arguments.get("confirm", False)),
             )
