@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.108` (beta) — **Production self-update mode fix.** One-click Update now reads **`NSAGENT_DEPLOY_MODE`** from the container environment and mounted `.env` (same source as `./compose.sh`) instead of a missing `.compose-mode` file, so production installs rebuild with **`docker-compose.prod.yml`** and show **“Rebuilding production stack…”** instead of always defaulting to dev. The host agent also prefers the install’s `.env` when `request.json` has the wrong mode.
+**Current release:** `v0.109` (beta) — **Theme tied to cookie consent.** Light/dark mode is saved in `localStorage` only after **Accept all** on the cookie banner (same rule as login terms). **Essential only** keeps theme changes for the current session and clears any stored preference on reload; until you choose, toggles follow the OS default without persisting.
+
+**Previous release:** `v0.108` (beta) — **Production self-update mode fix.** One-click Update now reads **`NSAGENT_DEPLOY_MODE`** from the container environment and mounted `.env` (same source as `./compose.sh`) instead of a missing `.compose-mode` file, so production installs rebuild with **`docker-compose.prod.yml`** and show **“Rebuilding production stack…”** instead of always defaulting to dev. The host agent also prefers the install’s `.env` when `request.json` has the wrong mode.
 
 **Previous release:** `v0.107` (beta) — **Dashboard activity + update reliability + chat polish.** The home dashboard now includes **usage activity charts** (daily chat rounds, tokens, and Brave searches over the last 30 days, plus monthly provider breakdown) backed by a new `GET /copilot/usage-activity` API and per-day counters recorded from chat and search usage. **About & updates** is more reliable: stale update sentinels are reconciled automatically, admins can **cancel a stuck update request**, the host path unit watches **PathChanged** (not PathExists), and sentinel files are made writable for the host agent. The global update banner was removed; available updates appear on the **dashboard** instead. Chat no longer flashes “No enabled AI provider” before providers load; **welcome quick actions and blueprints auto-send** on click (no extra Send press). API calls use a 30s timeout and auth no longer logs you out on transient 503s.
 
@@ -149,6 +151,14 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.109
+
+| Area | Highlights |
+|------|------------|
+| **Theme + consent** | `localStorage` theme preference is written only when cookie consent is **Accept all**; **Essential only** uses session-only toggles and clears stored theme. |
+| **Accept all** | Saves the theme currently on screen when the user accepts preference cookies. |
+| **Before consent** | Toggles apply for the session; reload falls back to OS `prefers-color-scheme`. |
 
 ## What's new in v0.108
 

@@ -15,7 +15,7 @@ import './assets/styles/tri-arc-loader.css'
 import './assets/styles/shadow-grow-button.css'
 import App from './App.vue'
 import router from './router'
-import { applyStoredTheme } from './services/theme'
+import { applyStoredTheme, initThemeConsentListener } from './services/theme'
 
 const JpilotPreset = definePreset(Aura, {
   semantic: {
@@ -36,6 +36,7 @@ const JpilotPreset = definePreset(Aura, {
 })
 
 applyStoredTheme()
+initThemeConsentListener()
 
 const app = createApp(App)
 app.use(PrimeVue, {
