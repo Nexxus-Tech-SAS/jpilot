@@ -1132,9 +1132,27 @@ async def _execute_tool_with_memory_gate(
             stack_calibration_reviewed,
         )
 
-    result = await execute_copilot_tool(
-        db, name, arguments, default_appliance_name=appliance_name, role=role, vendor=vendor
-    )
+    try:
+        result = await execute_copilot_tool(
+            db, name, arguments, default_appliance_name=appliance_name, role=role, vendor=vendor
+        )
+    except ValueError as exc:
+        # Bad/missing tool arguments from the model (e.g. "name is required"). Return a clean
+        # tool-error result so the model corrects and retries, instead of an unhandled
+        # exception that logs a misleading ERROR + traceback every turn.
+        logger.warning("tool_call name=%s rejected (bad arguments): %s", name, exc)
+        return (
+            json.dumps(
+                {
+                    "success": False,
+                    "error": str(exc),
+                    "hint": "Re-call the tool with the required arguments filled in.",
+                }
+            ),
+            nextgen_memory_reviewed,
+            cli_memory_reviewed,
+            stack_calibration_reviewed,
+        )
     logger.info("tool_call name=%s executed result=%s", name, (result or "")[:600])
     if name == MEMORY_SEARCH_TOOL:
         nextgen_memory_reviewed = True
