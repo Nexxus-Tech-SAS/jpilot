@@ -1,7 +1,11 @@
 <template>
   <article
-    class="mk-card"
-    :class="{ 'mk-card-installed': row.installed, 'mk-card-update': showUpdateBadge }"
+    class="mk-card glass-panel"
+    :class="[
+      `mk-card-tier-${tierBand}`,
+      { 'mk-card-installed': row.installed, 'mk-card-update': showUpdateBadge },
+    ]"
+    :style="{ '--mk-tier-accent': tierAccent }"
     role="button"
     tabindex="0"
     @click="$emit('open', row)"
@@ -113,6 +117,7 @@ import {
   blueprintDownloadBlockedButtonLabel,
   blueprintDownloadBlockedLabel,
   normalizeArtifactType,
+  normalizeMinTier,
 } from '../services/calibrationSync.js'
 
 const props = defineProps({
@@ -150,6 +155,21 @@ const typeSeverity = computed(() => {
 const tierLabel = computed(() => blueprintTierLabel(props.row))
 const tierSeverity = computed(() => blueprintTierSeverity(props.row))
 
+/** Visual band for card background — free vs Ent / Ent+ premium tiers. */
+const tierBand = computed(() => {
+  if (props.row.globalFreeSkill) return 'free'
+  const tier = normalizeMinTier(props.row.minTier)
+  if (tier === 'enterprise_pro') return 'enterprise-pro'
+  if (tier === 'enterprise') return 'enterprise'
+  return 'free'
+})
+
+const tierAccent = computed(() => {
+  if (tierBand.value === 'enterprise-pro') return '#8b5cf6'
+  if (tierBand.value === 'enterprise') return '#3b82f6'
+  return 'var(--p-primary-color)'
+})
+
 const canDownload = computed(() => blueprintCanDownload(props.row))
 const upToDate = computed(
   () => blueprintIsLatestEntitled(props.row) || (props.row.installed && !props.row.updateAvailable)
@@ -182,36 +202,67 @@ const versionLine = computed(() => {
 
 <style scoped>
 .mk-card {
+  --mk-card-surface: var(--glass-panel-bg, var(--p-content-background));
+  --mk-card-border: var(--glass-panel-border, var(--p-content-border-color));
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   padding: 1.1rem 1.15rem;
   text-align: left;
-  background: var(--p-content-background);
-  border: 1px solid var(--p-content-border-color);
+  background: var(--mk-card-surface);
+  border: 1px solid var(--mk-card-border);
   border-radius: var(--content-radius);
   cursor: pointer;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  transition:
+    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.mk-card:hover {
-  border-color: var(--p-primary-300);
-  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.06);
-  transform: translateY(-2px);
-}
-
+.mk-card:hover,
 .mk-card:focus-visible {
-  outline: 2px solid var(--p-primary-color);
-  outline-offset: 2px;
-}
-
-html.app-dark .mk-card:hover {
-  border-color: var(--p-primary-600);
-  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.32);
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--mk-tier-accent, var(--p-primary-color)) 50%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 12px 28px color-mix(in srgb, var(--mk-tier-accent, var(--p-primary-color)) 22%, rgba(2, 6, 23, 0.12));
+  outline: none;
 }
 
 .mk-card-update {
-  border-color: color-mix(in srgb, var(--p-orange-400) 50%, var(--p-content-border-color));
+  border-color: color-mix(in srgb, var(--p-orange-400) 50%, var(--mk-card-border));
+}
+
+/* Subtle tier tint — solid card body (~75% base), light premium wash */
+.mk-card-tier-enterprise {
+  --mk-tier-accent: #3b82f6;
+  background: color-mix(in srgb, #3b82f6 4%, var(--mk-card-surface));
+  border-color: color-mix(in srgb, #3b82f6 14%, var(--mk-card-border));
+}
+
+.mk-card-tier-enterprise-pro {
+  --mk-tier-accent: #8b5cf6;
+  background: color-mix(in srgb, #8b5cf6 5%, var(--mk-card-surface));
+  border-color: color-mix(in srgb, #8b5cf6 16%, var(--mk-card-border));
+}
+
+html.app-dark .mk-card-tier-enterprise {
+  background: color-mix(in srgb, #3b82f6 6%, var(--mk-card-surface));
+  border-color: color-mix(in srgb, #3b82f6 18%, var(--mk-card-border));
+}
+
+html.app-dark .mk-card-tier-enterprise-pro {
+  background: color-mix(in srgb, #8b5cf6 7%, var(--mk-card-surface));
+  border-color: color-mix(in srgb, #8b5cf6 20%, var(--mk-card-border));
+}
+
+@media (max-width: 991px) {
+  .mk-card {
+    --mk-card-surface: var(--p-content-background);
+    --mk-card-border: var(--p-content-border-color);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .mk-card-head {
@@ -231,8 +282,14 @@ html.app-dark .mk-card:hover {
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--p-primary-color);
-  background: color-mix(in srgb, var(--p-primary-color) 12%, transparent);
+  color: var(--mk-tier-accent, var(--p-primary-color));
+  background: color-mix(in srgb, var(--mk-tier-accent, var(--p-primary-color)) 14%, transparent);
+  transition: background 0.18s ease;
+}
+
+.mk-card:hover .mk-vendor-mark,
+.mk-card:focus-visible .mk-vendor-mark {
+  background: color-mix(in srgb, var(--mk-tier-accent, var(--p-primary-color)) 22%, transparent);
 }
 
 .mk-identity {
@@ -345,5 +402,12 @@ html.app-dark .mk-card:hover {
 
 .mk-uptodate {
   font-size: 0.6875rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-card:hover,
+  .mk-card:focus-visible {
+    transform: none;
+  }
 }
 </style>

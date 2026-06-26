@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.117` (beta) — **Chat backgrounds, glass controls, and collapsible nav.** JPilot Chat adds ten animated WebGL/canvas backgrounds (Aurora, Line waves, Galaxy, Dot field, Threads, Orb, Shape grid, Floating lines, plus existing Constellation/Waves/Drift/Orbit). Chat options include transparency sliders for the conversation window and chat list. Desktop navigation can collapse to reclaim space, with hover-to-peek and slide/fade animations. Login uses a Soft Aurora backdrop; `ogl` and `three` power the new effects.
+**Current release:** `v0.118` (beta) — **Calibration Studio blueprint card polish.** Blueprint library cards use subtle tier tints (Free vs Ent / Ent+) on a glass panel base, plus the same accent hover glow as the home role tiles — lift, colored border, and soft shadow keyed to tier (primary, blue, violet).
+
+**Previous release:** `v0.117` (beta) — **Chat backgrounds, glass controls, and collapsible nav.** JPilot Chat adds ten animated WebGL/canvas backgrounds (Aurora, Line waves, Galaxy, Dot field, Threads, Orb, Shape grid, Floating lines, plus existing Constellation/Waves/Drift/Orbit). Chat options include transparency sliders for the conversation window and chat list. Desktop navigation can collapse to reclaim space, with hover-to-peek and slide/fade animations. Login uses a Soft Aurora backdrop; `ogl` and `three` power the new effects.
 
 **Previous release:** `v0.116` (beta) — **Chat polish and Nexxus blog fix.** Role picker `SelectButton` warnings resolved; chat form fields get proper `id`/`name` attributes for autofill and accessibility. Dashboard blog articles load via a same-origin backend proxy (`/api/system/nexxus-blog`) instead of a cross-origin nginx redirect that triggered CORS errors.
 
@@ -167,6 +169,12 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.118
+
+| Area | Highlights |
+|------|------------|
+| **Calibration Studio** | Blueprint cards show a light tier tint (Free neutral, Ent blue, Ent+ violet) on glass panels so premium blueprints are easy to scan. Hover/focus uses the home role-tile glow — lift, accent border, and soft shadow — with vendor badge keyed to tier. Reduced-motion and mobile solid-background fallbacks preserved. |
 
 ## What's new in v0.117
 
