@@ -45,7 +45,9 @@ def test_match_firmware_skill_from_message(tmp_path, monkeypatch):
     assert "Fast path firmware upgrade" in block
 
 
-def test_resolve_blueprint_turn_context_uses_memory_search(tmp_path, monkeypatch):
+def test_resolve_blueprint_turn_context_intent_gated(tmp_path, monkeypatch):
+    """Blueprint injection is gated on trigger intent; a matched skill still
+    surfaces its memory excerpt, and unrelated requests inject nothing."""
     skill_dir = tmp_path / "nexxus-netscaler-custom-skill" / "0.1.0"
     (skill_dir / "memory").mkdir(parents=True)
     (skill_dir / "memory" / "playbook.md").write_text(
@@ -58,6 +60,7 @@ def test_resolve_blueprint_turn_context_uses_memory_search(tmp_path, monkeypatch
           "id": "nexxus-netscaler-custom-skill",
           "vendor": "netscaler",
           "roles": ["operator"],
+          "triggers": {"intents": ["rotate certificates on an ha pair", "certificate rotation"]},
           "memoryModules": [{"id": "playbook", "filename": "memory/playbook.md", "roleTags": ["operator"]}]
         }
         """,
@@ -75,6 +78,7 @@ def test_resolve_blueprint_turn_context_uses_memory_search(tmp_path, monkeypatch
 
     from app.services.calibration_matcher import resolve_blueprint_turn_context
 
+    # On-intent: matches and injects the skill's memory excerpt.
     ctx = resolve_blueprint_turn_context(
         user_message="How do I rotate certificates on an HA pair?",
         role="operator",
@@ -84,3 +88,14 @@ def test_resolve_blueprint_turn_context_uses_memory_search(tmp_path, monkeypatch
     assert ctx.relevant is True
     assert ctx.injection_block is not None
     assert "certificate rotation" in ctx.injection_block.lower()
+
+    # Off-intent (NS-1 regression guard): an unrelated request must NOT inject the
+    # blueprint just because of incidental word overlap with the memory body.
+    off = resolve_blueprint_turn_context(
+        user_message="list all IPs",
+        role="operator",
+        vendor="netscaler",
+        installed=installed,
+    )
+    assert off.relevant is False
+    assert off.injection_block is None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,53 @@ def _message_matches_triggers(message: str, triggers: dict[str, Any]) -> bool:
         if str(command).lower() in lowered:
             return True
     return False
+
+
+# Generic tokens that don't disambiguate WHICH NetScaler blueprint applies — excluded
+# from intent-relevance scoring so a blueprint only matches on its distinctive terms.
+_TRIGGER_STOPWORDS = frozenset(
+    {
+        "configure", "create", "setup", "deploy", "enable", "disable", "update",
+        "modify", "change", "implement", "http", "https", "netscaler", "citrix",
+        "adc", "this", "that", "your", "with", "from", "into", "onto", "want",
+        "need", "please", "using", "use", "via", "run", "show", "list", "make",
+        "server", "servers", "vserver", "vservers", "service", "other", "traffic",
+        "request", "requests", "response", "responses",
+    }
+)
+
+
+def _terms(text: str) -> set[str]:
+    """Distinctive lowercase tokens (>=4 chars, minus generic stopwords)."""
+    return {
+        tok
+        for tok in re.split(r"\W+", (text or "").lower())
+        if len(tok) >= 4 and tok not in _TRIGGER_STOPWORDS
+    }
+
+
+def _trigger_terms(manifest: dict[str, Any]) -> set[str]:
+    """Distinctive terms drawn from a skill's trigger intents/commands only.
+
+    Deliberately excludes label/domains — those carry generic words like "load
+    balancer" that would cross-match unrelated blueprints (e.g. the Security
+    Headers skill's label contains 'Load Balancer')."""
+    triggers = manifest.get("triggers") or {}
+    parts: list[str] = [str(i) for i in (triggers.get("intents") or [])]
+    parts += [str(c).replace("-", " ") for c in (triggers.get("commands") or [])]
+    terms: set[str] = set()
+    for part in parts:
+        terms |= _terms(part)
+    return terms
+
+
+# A blueprint is "relevant" for the turn only when the message shares at least this
+# many distinctive intent terms with the skill (or an exact trigger-phrase match).
+_RELEVANCE_MIN_TERMS = 2
+
+
+def _trigger_relevance(message: str, manifest: dict[str, Any]) -> int:
+    return len(_terms(message) & _trigger_terms(manifest))
 
 
 def load_skill_prompt_fragment(skill_dir: Path, role: str) -> str | None:
@@ -150,12 +198,15 @@ def match_installed_skills(
     for row in _installed_for_chat(installed, role=role, vendor=vendor):
         manifest = row.get("manifest") or {}
         triggers = manifest.get("triggers") or {}
-        score = 0
-        if _message_matches_triggers(user_message, triggers):
-            score += 100
-        score += int(manifest.get("priority") or 0)
-        if score > 0:
-            matches.append((score, row))
+        intent_hit = _message_matches_triggers(user_message, triggers)
+        overlap = _trigger_relevance(user_message, manifest)
+        # Require a genuine intent signal: an exact trigger-phrase match OR enough
+        # distinctive intent-term overlap. This is what gates blueprint injection on
+        # request intent instead of incidental word overlap with the memory body.
+        if not (intent_hit or overlap >= _RELEVANCE_MIN_TERMS):
+            continue
+        score = (100 if intent_hit else 0) + 10 * overlap + int(manifest.get("priority") or 0)
+        matches.append((score, row))
 
     matches.sort(key=lambda item: item[0], reverse=True)
     return [item[1] for item in matches[:limit]]
@@ -249,21 +300,17 @@ def resolve_blueprint_turn_context(
             stack_calibration_reviewed=True,
         )
 
-    trigger_matched = match_installed_skills(
+    # Intent-gated: a blueprint is injected only when the message genuinely matches
+    # its trigger intent (exact phrase or >=2 distinctive intent terms). Memory-body
+    # keyword overlap is NOT used to decide relevance — it over-matched unrelated
+    # requests (e.g. injecting the Security Headers blueprint on "list all IPs").
+    matched = match_installed_skills(
         user_message=user_message,
         role=role,
         vendor=vendor,
         installed=installed,
         limit=limit,
     )
-    memory_matched = _skills_from_memory_search(
-        user_message=user_message,
-        role=role,
-        vendor=vendor,
-        installed=scoped,
-        limit=limit,
-    )
-    matched = _merge_skill_rows(trigger_matched, memory_matched, limit=limit)
     if not matched:
         return BlueprintTurnContext(
             relevant=False,

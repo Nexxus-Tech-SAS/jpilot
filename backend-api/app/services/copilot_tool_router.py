@@ -466,6 +466,20 @@ def classify_tool_packs(
     ):
         _dedicated_config_packs.add("lb_config")
 
+    # LB member/persistence edits handled by netscaler_modify_lb (no explicit "lb" word needed)
+    if _contains_any(
+        lowered,
+        (
+            "persistence",
+            "persistency",
+            "backend server",
+            "add server",
+            "add a backend",
+            "remove backend",
+        ),
+    ):
+        _dedicated_config_packs.add("lb_config")
+
     if _contains_any(
         lowered,
         (
@@ -480,11 +494,27 @@ def classify_tool_packs(
     if _contains_any(
         lowered,
         (
+            "rewrite",
             "rewrite policy",
             "rewrite action",
             "insert header",
+            "x-forwarded",
+            "forwarded-for",
+            "xff",
+            "client ip into",
+            "real client ip",
+            "security header",
+            "response header",
+            "server header",
+            "remove header",
+            "delete header",
+            "strip header",
             "hsts",
             "x-frame-options",
+            "x-content-type",
+            "referrer-policy",
+            "permissions-policy",
+            "strict-transport",
         ),
     ):
         _dedicated_config_packs.add("rewrite_config")
@@ -495,10 +525,13 @@ def classify_tool_packs(
             "responder",
             "redirect to https",
             "http to https",
+            "http traffic to https",
+            "redirect http",
+            "https redirect",
             "respond with",
             "maintenance page",
         ),
-    ):
+    ) or ("redirect" in lowered and ("https" in lowered or "ssl" in lowered)):
         _dedicated_config_packs.add("responder_config")
 
     if _contains_any(
