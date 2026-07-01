@@ -12,6 +12,7 @@ ARCHITECT_FILES = (
     "jpilot_architect_design_outline.md",
     "jpilot_architect_citrix_integration_refs.md",
     "jpilot_change_control_outline.md",
+    "jpilot_netscaler_design_config_reference.md",
 )
 
 
