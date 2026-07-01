@@ -20,9 +20,9 @@ const MODEL_PRICING_BY_PROVIDER = {
   ],
   Anthropic: [
     { pattern: /claude-opus-4|claude-4-opus|claude-3-opus/i, cost: '≈ $15 / 1M in' },
-    { pattern: /claude-sonnet-4|claude-4-sonnet|claude-3-7-sonnet/i, cost: '≈ $3 / 1M in' },
+    { pattern: /claude-sonnet-5|claude-sonnet-4|claude-4-sonnet|claude-3-7-sonnet/i, cost: '≈ $3 / 1M in' },
     { pattern: /claude-3-5-sonnet/i, cost: '≈ $3 / 1M in' },
-    { pattern: /claude-3-5-haiku|claude-haiku-3-5|claude-3-haiku/i, cost: '≈ $0.80 / 1M in' },
+    { pattern: /claude-haiku-4|claude-4-haiku|claude-3-5-haiku|claude-haiku-3-5|claude-3-haiku/i, cost: '≈ $0.80 / 1M in' },
     { pattern: /claude-3-sonnet/i, cost: '≈ $3 / 1M in' }
   ],
   Gemini: [

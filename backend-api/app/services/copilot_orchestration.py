@@ -15,7 +15,7 @@ from app.services.copilot_form import (
 )
 from app.services.copilot_roles import JPilotRole, normalize_role
 
-DEFAULT_MAX_TOOL_ITERATIONS = 40
+DEFAULT_MAX_TOOL_ITERATIONS = 80
 DEFAULT_MAX_TOOL_CONTINUATION_PHASES = 4
 DEFAULT_LONG_TASK_TOOL_THRESHOLD = 12
 

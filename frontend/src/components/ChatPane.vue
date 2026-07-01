@@ -604,7 +604,7 @@
                       <span>{{ a.name }}</span>
                     </div>
                   </div>
-                  <span v-if="msg.content" class="beta-bubble beta-bubble-user">{{ msg.content }}</span>
+                  <span v-if="msg.content" class="beta-bubble beta-bubble-user">{{ displayContent(msg) }}</span>
                   <p class="beta-message-time">
                     {{ formatMessageTime(msg) }}
                     <i class="pi pi-check beta-check-icon" />
@@ -1043,7 +1043,7 @@
                 />
               </div>
             </div>
-            <div v-else-if="msg.content" class="chat-content">{{ msg.content }}</div>
+            <div v-else-if="msg.content" class="chat-content">{{ displayContent(msg) }}</div>
             <div v-if="msg.webSources?.length" class="web-sources">
               <span class="web-badge" v-tooltip.top="'This reply used live web results from allowed domains'">
                 <i class="pi pi-globe" /> Web
@@ -1829,6 +1829,21 @@ function formatMessageTime(msg) {
   return new Date().toTimeString().split(':').slice(0, 2).join(':')
 }
 
+// Masked-secret placeholder tokens (⟦secret:<fieldId>⟧) are embedded in a message's
+// content in place of the real credential. Render them as a fixed mask so secrets never
+// appear in plaintext in the transcript. History sent to the backend keeps the raw token;
+// the backend substitutes it out-of-band only when calling the model.
+const SECRET_PLACEHOLDER_RE = /⟦secret:[^⟧]*⟧/g
+
+function maskSecretPlaceholders(text) {
+  if (!text || typeof text !== 'string') return text
+  return text.replace(SECRET_PLACEHOLDER_RE, '••••••••')
+}
+
+function displayContent(msg) {
+  return maskSecretPlaceholders(msg?.content || '')
+}
+
 function chatApplianceName() {
   return session.applianceChoice || session.connectedAppliance || ''
 }
@@ -2260,7 +2275,7 @@ function onSelectPersona(payload) {
   }
 }
 
-async function onSelectSkill({ prompt, roleId }) {
+async function onSelectSkill({ prompt, roleId, skillId, source }) {
   if (roleId && roleId !== session.role) {
     session.role = roleId
     pickProviderForRole(true)
@@ -2271,7 +2286,15 @@ async function onSelectSkill({ prompt, roleId }) {
     return
   }
   if (!ready.value || isGenerating.value || connecting.value) return
-  await sendMessage(text, null, { skipRoleInference: true })
+  // When the user explicitly invokes an installed blueprint ("Help me using the
+  // installed <X> calibration blueprint…"), pin THAT blueprint for the turn so the
+  // matcher cannot re-derive a different, keyword-overlapping blueprint from the
+  // message text (e.g. the "Load Balancer" substring in a security-headers title).
+  const activeBlueprintSkillId = source === 'blueprint' ? skillId : undefined
+  await sendMessage(text, null, {
+    skipRoleInference: true,
+    ...(activeBlueprintSkillId ? { activeBlueprintSkillId } : {})
+  })
 }
 
 function focusAskInput() {
@@ -2437,6 +2460,13 @@ async function connectAppliance(appliance) {
 }
 
 async function runChat(content, attachments, runOptions = {}) {
+  // Blueprint stickiness for plain composer follow-ups: if a blueprint is pinned for
+  // this session (established by an explicit invoke, a form submission, or an "applied"
+  // suggestion) and the caller didn't override it, carry the pin so the matcher stays
+  // on the same blueprint instead of re-deriving one from the follow-up text.
+  if (!('activeBlueprintSkillId' in runOptions) && session.activeBlueprintSkillId) {
+    runOptions = { ...runOptions, activeBlueprintSkillId: session.activeBlueprintSkillId }
+  }
   stopChatRun(props.sessionId)
   const controller = new AbortController()
   beginChatRun(props.sessionId, controller)
@@ -2476,7 +2506,8 @@ async function runChat(content, attachments, runOptions = {}) {
         designDocumentContext: resolveDesignDocumentContext(runOptions),
         includeDesignRevision: Boolean(runOptions.includeDesignRevision),
         ...(runOptions.skipBlueprintSkillId ? { skipBlueprintSkillId: runOptions.skipBlueprintSkillId } : {}),
-        ...(runOptions.activeBlueprintSkillId ? { activeBlueprintSkillId: runOptions.activeBlueprintSkillId } : {})
+        ...(runOptions.activeBlueprintSkillId ? { activeBlueprintSkillId: runOptions.activeBlueprintSkillId } : {}),
+        ...(runOptions.secrets && Object.keys(runOptions.secrets).length ? { secrets: runOptions.secrets } : {})
       },
       {
         signal: controller.signal,
@@ -2509,6 +2540,14 @@ async function runChat(content, attachments, runOptions = {}) {
       blueprintSuggestion: data.blueprintSuggestion || null,
       blueprintSuggestionDismissed: false
     })
+    // Persist the session-level blueprint pin. An explicitly threaded pin wins; else,
+    // when the backend reports a blueprint was actually applied this turn, remember it
+    // so subsequent plain follow-ups stay on the same blueprint.
+    if (runOptions.activeBlueprintSkillId) {
+      session.activeBlueprintSkillId = runOptions.activeBlueprintSkillId
+    } else if (data.blueprintSuggestion?.state === 'applied' && data.blueprintSuggestion.skillId) {
+      session.activeBlueprintSkillId = data.blueprintSuggestion.skillId
+    }
   } catch (error) {
     if (session.designDocument) {
       session.designDocument.streaming = false
@@ -2557,8 +2596,26 @@ async function submitConfigForm(values, messageIndex) {
   const isArchitect = session.role === 'architect'
   const prefix = isArchitect ? 'Planning inputs for:' : 'Configuration inputs for:'
   const lines = [`${prefix} ${view.inputForm.title}`]
+  // Secret fields (type="password" or secret=true) are masked in the visible message /
+  // transcript / history. Their real value is carried out-of-band via `secrets`, keyed by
+  // a placeholder token that the backend substitutes only when calling the model.
+  const secrets = {}
   for (const field of view.inputForm.fields) {
     const value = values[field.id]
+    const isSecret = field.type === 'password' || field.secret === true
+    if (isSecret) {
+      const raw = String(value ?? '')
+      if (raw.trim()) {
+        const token = `⟦secret:${field.id}⟧`
+        secrets[token] = raw
+        // Visible line carries the placeholder token (not the secret). The user-facing
+        // transcript renders it as a mask (see maskSecretPlaceholders in the display path).
+        lines.push(`- ${field.label}: ${token}`)
+      } else {
+        lines.push(`- ${field.label}: (not provided)`)
+      }
+      continue
+    }
     const rendered =
       field.type === 'boolean' ? (value ? 'yes' : 'no') : String(value ?? '').trim() || '(not provided)'
     lines.push(`- ${field.label}: ${rendered}`)
@@ -2588,7 +2645,8 @@ async function submitConfigForm(values, messageIndex) {
   try {
     await sendMessage(lines.join('\n'), null, {
       ...(isArchitect ? { skipRoleInference: true } : {}),
-      ...(activeBlueprintSkillId ? { activeBlueprintSkillId } : {})
+      ...(activeBlueprintSkillId ? { activeBlueprintSkillId } : {}),
+      ...(Object.keys(secrets).length ? { secrets } : {})
     })
   } finally {
     submittingFormIndex.value = null
@@ -2604,6 +2662,11 @@ async function skipBlueprintSuggestion(msg) {
   if (isGenerating.value || !msg.blueprintSuggestion) return
   const skillId = msg.blueprintSuggestion.skillId
   msg.blueprintSuggestionDismissed = true
+  // User is opting out of this blueprint — drop any session pin so the re-run (and
+  // later turns) are not forced back onto it.
+  if (session.activeBlueprintSkillId === skillId) {
+    session.activeBlueprintSkillId = null
+  }
 
   // Find the index of this assistant message in the messages array.
   const msgIndex = session.messages.indexOf(msg)
@@ -2632,7 +2695,12 @@ async function applyBlueprintSuggestion(msg) {
   if (isGenerating.value || !msg.blueprintSuggestion) return
   msg.blueprintSuggestionDismissed = true
   const prompt = msg.blueprintSuggestion.applyPrompt
-  await sendMessage(prompt, null, { skipRoleInference: true })
+  // User explicitly chose this blueprint — pin it so it can't be re-matched away.
+  const skillId = msg.blueprintSuggestion.skillId
+  await sendMessage(prompt, null, {
+    skipRoleInference: true,
+    ...(skillId ? { activeBlueprintSkillId: skillId } : {})
+  })
 }
 
 async function resumeDeployment() {

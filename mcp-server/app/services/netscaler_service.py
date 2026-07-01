@@ -2119,6 +2119,79 @@ async def apply_cli_config(
 # netscaler_create_lb
 # ---------------------------------------------------------------------------
 
+_SERVER_NAME_RE = _re.compile(r"Name:\s*(\S+)")
+_SERVER_IP_RE = _re.compile(r"IPAddress:\s*(\S+)")
+
+
+def _sanitize_server_name(ip: str) -> str:
+    """Deterministic named-server object name for a backend IP.
+
+    NetScaler auto-names IP-created servers after the IP itself, so we reuse the
+    exact same convention to stay collision-free with objects it may have made.
+    """
+    return ip.strip()
+
+
+def _parse_server_ip_name_map(output: str) -> dict[str, str]:
+    """Parse `show server` output into an {ip: server_name} map.
+
+    Output pairs a `Name: <name>` line with a following `IPAddress: <ip>` line.
+    Domain-based servers have no IPAddress line and are skipped.
+    """
+    ip_to_name: dict[str, str] = {}
+    pending_name: str | None = None
+    for line in (output or "").splitlines():
+        name_match = _SERVER_NAME_RE.search(line)
+        if name_match:
+            pending_name = name_match.group(1).strip()
+            continue
+        ip_match = _SERVER_IP_RE.search(line)
+        if ip_match and pending_name:
+            ip_to_name[ip_match.group(1).strip()] = pending_name
+            pending_name = None
+    return ip_to_name
+
+
+async def _resolve_backend_server_names(
+    host: str,
+    username: str,
+    password: str,
+    servers: list[str],
+) -> tuple[dict[str, str], set[str]]:
+    """Resolve backend IPs to named servers, honoring pre-existing named servers.
+
+    Returns ``(ip_to_name, ips_needing_create)``.
+
+    Binding a service-group member by raw IP FAILS ("Server already exists") when a
+    named server object already exists for that IP — NetScaler enforces one named
+    server per IP. To bind reliably we look up any existing named server for the IP
+    and bind by that name; for IPs with no server yet we mint a deterministic name
+    (equal to the IP, matching NetScaler's own auto-naming) and flag it for creation.
+    Only IPs in ``ips_needing_create`` get an ``add server`` command, so we never
+    emit an ``add server`` that would raise "Resource already exists" and wrongly
+    fail the whole deploy. Best-effort: on lookup failure, treat all as needing
+    create (bind-by-name still succeeds if the object happens to exist).
+    """
+    mapping: dict[str, str] = {}
+    needs_create: set[str] = set()
+    try:
+        result = await run_cli_command(host, username, password, "show server")
+        existing = _parse_server_ip_name_map(result.get("output", ""))
+    except Exception:
+        existing = {}
+    for ip in servers:
+        cleaned = ip.strip()
+        if not cleaned:
+            continue
+        existing_name = existing.get(cleaned)
+        if existing_name:
+            mapping[cleaned] = existing_name
+        else:
+            mapping[cleaned] = _sanitize_server_name(cleaned)
+            needs_create.add(cleaned)
+    return mapping, needs_create
+
+
 async def create_lb(
     host: str,
     username: str,
@@ -2153,17 +2226,48 @@ async def create_lb(
     sg_name = f"{name}_sg"
     commands: list[str] = ["enable ns feature LB"]
 
-    # Prefer a single service group over individual services. Bind members by IP
-    # so we never collide with a pre-existing named server object for the same IP
-    # (NetScaler enforces one named server per IP; bind-by-IP reuses it safely).
-    commands.append(f"add serviceGroup {sg_name} {effective_server_protocol}")
+    # Clean, de-duplicated backend IP list (tolerates a stray comma-joined string
+    # or duplicate entries without silently dropping members).
+    backend_ips: list[str] = []
+    for entry in servers:
+        for piece in str(entry).split(","):
+            ip = piece.strip()
+            if ip and ip not in backend_ips:
+                backend_ips.append(ip)
 
-    for ip in servers:
-        commands.append(
-            f"bind serviceGroup {sg_name} {ip} {effective_server_port}"
+    # Resolve each backend to a NAMED server object and bind the service group by
+    # name. Binding by raw IP fails ("Server already exists") whenever a named
+    # server already exists for that IP (NetScaler enforces one named server per
+    # IP), which silently dropped members and produced "0 backend(s) bound".
+    # For a dry-run we cannot query the appliance, so use deterministic names and
+    # assume each server may need creating (preview only).
+    if dry_run or not confirm:
+        server_names = {ip: _sanitize_server_name(ip) for ip in backend_ips}
+        needs_create = set(backend_ips)
+    else:
+        server_names, needs_create = await _resolve_backend_server_names(
+            host, username, password, backend_ips
         )
 
-    if monitor:
+    # Prefer a single service group over individual services.
+    commands.append(f"add serviceGroup {sg_name} {effective_server_protocol}")
+
+    for ip in backend_ips:
+        srv_name = server_names.get(ip, _sanitize_server_name(ip))
+        # Only create the named server when one does not already exist for this IP;
+        # otherwise `add server` raises "Resource already exists" and fails the
+        # deploy. Either way we bind the service group BY NAME (collision-free).
+        if ip in needs_create:
+            commands.append(f"add server {srv_name} {ip}")
+        commands.append(
+            f"bind serviceGroup {sg_name} {srv_name} {effective_server_port}"
+        )
+
+    # Built-in default monitors (tcp-default, ping-default, ...) are applied
+    # implicitly and CANNOT be bound explicitly — doing so raises
+    # "ERROR: Default monitor cannot be bound explicitly to a service" and
+    # (via apply_cli_config) fails the whole deploy. Skip binding those.
+    if monitor and not monitor.strip().lower().endswith("-default"):
         commands.append(f"bind serviceGroup {sg_name} -monitorName {monitor}")
 
     commands.append(f"add lb vserver {name} {service_type} {vip} {port}")
@@ -2186,7 +2290,7 @@ async def create_lb(
     )
     result["vserverName"] = name
     result["serviceGroupName"] = sg_name
-    result["members"] = list(servers)
+    result["members"] = list(backend_ips)
     return result
 
 
@@ -2524,6 +2628,46 @@ async def delete_cs(
 # netscaler_create_rewrite
 # ---------------------------------------------------------------------------
 
+# NetScaler advanced-policy expression "roots" — if a value expression starts with
+# one of these it is a real expression (not a literal header value) and must be
+# passed through untouched.
+_NS_EXPRESSION_ROOTS = (
+    "HTTP.", "CLIENT.", "SERVER.", "SYS.", "TARGET.", "URL.", "TEXT.",
+    "RE_", "SUBSCRIBER.", "MYIP", "CONNECTION.",
+)
+
+
+def _ns_string_literal_expression(value: str) -> str:
+    """Normalize an insert_http_header VALUE into a valid NetScaler string expression.
+
+    ``insert_http_header`` takes a policy *expression* for the value. A literal
+    header value like ``max-age=31536000; includeSubDomains`` is only valid when
+    presented as a double-quoted NS string literal (``"max-age=..."``). Passed
+    bare, the NS parser reads it as an expression and fails with
+    ``ERROR: Expression syntax error``. Callers/models frequently pass the raw
+    value with no quotes, so we wrap it here.
+
+    - Already a quoted NS literal (``"..."``) → returned unchanged.
+    - Looks like a real NS expression (starts with HTTP./CLIENT./SYS./..., or is a
+      concatenation using ``+``) → returned unchanged.
+    - Otherwise → wrapped as a double-quoted NS literal with ``"`` and ``\\`` escaped.
+    """
+    v = value.strip()
+    if not v:
+        return v
+    # Already a double-quoted literal.
+    if len(v) >= 2 and v[0] == '"' and v[-1] == '"':
+        return v
+    upper = v.upper()
+    if upper.startswith(_NS_EXPRESSION_ROOTS):
+        return v
+    # A bare token that is a genuine expression concatenation (has an unquoted '+'
+    # joining expression roots) is rare for header values; treat everything else as
+    # a literal string value and quote it.
+    escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 async def create_rewrite(
     host: str,
     username: str,
@@ -2559,36 +2703,49 @@ async def create_rewrite(
     commands: list[str] = ["enable ns feature REWRITE"]
 
     # Build 'add rewrite action' command.
-    # The expression is a NS policy expression that often contains double-quotes;
-    # wrap it in single-quotes so the NetScaler CLI shell treats it as a literal string.
+    # The value/expression is a NetScaler policy expression. For header values it
+    # must be a double-quoted NS string literal; a bare value makes the NS parser
+    # fail ("Expression syntax error"). We normalize the value to a valid NS
+    # literal and then shlex.quote() it so it survives the SSH shell verbatim
+    # (single-quote wrapping alone breaks on values that contain a single quote).
     if at == "insert_http_header":
-        # target = header name, expression = value expr e.g. '"SAMEORIGIN"'
+        # target = header name, expression = value expression e.g. "SAMEORIGIN".
         if not expression:
             raise ValueError("expression is required for insert_http_header")
-        commands.append(f"add rewrite action {action_name} insert_http_header {target} '{expression}'")
+        value_expr = _ns_string_literal_expression(expression)
+        commands.append(
+            f"add rewrite action {action_name} insert_http_header {target} {shlex.quote(value_expr)}"
+        )
     elif at == "delete_http_header":
         # target = header name, no expression
         commands.append(f"add rewrite action {action_name} delete_http_header {target}")
     elif at == "replace":
-        # target = expr to replace, expression = new value — both wrapped in single-quotes
+        # target = expr to replace, expression = new value expression.
         if not expression:
             raise ValueError("expression is required for replace")
-        commands.append(f"add rewrite action {action_name} replace '{target}' '{expression}'")
+        value_expr = _ns_string_literal_expression(expression)
+        commands.append(
+            f"add rewrite action {action_name} replace {shlex.quote(target)} {shlex.quote(value_expr)}"
+        )
 
-    # Build 'add rewrite policy' command — rule may contain double-quotes, wrap in single quotes
-    commands.append(f"add rewrite policy {policy_name} '{rule}' {action_name}")
+    # Build 'add rewrite policy' command — the rule is an NS expression; shell-quote it.
+    commands.append(f"add rewrite policy {policy_name} {shlex.quote(rule)} {action_name}")
 
-    # Optional bind
+    # Optional bind. Rewrite policies bound to a vserver need a
+    # -gotoPriorityExpression; NetScaler defaults it, but we pass NEXT explicitly
+    # for deterministic multi-policy chaining (all 4 security headers can bind).
     if bind_to:
         entity_type = str(bind_to.get("entity_type", "lb")).strip().lower()
         vserver = str(bind_to.get("vserver", "")).strip()
         bind_point = str(bind_to.get("bind_point", "REQUEST")).strip().upper()
         priority = int(bind_to.get("priority", 100))
+        goto = str(bind_to.get("goto_priority_expression", "NEXT")).strip() or "NEXT"
         if not vserver:
             raise ValueError("bind_to.vserver is required")
         commands.append(
             f"bind {entity_type} vserver {vserver}"
-            f" -policyName {policy_name} -priority {priority} -type {bind_point}"
+            f" -policyName {policy_name} -priority {priority}"
+            f" -gotoPriorityExpression {goto} -type {bind_point}"
         )
 
     result = await apply_cli_config(

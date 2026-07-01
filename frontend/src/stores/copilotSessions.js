@@ -25,7 +25,11 @@ function blankSession() {
     pendingMessage: null,
     pendingAttachmentsSnapshot: [],
     pendingRoleSwitch: null,
-    designDocument: null
+    designDocument: null,
+    // The blueprint pinned for this chat (explicit invoke / form submit / applied
+    // suggestion). Threaded to the backend as activeBlueprintSkillId so multi-turn
+    // flows stay on the same blueprint; cleared when the user opts out.
+    activeBlueprintSkillId: null
   }
 }
 
@@ -108,6 +112,7 @@ export function clearSession(id) {
   session.pendingAttachmentsSnapshot = []
   session.pendingRoleSwitch = null
   session.designDocument = null
+  session.activeBlueprintSkillId = null
   // Intentionally keep connectedAppliance, applianceChoice, and providerId.
 }
 

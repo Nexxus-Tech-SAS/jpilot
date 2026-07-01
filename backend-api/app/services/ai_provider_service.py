@@ -56,13 +56,21 @@ PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
     },
 }
 
-ANTHROPIC_MODELS = [
-    "claude-sonnet-4-20250514",
-    "claude-3-7-sonnet-20250219",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-haiku-20241022",
-    "claude-3-opus-20240229",
+# Static fallback used only when the live Anthropic /v1/models call fails
+# (missing/invalid key or the API is unreachable). Keep these as CURRENT ids —
+# never reintroduce retired claude-3-* / claude-sonnet-4-* ids here.
+ANTHROPIC_FALLBACK_MODELS = [
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-haiku-4-5-20251001",
+    "claude-fable-5",
 ]
+
+# Backwards-compatible alias (some callers/tests may import the old name).
+ANTHROPIC_MODELS = ANTHROPIC_FALLBACK_MODELS
+
+ANTHROPIC_API_BASE = "https://api.anthropic.com/v1"
+ANTHROPIC_VERSION = "2023-06-01"
 
 
 AZURE_OPENAI_API_VERSION = "2024-08-01-preview"
@@ -248,7 +256,19 @@ async def fetch_models(provider_type: str, api_key: str, endpoint: str) -> list[
     if provider_type == "OpenAI":
         return await _fetch_openai_models(api_key, resolve_base_url(provider_type, endpoint))
     if provider_type == "Anthropic":
-        return list(ANTHROPIC_MODELS)
+        # Missing key: let the caller show "API key required" (don't silently
+        # serve a fallback that hides the real problem).
+        if not api_key or not api_key.strip():
+            raise ValueError("API key is required")
+        try:
+            return await _fetch_anthropic_models(api_key, resolve_base_url(provider_type, endpoint))
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.TransportError):
+            # Provider unreachable / network hiccup: keep the form usable with a
+            # small static list of CURRENT ids (never stale).
+            return list(ANTHROPIC_FALLBACK_MODELS)
+        # Auth/permission/quota errors (ValueError / AiProviderError) propagate so
+        # the UI can tell the user to check the key — the router maps them to a
+        # clean 4xx message, not a 500 stacktrace.
     if provider_type == "Gemini":
         return await _fetch_gemini_models(api_key)
     if provider_type == "Grok":
@@ -315,6 +335,73 @@ async def _fetch_openai_models(api_key: str, base_url: str) -> list[str]:
     if not models:
         raise ValueError("No models returned from provider")
     return models
+
+
+async def _fetch_anthropic_models(api_key: str, base_url: str) -> list[str]:
+    """Live-list Anthropic models via GET /v1/models (paginated).
+
+    Requires the provider's API key. Loops on `has_more` using `after_id=last_id`
+    to collect every model, then returns ids sorted newest-first by `created_at`.
+
+    On any failure (missing/invalid key, network error, unexpected payload) this
+    raises so the caller can surface a clean error AND still fall back to a small
+    static list of CURRENT ids — a stale id can never be the only option served.
+    """
+    if not api_key or not api_key.strip():
+        raise ValueError("API key is required")
+
+    url = f"{(base_url or ANTHROPIC_API_BASE).rstrip('/')}/models"
+    headers = {
+        "x-api-key": api_key.strip(),
+        "anthropic-version": ANTHROPIC_VERSION,
+    }
+
+    collected: list[dict] = []
+    after_id: str | None = None
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        # Guard the loop so a misbehaving API can't spin forever.
+        for _ in range(50):
+            params: dict[str, str] = {"limit": "100"}
+            if after_id:
+                params["after_id"] = after_id
+
+            response = await client.get(url, headers=headers, params=params)
+            if response.status_code >= 400:
+                from app.services.ai_provider_errors import raise_for_ai_provider_response
+
+                raise_for_ai_provider_response(
+                    response, provider_type="Anthropic", model=""
+                )
+            payload = response.json()
+
+            page = payload.get("data", [])
+            if isinstance(page, list):
+                collected.extend(item for item in page if isinstance(item, dict) and item.get("id"))
+
+            if not payload.get("has_more"):
+                break
+            after_id = payload.get("last_id")
+            if not after_id:
+                break
+
+    if not collected:
+        raise ValueError("No models returned from Anthropic")
+
+    # Newest-first by created_at (epoch or ISO); fall back to id ordering.
+    def _sort_key(item: dict):
+        created = item.get("created_at")
+        if isinstance(created, (int, float)):
+            return (1, float(created))
+        if isinstance(created, str) and created:
+            return (1, created)
+        return (0, item.get("id", ""))
+
+    collected.sort(key=_sort_key, reverse=True)
+    models = [item["id"] for item in collected]
+    # De-dupe while preserving newest-first order.
+    seen: set[str] = set()
+    return [m for m in models if not (m in seen or seen.add(m))]
 
 
 async def _fetch_openai_compatible_models(

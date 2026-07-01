@@ -62,6 +62,13 @@ class DeploymentContinuation(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
+    # Out-of-band secret channel for masked form fields (type="password"/secret=True).
+    # Keys are placeholder tokens embedded in `message` (e.g. "⟦secret:bindPassword⟧");
+    # values are the real credential strings. The orchestrator substitutes each placeholder
+    # with its real value ONLY when handing the message to the model for the current turn,
+    # so the model can construct the tool call. The masked `message`/`history`/transcript
+    # never carry plaintext, and the assistant response is redacted before it is returned.
+    secrets: dict[str, str] = {}
     attachments: list[ChatAttachment] = []
     settings: CopilotSettings | None = None
     role: ChatRole = "operator"
@@ -116,12 +123,18 @@ class ToolCallTrace(BaseModel):
 class InputFormField(BaseModel):
     id: str
     label: str
+    # Supported types: text / number / textarea / boolean / choice / select / password.
+    # A "password" field renders masked (dots + reveal toggle) in the chat form and its
+    # value is carried to the backend out-of-band (see ChatRequest.secrets) so it never
+    # lands in the model-visible message text, the transcript echo, or the history.
     type: str = "text"
     required: bool = False
     placeholder: str = ""
     hint: str = ""
     default: str | bool | int | float | None = None
     options: list[dict[str, str]] = []
+    # Alternative to type="password": mark any field as secret to get masked handling.
+    secret: bool = False
 
 
 class InputForm(BaseModel):

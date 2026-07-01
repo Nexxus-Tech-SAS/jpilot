@@ -81,20 +81,20 @@ const PROVIDER_ROLE_SUGGESTIONS = {
   },
   Anthropic: {
     architect: {
-      patterns: [/claude-opus-4|claude-4-opus/i, /claude-sonnet-4|claude-4-sonnet/i, /claude-3-7-sonnet/i],
-      fallbackLabel: 'Claude Sonnet 4 / Opus',
+      patterns: [/claude-opus-4|claude-4-opus/i, /claude-sonnet-5|claude-sonnet-4|claude-4-sonnet/i, /claude-3-7-sonnet/i],
+      fallbackLabel: 'Claude Sonnet / Opus',
       blurb: 'Excellent at structured architecture narratives and trade-off analysis.',
       cost: '≈ $3–15 / 1M in'
     },
     operator: {
-      patterns: [/claude-3-5-haiku|claude-haiku-3-5/i, /claude-3-haiku/i],
-      fallbackLabel: 'Claude 3.5 Haiku',
+      patterns: [/claude-haiku-4|claude-4-haiku/i, /claude-3-5-haiku|claude-haiku-3-5/i, /claude-3-haiku/i],
+      fallbackLabel: 'Claude Haiku',
       blurb: 'Low latency for repetitive operational tasks and form-driven builds.',
       cost: '≈ $0.80 / 1M in'
     },
     analyst: {
-      patterns: [/claude-sonnet-4|claude-4-sonnet/i, /claude-3-7-sonnet/i, /claude-3-5-sonnet/i],
-      fallbackLabel: 'Claude Sonnet 4',
+      patterns: [/claude-sonnet-5|claude-sonnet-4|claude-4-sonnet/i, /claude-3-7-sonnet/i, /claude-3-5-sonnet/i],
+      fallbackLabel: 'Claude Sonnet',
       blurb: 'Clear incident write-ups with careful read-only evidence gathering.',
       cost: '≈ $3 / 1M in'
     }

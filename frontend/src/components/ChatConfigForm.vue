@@ -48,6 +48,17 @@
               :disabled="submitting"
             />
           </div>
+          <Password
+            v-else-if="field.type === 'password'"
+            :input-id="fieldId(field.id)"
+            v-model="values[field.id]"
+            class="w-full config-password"
+            input-class="w-full"
+            toggle-mask
+            :feedback="false"
+            :placeholder="field.placeholder || ''"
+            :disabled="submitting"
+          />
           <Select
             v-else-if="field.type === 'select'"
             :input-id="fieldId(field.id)"
@@ -91,6 +102,7 @@
 import { computed, reactive, watch } from 'vue'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -291,6 +303,11 @@ function submit() {
 
 .config-choice-other {
   margin-top: 0.25rem;
+}
+
+.config-password :deep(.p-password-input),
+.config-password :deep(input) {
+  width: 100%;
 }
 
 :global(.app-dark) .config-form {

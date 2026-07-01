@@ -4,6 +4,7 @@ import logging
 import re
 import sys
 import time
+from contextvars import ContextVar
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -119,7 +120,7 @@ from app.services.copilot_progress import QueueChatProgressReporter
 TOOL_ITERATION_LIMIT_MESSAGE = "I reached the maximum number of tool calls. Please try a simpler request."
 # Planning-only Architect turns get a higher tool-call budget than the standard cap so
 # long design documents (multiple resource/inventory searches) don't bail mid-document.
-ARCHITECT_MAX_TOOL_ITERATIONS = 60
+ARCHITECT_MAX_TOOL_ITERATIONS = 120
 
 CONTINUATION_NUDGE = (
     "TOOL ITERATION LIMIT — continue this deployment in the same turn. "
@@ -375,13 +376,43 @@ def _apply_blueprint_context(
     if active_id:
         pinned = [s for s in installed_all if str(s.get("skillId") or "") == active_id]
         if pinned:
-            from pathlib import Path as _P
-            from app.services.calibration_matcher import _load_manifest as _lm2
-            _man = _lm2(_P(pinned[0].get("path") or "")) or {}
-            _intents = (_man.get("triggers") or {}).get("intents") or []
-            if _intents:
-                match_message = " ".join(str(i) for i in _intents)
-            installed_scope = pinned
+            # Detect an explicit task-switch: the user asked for a DIFFERENT installed
+            # blueprint mid-session. Only release the pin when (a) this isn't a form
+            # submission (whose field values must not re-score onto another blueprint),
+            # (b) the pinned blueprint does NOT itself match the actual message — so the
+            # invoke turn (which names the pinned blueprint) and genuine same-blueprint
+            # continuations stay put — and (c) a different installed blueprint strictly
+            # matches the actual message.
+            others = [s for s in installed_all if str(s.get("skillId") or "") != active_id]
+            switched = False
+            if others and not is_form_submission(user_message):
+                pin_ctx = resolve_blueprint_turn_context(
+                    user_message=user_message,
+                    role=role,
+                    vendor=effective_vendor,
+                    installed=pinned,
+                )
+                if not (pin_ctx.relevant and pin_ctx.matched_skill_ids):
+                    switch_ctx = resolve_blueprint_turn_context(
+                        user_message=user_message,
+                        role=role,
+                        vendor=effective_vendor,
+                        installed=others,
+                    )
+                    if switch_ctx.relevant and switch_ctx.matched_skill_ids:
+                        switched = True
+            if switched:
+                # Release the pin for this turn; the newly-requested blueprint wins and
+                # the frontend will re-pin to it from the "applied" card.
+                installed_scope = others
+            else:
+                from pathlib import Path as _P
+                from app.services.calibration_matcher import _load_manifest as _lm2
+                _man = _lm2(_P(pinned[0].get("path") or "")) or {}
+                _intents = (_man.get("triggers") or {}).get("intents") or []
+                if _intents:
+                    match_message = " ".join(str(i) for i in _intents)
+                installed_scope = pinned
     elif is_form_submission(user_message):
         _title = _form_submission_title(user_message)
         if _title:
@@ -992,6 +1023,36 @@ def _build_blueprint_suggestion(
     )
 
 
+# Per-turn plaintext secret values collected from masked form fields. Set at the top of
+# run_copilot_chat and read by _finalize_chat_response so the assistant reply and the
+# returned tool-call traces can never surface the raw credential (defense in depth on top
+# of the generic redact_text patterns).
+_TURN_SECRET_VALUES: ContextVar[list[str]] = ContextVar("_TURN_SECRET_VALUES", default=[])
+
+
+def _scrub_turn_secrets(text: str) -> str:
+    """Replace any literal collected secret value in *text* with a fixed mask."""
+    if not text:
+        return text
+    for value in _TURN_SECRET_VALUES.get():
+        if value and value in text:
+            text = text.replace(value, "[REDACTED]")
+    return text
+
+
+def _scrub_arg_secrets(arguments: Any) -> Any:
+    """Recursively strip literal secret values from tool-call argument structures."""
+    if not _TURN_SECRET_VALUES.get():
+        return arguments
+    if isinstance(arguments, str):
+        return _scrub_turn_secrets(arguments)
+    if isinstance(arguments, dict):
+        return {k: _scrub_arg_secrets(v) for k, v in arguments.items()}
+    if isinstance(arguments, list):
+        return [_scrub_arg_secrets(v) for v in arguments]
+    return arguments
+
+
 def _finalize_chat_response(
     content: str,
     *,
@@ -1004,6 +1065,8 @@ def _finalize_chat_response(
     deployment_continuation: DeploymentContinuation | None = None,
     blueprint_suggestion: BlueprintSuggestion | None = None,
 ) -> ChatResponse:
+    from app.services.calibration_feedback_redaction import redact_text, redact_tool_arguments
+
     if normalize_role(role) == JPilotRole.ARCHITECT:
         content = sanitize_architect_reply(content)
     # R6: embed a hidden plan marker when a dedicated dry_run preview ran, so the next
@@ -1013,12 +1076,29 @@ def _finalize_chat_response(
     cleaned, input_form = attach_default_lb_form_if_missing(
         user_message, cleaned, input_form, role=role
     )
+    # Never let the assistant reply or the surfaced tool-call traces echo a collected
+    # credential in plaintext: scrub the exact secret values, then apply the generic
+    # secret/PEM/bearer patterns as a backstop.
+    cleaned = redact_text(_scrub_turn_secrets(cleaned))
+    safe_tool_traces = tool_traces
+    if _TURN_SECRET_VALUES.get():
+        safe_tool_traces = [
+            ToolCallTrace(
+                name=trace.name,
+                # redact_tool_arguments masks secret-named keys; _scrub_arg_secrets then
+                # strips the literal secret value from any argument (e.g. a CLI command
+                # string that embeds the credential inline).
+                arguments=_scrub_arg_secrets(redact_tool_arguments(trace.arguments)),
+                result=redact_text(_scrub_turn_secrets(trace.result)),
+            )
+            for trace in tool_traces
+        ]
     return ChatResponse(
         content=cleaned,
         providerName=provider_name,
         providerType=provider_type,
         model=model,
-        toolCalls=tool_traces,
+        toolCalls=safe_tool_traces,
         inputForm=to_response_input_form(input_form),
         deploymentContinuation=deployment_continuation,
         blueprintSuggestion=blueprint_suggestion,
@@ -1274,10 +1354,23 @@ async def run_copilot_chat(
     persona_system_prompt: str | None = None,
     skip_blueprint_skill_id: str | None = None,
     active_blueprint_skill_id: str | None = None,
+    secrets: dict[str, str] | None = None,
 ) -> ChatResponse:
     from app.services.copilot_service import set_web_search_allowed
 
     set_web_search_allowed(web_search)
+
+    # Masked form secrets arrive out-of-band: the incoming `user_message` (and the stored
+    # history/transcript) carry placeholder tokens like "⟦secret:<fieldId>⟧" in place of the
+    # real credential. Substitute the real values into the message ONLY here, so the model
+    # can build the tool call for THIS turn. The plaintext is never persisted to history nor
+    # echoed to the transcript, and the assistant reply is redacted before it is returned.
+    secret_values = [str(v) for v in (secrets or {}).values() if str(v)]
+    _TURN_SECRET_VALUES.set(secret_values)
+    if secrets:
+        for token, value in secrets.items():
+            if token and value:
+                user_message = user_message.replace(token, str(value))
     await raise_if_chat_cancelled(request)
     provider = await resolve_chat_provider(db, provider_id, role=role)
     if provider is None:
@@ -1756,6 +1849,72 @@ async def run_copilot_chat(
     )
 
 
+def _ensure_anthropic_tool_results_balanced(messages: list[dict[str, Any]]) -> None:
+    """Defensive guard: enforce the Anthropic tool_use/tool_result invariant in place.
+
+    For every assistant message whose content contains one or more ``tool_use`` blocks,
+    the *next* message must be a ``user`` message carrying a ``tool_result`` block for
+    each of those tool_use ids. If the next user message is missing (or missing some
+    ids), synthesize ``is_error`` placeholder tool_result blocks so the array is valid
+    before it is ever sent to Anthropic.
+
+    Idempotent: a fully-balanced array is left byte-identical.
+    """
+    idx = 0
+    while idx < len(messages):
+        msg = messages[idx]
+        content = msg.get("content")
+        if msg.get("role") != "assistant" or not isinstance(content, list):
+            idx += 1
+            continue
+
+        tool_use_ids = [
+            block.get("id")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id")
+        ]
+        if not tool_use_ids:
+            idx += 1
+            continue
+
+        # Collect the tool_result ids already present in the immediately-following
+        # user message (if any).
+        next_msg = messages[idx + 1] if idx + 1 < len(messages) else None
+        next_is_user_result = (
+            isinstance(next_msg, dict)
+            and next_msg.get("role") == "user"
+            and isinstance(next_msg.get("content"), list)
+        )
+        present_ids: set[str] = set()
+        if next_is_user_result:
+            for block in next_msg["content"]:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    tr_id = block.get("tool_use_id")
+                    if tr_id:
+                        present_ids.add(tr_id)
+
+        missing_ids = [tid for tid in tool_use_ids if tid not in present_ids]
+        if not missing_ids:
+            idx += 1
+            continue
+
+        placeholders = [
+            {
+                "type": "tool_result",
+                "tool_use_id": tid,
+                "content": "Tool result unavailable — the previous step did not complete.",
+                "is_error": True,
+            }
+            for tid in missing_ids
+        ]
+        if next_is_user_result:
+            # Prepend so placeholders sit alongside real results for the same turn.
+            next_msg["content"] = placeholders + next_msg["content"]
+        else:
+            messages.insert(idx + 1, {"role": "user", "content": placeholders})
+        idx += 1
+
+
 async def _run_openai_loop(
     db: AsyncIOMotorDatabase,
     base_url: str,
@@ -1881,6 +2040,7 @@ async def _run_openai_loop(
             messages.append(choice)
 
             retry_hints: list[str] = []
+            pending_loop_break = None
             for tool_call in tool_calls:
                 fn = tool_call.get("function") or {}
                 name = fn.get("name") or ""
@@ -1915,8 +2075,11 @@ async def _run_openai_loop(
 
                 tool_traces.append(ToolCallTrace(name=name, arguments=arguments, result=result))
                 loop_break = check_loop_breakers(runtime, name=name, arguments=arguments, result=result)
-                if loop_break is not None:
-                    return loop_break.message
+                if loop_break is not None and pending_loop_break is None:
+                    # Defer the stop-and-ask: every tool_call id in this assistant
+                    # message needs a matching `tool` response first, or OpenAI 400s
+                    # on the next call with an unbalanced parallel-tool batch.
+                    pending_loop_break = loop_break
                 tool_call_id = tool_call.get("id") or f"call_{len(tool_traces)}"
                 messages.append(
                     {
@@ -1933,6 +2096,10 @@ async def _run_openai_loop(
 
             if retry_hints:
                 messages.append({"role": "system", "content": "\n\n".join(retry_hints)})
+
+            if pending_loop_break is not None:
+                # messages now has a `tool` response for every tool_call id.
+                return pending_loop_break.message
 
             await _emit_progress_subtasks(
                 progress,
@@ -2088,6 +2255,7 @@ async def _run_gemini_loop(
             contents.append({"role": "model", "parts": parts})
 
             response_parts = []
+            pending_loop_break = None
             for function_call in function_calls:
                 name = function_call["name"]
                 arguments = function_call.get("args", {})
@@ -2112,8 +2280,10 @@ async def _run_gemini_loop(
                     await progress.tool_finished(name)
                 tool_traces.append(ToolCallTrace(name=name, arguments=arguments, result=result))
                 loop_break = check_loop_breakers(runtime, name=name, arguments=arguments, result=result)
-                if loop_break is not None:
-                    return loop_break.message
+                if loop_break is not None and pending_loop_break is None:
+                    # Defer the stop-and-ask: Gemini needs a functionResponse part for
+                    # every functionCall in this model turn before the next request.
+                    pending_loop_break = loop_break
                 truncated = _dedupe_read_result(name, arguments, result, seen_reads, limits.max_tool_result_chars)
                 response_parts.append(
                     {
@@ -2130,6 +2300,10 @@ async def _run_gemini_loop(
                     response_parts.append({"text": retry_hint})
 
             contents.append({"role": "user", "parts": response_parts})
+
+            if pending_loop_break is not None:
+                # contents now has a functionResponse for every functionCall part.
+                return pending_loop_break.message
 
             await _emit_progress_subtasks(
                 progress,
@@ -2211,6 +2385,16 @@ async def _run_anthropic_loop(
     progress_ctx = _progress_context(history, user_message, attachments)
     seen_reads: dict[str, str] = {}  # in-turn idempotent-read dedup (8e)
 
+    # Invocation-boundary guarantee (resume/continuation hole): balance the array ONCE up
+    # front, before the phase/iteration loops run. The per-iteration guard inside the inner
+    # loop only fires between `chat_anthropic` calls, so the FIRST call of a "continue"/
+    # deployment-continuation invocation could otherwise send an assistant `tool_use` turn
+    # that was reconstructed (or replayed) without its `tool_result`s — the messages.N
+    # `tool_use ids were found without tool_result blocks` 400. Running it here makes the
+    # first call of every invocation (initial, continue, resume) balanced regardless of how
+    # `messages` was assembled or the tool-iteration budget.
+    _ensure_anthropic_tool_results_balanced(messages)
+
     for continuation_phase in range(runtime.max_continuation_phases + 1):
         if continuation_phase > 0:
             if _maybe_pause_for_long_task(
@@ -2236,6 +2420,7 @@ async def _run_anthropic_loop(
             if progress is not None:
                 await progress.llm_started()
             llm_started_at = time.perf_counter()
+            _ensure_anthropic_tool_results_balanced(messages)
             data = await chat_anthropic(
                 api_key=api_key,
                 model=model,
@@ -2282,6 +2467,7 @@ async def _run_anthropic_loop(
             messages.append({"role": "assistant", "content": content_blocks})
 
             tool_results = []
+            pending_loop_break = None
             for tool_use in tool_uses:
                 name = tool_use["name"]
                 arguments = tool_use.get("input", {})
@@ -2306,8 +2492,11 @@ async def _run_anthropic_loop(
                     await progress.tool_finished(name)
                 tool_traces.append(ToolCallTrace(name=name, arguments=arguments, result=result))
                 loop_break = check_loop_breakers(runtime, name=name, arguments=arguments, result=result)
-                if loop_break is not None:
-                    return loop_break.message
+                if loop_break is not None and pending_loop_break is None:
+                    # Defer the stop-and-ask: we must first append a tool_result for
+                    # EVERY tool_use id in this assistant turn (parallel tool calls),
+                    # otherwise the messages array is left unbalanced and Anthropic 400s.
+                    pending_loop_break = loop_break
                 tool_results.append(
                     {
                         "type": "tool_result",
@@ -2322,6 +2511,10 @@ async def _run_anthropic_loop(
                     tool_results.append({"type": "text", "text": retry_hint})
 
             messages.append({"role": "user", "content": tool_results})
+
+            if pending_loop_break is not None:
+                # messages is now balanced (a tool_result exists for every tool_use id).
+                return pending_loop_break.message
 
             await _emit_progress_subtasks(
                 progress,

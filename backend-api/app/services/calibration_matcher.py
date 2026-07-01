@@ -79,6 +79,94 @@ def _trigger_relevance(message: str, manifest: dict[str, Any]) -> int:
     return len(_terms(message) & _trigger_terms(manifest))
 
 
+# ---------------------------------------------------------------------------
+# Provisioning-intent gate.
+#
+# Some blueprints provision a NEW object (e.g. "Configure HTTP Load Balancer"
+# stands up a new LB vserver). Their only distinctive trigger terms are the domain
+# NOUNS ("load", "balancer"), so a bare mention of "load balancer" as an incidental
+# binding target — or even a *declined* one ("no load balancer for now") — clears the
+# >=2-term relevance bar and the blueprint hijacks the turn. Worse, the phrase appears
+# verbatim inside another blueprint's NAME ("...on Load Balancer"), so invoking the
+# Security Headers blueprint drags the LB one in on the shared nouns.
+#
+# Fix: a provisioning blueprint is relevant only when the message expresses genuine
+# provisioning intent (a create/configure/deploy verb) AND does not negate the object.
+# This does NOT weaken the legitimate "configure a new HTTP load balancer" case.
+# ---------------------------------------------------------------------------
+
+# Verbs that signal the user wants to stand something up (not merely reference it).
+_PROVISION_VERBS = frozenset(
+    {
+        "configure", "create", "setup", "set up", "deploy", "add", "provision",
+        "build", "stand up", "spin up", "new",
+    }
+)
+
+# Leading verbs that mark a blueprint's intents as provisioning intents.
+_PROVISION_INTENT_LEADERS = frozenset(
+    {"configure", "create", "setup", "deploy", "add", "provision", "build"}
+)
+
+
+def _is_provisioning_blueprint(manifest: dict[str, Any]) -> bool:
+    """True when every trigger intent is verb-led with a provisioning verb.
+
+    Detected from the manifest's own intents (no per-skill flag needed): e.g. the LB
+    blueprint's intents are all "configure http load balancer" / "create new http load
+    balancer" / "deploy http lb". Read-only or apply-to-existing blueprints (Security
+    Headers: "apply security headers to lb vserver", "enable ...") are NOT flagged,
+    so this gate only ever tightens genuine provisioning blueprints."""
+    intents = (manifest.get("triggers") or {}).get("intents") or []
+    if not intents:
+        return False
+    for intent in intents:
+        first = str(intent).strip().lower().split(" ", 1)[0]
+        if first not in _PROVISION_INTENT_LEADERS:
+            return False
+    return True
+
+
+def _message_has_provisioning_intent(message: str) -> bool:
+    lowered = (message or "").lower()
+    return any(verb in lowered for verb in _PROVISION_VERBS)
+
+
+# "no load balancer", "without a load balancer", "don't create a load balancer", etc.
+_NEGATION_TOKENS = ("no ", "not ", "without", "don't", "dont", "skip", "decline", "aren't")
+
+
+def _message_negates_terms(message: str, terms: set[str]) -> bool:
+    """True when a distinctive term appears in a negated clause of the message.
+
+    Guards against "no load balancer for now, just create the policies" selecting the
+    LB provisioning blueprint off the incidental noun."""
+    lowered = (message or "").lower()
+    for term in terms:
+        idx = lowered.find(term)
+        while idx != -1:
+            window = lowered[max(0, idx - 24): idx]
+            if any(neg in window for neg in _NEGATION_TOKENS):
+                return True
+            idx = lowered.find(term, idx + 1)
+    return False
+
+
+def _passes_provisioning_gate(message: str, manifest: dict[str, Any], *, intent_hit: bool) -> bool:
+    """For a provisioning blueprint matched only on term overlap (no exact intent
+    phrase), require real provisioning intent and no negation of its domain nouns.
+
+    Returns True for non-provisioning blueprints (gate is a no-op) and whenever an
+    exact trigger-phrase already matched (the user spelled out the intent)."""
+    if intent_hit or not _is_provisioning_blueprint(manifest):
+        return True
+    if not _message_has_provisioning_intent(message):
+        return False
+    if _message_negates_terms(message, _trigger_terms(manifest)):
+        return False
+    return True
+
+
 def load_skill_prompt_fragment(skill_dir: Path, role: str) -> str | None:
     manifest = _load_manifest(skill_dir)
     if not manifest:
@@ -204,6 +292,14 @@ def match_installed_skills(
         # distinctive intent-term overlap. This is what gates blueprint injection on
         # request intent instead of incidental word overlap with the memory body.
         if not (intent_hit or overlap >= _RELEVANCE_MIN_TERMS):
+            continue
+        # Provisioning blueprints (e.g. "Configure HTTP Load Balancer") must not be
+        # selected on an incidental/declined mention of their domain nouns. When the
+        # match rests only on term overlap, require real provisioning intent and no
+        # negation of those nouns — otherwise "bind headers to the load balancer",
+        # "no load balancer for now", or another blueprint's "...on Load Balancer"
+        # name would hijack the turn.
+        if not _passes_provisioning_gate(user_message, manifest, intent_hit=intent_hit):
             continue
         score = (100 if intent_hit else 0) + 10 * overlap + int(manifest.get("priority") or 0)
         matches.append((score, row))

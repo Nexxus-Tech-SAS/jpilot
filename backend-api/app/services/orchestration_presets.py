@@ -10,19 +10,19 @@ ORCHESTRATION_PRESET_MODES: tuple[str, ...] = ("standard", "extended", "max")
 
 ORCHESTRATION_PRESETS: dict[str, dict[str, Any]] = {
     "standard": {
-        "maxToolIterations": 20,
+        "maxToolIterations": 40,
         "maxToolContinuationPhases": 3,
         "longTaskToolThreshold": 8,
         "promptBeforeLongTasks": True,
     },
     "extended": {
-        "maxToolIterations": 30,
+        "maxToolIterations": 60,
         "maxToolContinuationPhases": 4,
         "longTaskToolThreshold": 10,
         "promptBeforeLongTasks": True,
     },
     "max": {
-        "maxToolIterations": 40,
+        "maxToolIterations": 80,
         "maxToolContinuationPhases": 5,
         "longTaskToolThreshold": 12,
         "promptBeforeLongTasks": True,

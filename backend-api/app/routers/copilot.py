@@ -286,6 +286,7 @@ async def copilot_chat(
             persona_system_prompt=persona.systemPrompt or None,
             skip_blueprint_skill_id=payload.skipBlueprintSkillId or None,
             active_blueprint_skill_id=payload.activeBlueprintSkillId or None,
+            secrets=payload.secrets or None,
         )
     except ChatCancelledError as exc:
         raise HTTPException(
