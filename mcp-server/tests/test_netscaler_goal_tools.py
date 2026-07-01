@@ -67,15 +67,16 @@ def test_create_lb_dry_run_command_order():
     # enable LB must be first
     assert cmds[0] == "enable ns feature LB"
 
-    # add server and add service for each backend
-    assert any(c.startswith("add server my_lb_srv1 192.168.1.1") for c in cmds)
-    assert any(c.startswith("add service my_lb_svc1 my_lb_srv1 HTTP 80") for c in cmds)
+    # one service group, members bound by IP (no per-backend named server)
+    assert any(c.startswith("add serviceGroup my_lb_sg HTTP") for c in cmds)
+    assert any(c.startswith("bind serviceGroup my_lb_sg 192.168.1.1 80") for c in cmds)
+    assert not any(c.startswith("add server ") for c in cmds)
 
     # add lb vserver
     assert any("add lb vserver my_lb HTTP 10.0.0.1 80" in c for c in cmds)
 
-    # bind lb vserver
-    assert any(c.startswith("bind lb vserver my_lb") for c in cmds)
+    # bind the service group to the lb vserver
+    assert any(c.startswith("bind lb vserver my_lb my_lb_sg") for c in cmds)
 
     # set lb vserver lbMethod
     set_cmd = next((c for c in cmds if c.startswith("set lb vserver my_lb")), None)
@@ -93,27 +94,27 @@ def test_create_lb_confirm_false_also_previews():
     assert "commands" in result
 
 
-def test_create_lb_monitor_binds_per_service():
-    """When monitor is provided, each service gets a bind service -monitorName command."""
+def test_create_lb_monitor_binds_to_service_group():
+    """When monitor is provided, it binds once to the service group (not per service)."""
     result = asyncio.run(
         create_lb(H, U, P, "my_lb", "10.0.0.1", ["192.168.1.1", "192.168.1.2"],
                   monitor="tcp-default", dry_run=True)
     )
     cmds = result["commands"]
 
-    # There should be a bind service command for each backend service with the monitor
+    # Monitor binds exactly once, to the service group
     bind_mon_cmds = [c for c in cmds if "-monitorName tcp-default" in c]
-    assert len(bind_mon_cmds) == 2, f"Expected 2 monitor binds, got {len(bind_mon_cmds)}: {cmds}"
+    assert len(bind_mon_cmds) == 1, f"Expected 1 monitor bind, got {len(bind_mon_cmds)}: {cmds}"
+    assert "bind serviceGroup my_lb_sg -monitorName tcp-default" in bind_mon_cmds[0]
 
-    # Each bind command should reference the correct service name
-    assert any("bind service my_lb_svc1 -monitorName tcp-default" in c for c in cmds)
-    assert any("bind service my_lb_svc2 -monitorName tcp-default" in c for c in cmds)
+    # both backends are bound (by IP) as members of the same service group
+    assert any("bind serviceGroup my_lb_sg 192.168.1.1 80" in c for c in cmds)
+    assert any("bind serviceGroup my_lb_sg 192.168.1.2 80" in c for c in cmds)
 
-    # Monitor bind must follow immediately after the corresponding add service
-    for i, svc in enumerate(["my_lb_svc1", "my_lb_svc2"], start=1):
-        add_idx = next(j for j, c in enumerate(cmds) if f"add service {svc}" in c)
-        bind_idx = next(j for j, c in enumerate(cmds) if f"bind service {svc} -monitorName" in c)
-        assert add_idx < bind_idx, f"bind service {svc} -monitorName must come after add service"
+    # the monitor bind must come after the service group is created
+    sg_idx = next(j for j, c in enumerate(cmds) if c.startswith("add serviceGroup my_lb_sg"))
+    mon_idx = next(j for j, c in enumerate(cmds) if "-monitorName tcp-default" in c)
+    assert sg_idx < mon_idx, "monitor bind must come after add serviceGroup"
 
 
 def test_create_lb_no_monitor_omits_bind_service_monitorname():
@@ -137,7 +138,7 @@ def test_create_lb_monitor_single_backend():
     cmds = result["commands"]
     bind_mon_cmds = [c for c in cmds if "-monitorName http" in c]
     assert len(bind_mon_cmds) == 1
-    assert "bind service lb1_svc1 -monitorName http" in bind_mon_cmds[0]
+    assert "bind serviceGroup lb1_sg -monitorName http" in bind_mon_cmds[0]
 
 
 # ===========================================================================

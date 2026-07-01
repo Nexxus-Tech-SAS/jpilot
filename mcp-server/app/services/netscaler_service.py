@@ -2139,7 +2139,7 @@ async def create_lb(
     dry_run: bool = False,
     confirm: bool = False,
 ) -> dict[str, Any]:
-    """Build an LB vserver with backend servers/services using the classic CLI."""
+    """Build an LB vserver with backends grouped in a single service group (classic CLI)."""
     if not name:
         raise ValueError("name is required")
     if not vip:
@@ -2150,26 +2150,24 @@ async def create_lb(
     effective_server_port = server_port if server_port is not None else port
     effective_server_protocol = server_protocol if server_protocol else service_type
 
-    service_names: list[str] = []
-    server_names: list[str] = []
+    sg_name = f"{name}_sg"
     commands: list[str] = ["enable ns feature LB"]
 
-    for i, ip in enumerate(servers, start=1):
-        srv_name = f"{name}_srv{i}"
-        svc_name = f"{name}_svc{i}"
-        server_names.append(srv_name)
-        service_names.append(svc_name)
-        commands.append(f"add server {srv_name} {ip}")
+    # Prefer a single service group over individual services. Bind members by IP
+    # so we never collide with a pre-existing named server object for the same IP
+    # (NetScaler enforces one named server per IP; bind-by-IP reuses it safely).
+    commands.append(f"add serviceGroup {sg_name} {effective_server_protocol}")
+
+    for ip in servers:
         commands.append(
-            f"add service {svc_name} {srv_name} {effective_server_protocol} {effective_server_port}"
+            f"bind serviceGroup {sg_name} {ip} {effective_server_port}"
         )
-        if monitor:
-            commands.append(f"bind service {svc_name} -monitorName {monitor}")
+
+    if monitor:
+        commands.append(f"bind serviceGroup {sg_name} -monitorName {monitor}")
 
     commands.append(f"add lb vserver {name} {service_type} {vip} {port}")
-
-    for svc_name in service_names:
-        commands.append(f"bind lb vserver {name} {svc_name}")
+    commands.append(f"bind lb vserver {name} {sg_name}")
 
     if lb_method:
         commands.append(f"set lb vserver {name} -lbMethod {lb_method}")
@@ -2187,8 +2185,8 @@ async def create_lb(
         host, username, password, commands, dry_run=dry_run, confirm=confirm
     )
     result["vserverName"] = name
-    result["serviceNames"] = service_names
-    result["serverNames"] = server_names
+    result["serviceGroupName"] = sg_name
+    result["members"] = list(servers)
     return result
 
 
@@ -2247,20 +2245,14 @@ async def modify_lb(
         commands.append(f"rm service {svc}")
 
     # add new backend servers and services
-    new_service_names: list[str] = []
-    new_server_names: list[str] = []
+    added_members: list[str] = []
+    sg_name = f"{name}_sg"
     if add_servers:
-        # use a timestamp-like suffix to avoid name collisions
-        import time as _time
-        suffix = str(int(_time.time()))[-6:]
-        for i, ip in enumerate(add_servers, start=1):
-            srv_name = f"{name}_srv{suffix}_{i}"
-            svc_name = f"{name}_svc{suffix}_{i}"
-            new_server_names.append(srv_name)
-            new_service_names.append(svc_name)
-            commands.append(f"add server {srv_name} {ip}")
-            commands.append(f"add service {svc_name} {srv_name} HTTP 80")
-            commands.append(f"bind lb vserver {name} {svc_name}")
+        for ip in add_servers:
+            added_members.append(ip)
+            # Bind the new backend into the vserver's service group, by IP
+            # (avoids colliding with an existing named server for the same IP).
+            commands.append(f"bind serviceGroup {sg_name} {ip} 80")
 
     if not commands:
         return {
@@ -2271,9 +2263,9 @@ async def modify_lb(
     result = await apply_cli_config(
         host, username, password, commands, dry_run=dry_run, confirm=confirm
     )
-    if new_service_names:
-        result["addedServiceNames"] = new_service_names
-        result["addedServerNames"] = new_server_names
+    if added_members:
+        result["serviceGroupName"] = sg_name
+        result["addedMembers"] = added_members
     return result
 
 
