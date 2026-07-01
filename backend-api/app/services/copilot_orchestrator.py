@@ -117,6 +117,9 @@ from app.services.copilot_progress import QueueChatProgressReporter
 # dead (and the 3 disagreed with the real default of 4) — removed to keep one source of truth.
 
 TOOL_ITERATION_LIMIT_MESSAGE = "I reached the maximum number of tool calls. Please try a simpler request."
+# Planning-only Architect turns get a higher tool-call budget than the standard cap so
+# long design documents (multiple resource/inventory searches) don't bail mid-document.
+ARCHITECT_MAX_TOOL_ITERATIONS = 60
 
 CONTINUATION_NUDGE = (
     "TOOL ITERATION LIMIT — continue this deployment in the same turn. "
@@ -322,6 +325,19 @@ def _response_has_input_form(content: str) -> bool:
     return form is not None
 
 
+def _form_submission_title(user_message: str) -> str:
+    """The label after 'Planning/Configuration inputs for:' — reflects the blueprint
+    that generated the form, so a form SUBMISSION stays on its originating blueprint
+    instead of re-matching on the field values."""
+    import re as _re
+    m = _re.search(
+        r"(?:planning|configuration) inputs for:\s*(.+?)(?:\n|$)",
+        user_message or "",
+        _re.IGNORECASE,
+    )
+    return m.group(1).strip() if m and m.group(1).strip() else ""
+
+
 def _apply_blueprint_context(
     system_prompt: str,
     *,
@@ -329,6 +345,7 @@ def _apply_blueprint_context(
     role: str,
     vendor: str | None,
     skip_blueprint_skill_id: str | None = None,
+    active_blueprint_skill_id: str | None = None,
 ) -> tuple[str, bool, bool, dict | None]:
     """Return (system_prompt, blueprint_relevant, stack_calibration_reviewed, blueprint_candidate).
 
@@ -343,17 +360,43 @@ def _apply_blueprint_context(
     from app.services.knowledge_pack_runtime import resolve_knowledge_pack_turn_context
     from app.services.knowledge_pack_service import get_active_pack_dir
 
+    from app.services.copilot_form import is_form_submission
+
     effective_vendor = vendor or "netscaler"
+
+    # Blueprint stickiness across a multi-turn flow (discovery form -> submission):
+    #  1) if the frontend threaded the active blueprint id, PIN to that skill;
+    #  2) else, for a form submission, match on the form TITLE (not the field values,
+    #     which can re-score onto a different blueprint mid-flow).
+    match_message = user_message
+    installed_all = list_installed_skills()
+    installed_scope = installed_all
+    active_id = (active_blueprint_skill_id or "").strip()
+    if active_id:
+        pinned = [s for s in installed_all if str(s.get("skillId") or "") == active_id]
+        if pinned:
+            from pathlib import Path as _P
+            from app.services.calibration_matcher import _load_manifest as _lm2
+            _man = _lm2(_P(pinned[0].get("path") or "")) or {}
+            _intents = (_man.get("triggers") or {}).get("intents") or []
+            if _intents:
+                match_message = " ".join(str(i) for i in _intents)
+            installed_scope = pinned
+    elif is_form_submission(user_message):
+        _title = _form_submission_title(user_message)
+        if _title:
+            match_message = _title
+
     if get_active_pack_dir():
         ctx, _tool_policy = resolve_knowledge_pack_turn_context(
-            user_message=user_message,
+            user_message=match_message,
             role=role,
             vendor=effective_vendor,
         )
     else:
-        installed = list_installed_skills()
+        installed = installed_scope
         ctx = resolve_blueprint_turn_context(
-            user_message=user_message,
+            user_message=match_message,
             role=role,
             vendor=effective_vendor,
             installed=installed,
@@ -364,11 +407,11 @@ def _apply_blueprint_context(
     if skip_id and ctx.relevant and skip_id in ctx.matched_skill_ids:
         # Re-run context resolution with the skipped skill filtered out.
         installed_filtered = [
-            s for s in list_installed_skills()
+            s for s in installed_scope
             if str(s.get("skillId") or "") != skip_id
         ]
         ctx = resolve_blueprint_turn_context(
-            user_message=user_message,
+            user_message=match_message,
             role=role,
             vendor=effective_vendor,
             installed=installed_filtered,
@@ -1230,6 +1273,7 @@ async def run_copilot_chat(
     include_design_revision: bool = False,
     persona_system_prompt: str | None = None,
     skip_blueprint_skill_id: str | None = None,
+    active_blueprint_skill_id: str | None = None,
 ) -> ChatResponse:
     from app.services.copilot_service import set_web_search_allowed
 
@@ -1306,6 +1350,7 @@ async def run_copilot_chat(
         role=chat_role.value,
         vendor=chat_vendor,
         skip_blueprint_skill_id=skip_blueprint_skill_id,
+        active_blueprint_skill_id=active_blueprint_skill_id,
     )
     from app.services.copilot_platform_service import ensure_default_settings
 
@@ -1317,6 +1362,13 @@ async def run_copilot_chat(
         deployment_continuation=deployment_continuation,
         long_task_approved=long_task_approved,
     )
+    # Architect is planning-only (no destructive appliance writes) and legitimately makes
+    # several resource/inventory searches while composing a design; give it a higher tool
+    # budget so long designs don't hit the loop cap and bail mid-document.
+    if chat_role == JPilotRole.ARCHITECT:
+        orchestration.settings.max_tool_iterations = max(
+            orchestration.settings.max_tool_iterations, ARCHITECT_MAX_TOOL_ITERATIONS
+        )
     if orchestration.long_task_approved and chat_role == JPilotRole.OPERATOR:
         system_prompt += f"\n\n{CONTINUATION_NUDGE}"
     attachment_names = [a.name for a in attachment_list]

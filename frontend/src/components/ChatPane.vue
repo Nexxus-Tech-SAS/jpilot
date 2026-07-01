@@ -2475,7 +2475,8 @@ async function runChat(content, attachments, runOptions = {}) {
         longTaskApproved: Boolean(runOptions.longTaskApproved),
         designDocumentContext: resolveDesignDocumentContext(runOptions),
         includeDesignRevision: Boolean(runOptions.includeDesignRevision),
-        ...(runOptions.skipBlueprintSkillId ? { skipBlueprintSkillId: runOptions.skipBlueprintSkillId } : {})
+        ...(runOptions.skipBlueprintSkillId ? { skipBlueprintSkillId: runOptions.skipBlueprintSkillId } : {}),
+        ...(runOptions.activeBlueprintSkillId ? { activeBlueprintSkillId: runOptions.activeBlueprintSkillId } : {})
       },
       {
         signal: controller.signal,
@@ -2578,9 +2579,17 @@ async function submitConfigForm(values, messageIndex) {
     })
     openDesignPanel()
   }
+  // Pin this turn to the blueprint that presented the form, so the backend
+  // doesn't re-match onto a different blueprint mid-flow (e.g. a discovery
+  // form's answers getting matched against an unrelated blueprint).
+  const activeBlueprintSkillId = msg.blueprintSuggestion?.skillId
+
   submittingFormIndex.value = messageIndex
   try {
-    await sendMessage(lines.join('\n'), null, isArchitect ? { skipRoleInference: true } : undefined)
+    await sendMessage(lines.join('\n'), null, {
+      ...(isArchitect ? { skipRoleInference: true } : {}),
+      ...(activeBlueprintSkillId ? { activeBlueprintSkillId } : {})
+    })
   } finally {
     submittingFormIndex.value = null
   }

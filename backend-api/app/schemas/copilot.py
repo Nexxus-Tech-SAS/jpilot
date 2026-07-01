@@ -74,6 +74,9 @@ class ChatRequest(BaseModel):
     designDocumentContext: str | None = None
     includeDesignRevision: bool = False
     skipBlueprintSkillId: str | None = None
+    # The blueprint currently driving a multi-turn flow (e.g. the one that generated
+    # a discovery form). Echoed by the frontend so the flow stays on it across turns.
+    activeBlueprintSkillId: str | None = None
 
 
 class CopilotApplianceItem(BaseModel):
