@@ -28,6 +28,12 @@ const router = createRouter({
       meta: { public: true, allowAuthenticated: true }
     },
     {
+      path: '/deck',
+      name: 'deck',
+      component: () => import('../views/DeckView.vue'),
+      meta: { public: true, allowAuthenticated: true }
+    },
+    {
       path: '/login',
       name: 'login',
       component: LoginView,
