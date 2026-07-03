@@ -6,7 +6,9 @@
     <div class="aurora a3"></div>
     <div class="deck-progress" :style="{ width: progressPct }"></div>
 
-    <div ref="stage" class="stage"></div>
+    <div class="stage">
+      <div ref="stage" class="scaler"></div>
+    </div>
 
     <button class="deck-nav deck-prev" aria-label="Previous slide" @click="go(cur - 1)">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg>
@@ -164,8 +166,8 @@ function buildSlides() {
   /* 4 VISION */
   SLIDES.push(`<div class="wrap">${eb('The vision')}${h1t('A conversational control plane for the network')}
  <div class="split">
-  <div>
-   <div class="panel glow r" style="animation-delay:.2s;margin-bottom:18px"><p style="font-family:var(--head);font-style:italic;color:var(--ice);font-size:1.05rem;line-height:1.45">“We spent 15 years mastering NetScaler, WAF and Zero-Trust by hand. JPilot encodes that craft into an agent that any team can run — safely.”</p></div>
+  <div class="stack">
+   <div class="panel glow r" style="animation-delay:.2s"><p style="font-family:var(--head);font-style:italic;color:var(--ice);font-size:1.05rem;line-height:1.45">“We spent 15 years mastering NetScaler, WAF and Zero-Trust by hand. JPilot encodes that craft into an agent that any team can run — safely.”</p></div>
    ${[
      { i: 'chat', t: 'Plain language, not syntax', d: 'Describe the outcome. JPilot plans, references the right docs, and executes vendor commands for you.' },
      { i: 'brain', t: 'Vendor-aware intelligence', d: 'A multi-vendor "brain" gives the agent memory, prompts and tools specific to each appliance family.' },
@@ -209,7 +211,7 @@ function buildSlides() {
   /* 7 ARCHITECTURE */
   SLIDES.push(`<div class="wrap">${eb('Architecture')}${h1t('How JPilot is built')}
  <div class="split">
-  <div>${[
+  <div class="stack">${[
     { i: 'desktop', t: 'Frontend (Vue 3)', d: 'Chat, inventory, settings, Calibration Studio. Served via nginx with TLS.' },
     { i: 'cogs', t: 'Backend API (FastAPI)', d: 'Orchestration, roles, memory-gated RAG, auth, licensing, AI-provider routing.' },
     { i: 'plug', t: 'MCP server', d: 'Model Context Protocol tools: Next-Gen API, classic CLI over SSH, NITRO, diagnostics.' },
@@ -256,8 +258,8 @@ function buildSlides() {
   /* 10 CALIBRATION */
   SLIDES.push(`<div class="wrap">${eb('The differentiator')}${h1t('Stack Calibration Studio: where the expertise lives')}
  <div class="split">
-  <div>
-   <p class="lead r" style="animation-delay:.2s;color:var(--ice);margin-bottom:1rem">JPilot is the engine. The Nexxus Blueprint Library is the accumulated craft — packaged, versioned and license-gated — that makes the agent an expert in your stack.</p>
+  <div class="stack">
+   <p class="lead r" style="animation-delay:.2s;color:var(--ice)">JPilot is the engine. The Nexxus Blueprint Library is the accumulated craft — packaged, versioned and license-gated — that makes the agent an expert in your stack.</p>
    ${[
      { i: 'magic', t: 'Skills', d: 'Blueprint-first recipes that match a request and inject the exact prompts, memory and steps to execute it reliably.' },
      { i: 'usertie', t: 'Personas', d: 'Specialist roles (e.g. Security Architect) that layer expert behavior onto a base role and pull in their skills.' },
@@ -306,7 +308,7 @@ function buildSlides() {
   /* 14 WHY NOW */
   SLIDES.push(`<div class="wrap">${eb('Why now · why us')}${h1t('The right team at the right moment')}
  <div class="split">
-  <div>${[
+  <div class="stack">${[
     { i: 'trend', t: 'AI is finally tool-capable', d: 'LLMs can now plan and call tools reliably enough to operate real infrastructure under guardrails.' },
     { i: 'net', t: 'Networks grow, teams shrink', d: 'More vendors and clouds, fewer experts — the operational gap is widening every year.' },
     { i: 'shield', t: "Security can't be an afterthought", d: 'BYO-keys, self-hosting and read-first roles meet the bar that regulated enterprises require.' }
@@ -458,6 +460,10 @@ onMounted(() => {
   let W, H, pts, DPR
   const LINK = 150
   function resize() {
+    const s = Math.min(innerWidth / 1440, innerHeight / 810) * 0.96
+    if (stage.value) {
+      stage.value.style.transform = `translate(-50%, -50%) scale(${s})`
+    }
     DPR = Math.min(devicePixelRatio || 1, 2)
     W = cv.width = innerWidth * DPR
     H = cv.height = innerHeight * DPR
@@ -563,8 +569,9 @@ onBeforeUnmount(() => {
 @keyframes deckDrift3 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-5vw, 7vh) scale(1.1); } }
 
 .deck-page { outline: none; }
-.deck-page .stage { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; }
-.deck-page .slide { position: absolute; inset: 0; display: none; flex-direction: column; justify-content: center; padding: clamp(28px, 5vw, 84px); --dirX: 52px; }
+.deck-page .stage { position: absolute; inset: 0; z-index: 2; }
+.deck-page .scaler { position: absolute; left: 50%; top: 50%; width: 1440px; height: 810px; transform: translate(-50%, -50%); transform-origin: center; }
+.deck-page .slide { position: absolute; inset: 0; display: none; flex-direction: column; justify-content: center; padding: 48px 84px; --dirX: 52px; }
 .deck-page .slide.active { display: flex; z-index: 2; animation: deckSlideIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .deck-page .slide.leaving { display: flex; z-index: 1; pointer-events: none; animation: deckSlideOut 0.45s cubic-bezier(0.55, 0, 0.55, 0.2) both; }
 .deck-page .slide.enter-back, .deck-page .slide.leave-back { --dirX: -52px; }
@@ -607,8 +614,8 @@ onBeforeUnmount(() => {
 .deck-page .eyebrow { font-size: 0.82rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cyan); margin-bottom: 0.7rem; display: flex; align-items: center; gap: 0.6rem; }
 .deck-page .eyebrow::before { content: ''; width: 30px; height: 2px; background: repeating-linear-gradient(90deg, var(--cyan) 0 5px, transparent 5px 10px); animation: deckFlow 1.1s linear infinite; }
 @keyframes deckFlow { to { background-position: 10px 0; } }
-.deck-page h1.title { font-family: var(--head); font-weight: 700; font-size: clamp(1.7rem, 3.4vw, 2.85rem); line-height: 1.1; color: #fff; margin-bottom: 1.4rem; letter-spacing: -0.01em; }
-.deck-page .lead { color: var(--mute); font-size: clamp(0.95rem, 1.25vw, 1.12rem); line-height: 1.5; max-width: 60ch; }
+.deck-page h1.title { font-family: var(--head); font-weight: 700; font-size: 2.6rem; line-height: 1.1; color: #fff; margin-bottom: 1.5rem; letter-spacing: -0.01em; }
+.deck-page .lead { color: var(--mute); font-size: 1.08rem; line-height: 1.5; max-width: 60ch; }
 
 .deck-page .grid { display: grid; gap: 18px; }
 .deck-page .g2 { grid-template-columns: 1fr 1fr; }
@@ -635,12 +642,12 @@ onBeforeUnmount(() => {
 .deck-page .brandrow { display: flex; align-items: center; gap: 18px; margin-bottom: 2.4rem; }
 .deck-page .brandrow .bn { font-size: 2.2rem; letter-spacing: 0.06em; }
 .deck-page .hero { font-family: var(--head); font-weight: 700; line-height: 1.04; letter-spacing: -0.02em; }
-.deck-page .hero .l1 { display: block; font-size: clamp(1.6rem, 3.1vw, 2.4rem); color: var(--ice); font-style: italic; font-weight: 400; }
-.deck-page .hero .l2 { display: block; font-size: clamp(2.8rem, 6.6vw, 5.4rem); }
+.deck-page .hero .l1 { display: block; font-size: 2.2rem; color: var(--ice); font-style: italic; font-weight: 400; }
+.deck-page .hero .l2 { display: block; font-size: 4.9rem; }
 .deck-page .grad { background: linear-gradient(100deg, #fff 20%, var(--elec) 45%, var(--indigo) 60%, #fff 80%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: deckShine 6s linear infinite; }
 @keyframes deckShine { to { background-position: 200% center; } }
 
-.deck-page .stat { font-family: var(--head); font-weight: 700; font-size: clamp(2.2rem, 4.4vw, 3.4rem); background: linear-gradient(180deg, #fff, var(--cyan)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.deck-page .stat { font-family: var(--head); font-weight: 700; font-size: 3.1rem; background: linear-gradient(180deg, #fff, var(--cyan)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .deck-page .statlbl { color: var(--mute); font-size: 0.84rem; line-height: 1.4; margin-top: 0.5rem; }
 .deck-page .badge { display: inline-block; padding: 0.28rem 0.8rem; border-radius: 999px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; border: 1px solid currentColor; margin-top: 0.5rem; }
 
@@ -652,7 +659,9 @@ onBeforeUnmount(() => {
 .deck-page .tagm { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 0.1rem 0 1rem; }
 .deck-page .hr { height: 1px; background: var(--line); margin: 0.7rem 0 1rem; }
 
-.deck-page .split { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; }
+.deck-page .split { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+.deck-page .stack { display: flex; flex-direction: column; gap: 16px; }
+.deck-page .stack .card, .deck-page .stack .panel { margin: 0; }
 .deck-page .panel { background: var(--card2); border: 1px solid var(--line); border-radius: 20px; padding: 24px; backdrop-filter: blur(10px); }
 .deck-page .panel.glow { border-color: rgba(34, 211, 238, 0.5); box-shadow: 0 0 60px -25px rgba(34, 211, 238, 0.6) inset; }
 .deck-page .ptitle { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cyan); margin-bottom: 0.7rem; }
@@ -701,8 +710,6 @@ onBeforeUnmount(() => {
 @keyframes deckFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 
 @media (max-width: 820px) {
-  .deck-page .g2, .deck-page .g3, .deck-page .g4, .deck-page .split, .deck-page .steps { grid-template-columns: 1fr; }
-  .deck-page .steps { gap: 10px; }
   .deck-page .deck-nav { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
