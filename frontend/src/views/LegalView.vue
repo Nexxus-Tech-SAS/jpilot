@@ -2,8 +2,8 @@
   <div class="legal-page">
     <header class="legal-header">
       <RouterLink to="/" class="legal-brand">
-        <TriArcLoader class="legal-trio-logo" />
-        <h1 class="ld-cursor legal-cursor-title">JPilot</h1>
+        <JPilotMark class="legal-trio-logo" />
+        <h1 class="ld-cursor jp-wordmark legal-cursor-title">JPilot</h1>
       </RouterLink>
       <RouterLink to="/login" class="legal-back">
         <i class="pi pi-arrow-left" /> Back
@@ -38,7 +38,7 @@
 import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChatMarkdown from '../components/ChatMarkdown.vue'
-import TriArcLoader from '../components/TriArcLoader.vue'
+import JPilotMark from '../components/JPilotMark.vue'
 import privacyPolicy from '../legal/privacy-policy.md?raw'
 import termsOfService from '../legal/terms-of-service.md?raw'
 import eula from '../legal/eula.md?raw'
@@ -108,7 +108,7 @@ watch(
 
 .legal-cursor-title {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.375rem;
   color: var(--p-primary-color);
 }
 

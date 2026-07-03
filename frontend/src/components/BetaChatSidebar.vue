@@ -7,8 +7,8 @@
     }"
   >
     <div v-if="variant !== 'drawer'" class="beta-sidebar-profile">
-      <TriArcLoader class="beta-sidebar-logo" />
-      <div class="ld-cursor beta-sidebar-brand">JPilot</div>
+      <JPilotMark class="beta-sidebar-logo" />
+      <div class="ld-cursor jp-wordmark beta-sidebar-brand">JPilot</div>
       <span class="beta-sidebar-tagline">AI assistant for your appliances</span>
     </div>
 
@@ -61,7 +61,7 @@ import Button from 'primevue/button'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
-import TriArcLoader from './TriArcLoader.vue'
+import JPilotMark from './JPilotMark.vue'
 import BetaChatPaneCard from './BetaChatPaneCard.vue'
 
 const props = defineProps({
@@ -125,6 +125,8 @@ const filteredPanes = computed(() => {
 .beta-sidebar-brand {
   margin-top: 1.25rem;
   color: var(--p-primary-color);
+  font-size: 1.375rem;
+  letter-spacing: 0.04em;
 }
 
 .beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-brand {

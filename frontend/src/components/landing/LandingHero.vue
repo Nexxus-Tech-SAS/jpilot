@@ -2,11 +2,12 @@
   <section class="landing-hero">
     <div class="landing-hero-bg" aria-hidden="true">
       <ConstellationCanvas
-        line-color="52,211,153"
-        dot-color="16,185,129"
+        line-color="34,211,238"
+        dot-color="99,102,241"
         :line-opacity="0.22"
         :dot-opacity="0.65"
       />
+      <div class="landing-hero-glow"></div>
     </div>
 
     <div class="landing-container landing-hero-inner">
@@ -14,7 +15,10 @@
 
       <div class="landing-hero-grid">
         <div class="landing-hero-copy landing-fade-in">
-          <img src="/jpilot-favicon.png" alt="JPilot" class="landing-hero-logo" width="72" height="72" />
+          <div class="landing-hero-brandline">
+            <JPilotMark variant="full" tone="dark" :size="104" class="landing-hero-logo" />
+            <span class="jp-wordmark-bright landing-hero-wordmark">JPilot</span>
+          </div>
           <span class="landing-hero-tag">AI-assisted appliance management</span>
           <h1 class="landing-hero-title">
             Operate NetScaler, Cisco, and F5 with confidence
@@ -48,6 +52,7 @@
 import heroImg1 from '../../assets/landing/hero-img-1.png'
 import heroImg2 from '../../assets/landing/hero-img-2.png'
 import ConstellationCanvas from '../ConstellationCanvas.vue'
+import JPilotMark from '../JPilotMark.vue'
 import LandingNavbar from './LandingNavbar.vue'
 
 const stats = [
@@ -86,14 +91,39 @@ const stats = [
   margin-top: 2.5rem;
 }
 
+.landing-hero-brandline {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 .landing-hero-logo {
-  display: block;
-  width: 4.5rem;
-  height: 4.5rem;
-  margin-bottom: 0.75rem;
-  border-radius: 50%;
-  object-fit: cover;
+  flex-shrink: 0;
   filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.35));
+}
+
+.landing-hero-wordmark {
+  font-size: clamp(2.25rem, 4.5vw, 3rem);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.landing-hero-glow {
+  position: absolute;
+  left: -12rem;
+  top: -8rem;
+  width: 38rem;
+  height: 38rem;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.18) 0%, transparent 60%);
+  animation: landing-breath 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-glow {
+    animation: none;
+  }
 }
 
 .landing-hero-tag {

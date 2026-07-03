@@ -22,7 +22,7 @@
 
       <footer class="landing-footer-meta">
         <div class="landing-footer-brand">
-          <img src="/jpilot-favicon.png" alt="JPilot" class="landing-footer-logo" />
+          <JPilotMark :size="28" class="landing-footer-logo" />
           <span>JPilot by Nexxus-Tech SAS</span>
         </div>
         <div class="landing-footer-links">
@@ -37,6 +37,7 @@
 </template>
 
 <script setup>
+import JPilotMark from '../JPilotMark.vue'
 </script>
 
 <style scoped>
@@ -97,10 +98,7 @@
 }
 
 .landing-footer-logo {
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 50%;
-  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .landing-footer-links {

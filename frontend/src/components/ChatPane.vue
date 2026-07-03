@@ -85,7 +85,7 @@
 
           <div v-if="showConversationSwitcher" class="beta-header-mobile-title">
             <RouterLink to="/" class="beta-header-logo-link" aria-label="JPilot home">
-              <TriArcLoader class="beta-header-trio-logo" />
+              <JPilotMark class="beta-header-trio-logo" />
             </RouterLink>
             <span
               class="beta-subtitle-compact beta-role-chip"
@@ -1311,7 +1311,7 @@ import ChatMarkdown from './ChatMarkdown.vue'
 import ChatToolTrace from './ChatToolTrace.vue'
 import ChatBlueprintSuggestion from './ChatBlueprintSuggestion.vue'
 import ChatDeploymentSubtasks from './ChatDeploymentSubtasks.vue'
-import TriArcLoader from './TriArcLoader.vue'
+import JPilotMark from './JPilotMark.vue'
 import { isDeploymentContinueMessage, messageNeedsDeploymentContinuation } from '../utils/deploymentContinuation'
 import {
   getBetaChatPanelTransparency,

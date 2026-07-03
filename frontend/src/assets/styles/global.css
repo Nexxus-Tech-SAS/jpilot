@@ -785,3 +785,36 @@ html.app-dark {
     transition-duration: 0s !important;
   }
 }
+
+/* JPilot brand wordmark — gradient matches the JPilotMark logo ramp */
+.jp-wordmark {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  background: linear-gradient(90deg, #0891b2 0%, #4f46e5 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.app-dark .jp-wordmark {
+  background: linear-gradient(90deg, #22d3ee 0%, #6366f1 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Bright variant for surfaces that are dark in both themes (hero, login) */
+.jp-wordmark-bright,
+html.app-dark .jp-wordmark-bright {
+  background: linear-gradient(90deg, #22d3ee 0%, #818cf8 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Keep the ld-cursor blink visible on gradient wordmarks */
+.jp-wordmark.ld-cursor::after,
+.jp-wordmark-bright.ld-cursor::after {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}

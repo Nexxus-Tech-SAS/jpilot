@@ -19,7 +19,7 @@
       </div>
 
       <RouterLink to="/" class="mobile-topbar-logo" @click="closeMobileNav">
-        <TriArcLoader class="nav-trio-logo nav-trio-logo-topbar" />
+        <JPilotMark class="nav-trio-logo nav-trio-logo-topbar" />
       </RouterLink>
 
       <div class="mobile-topbar-side mobile-topbar-end">
@@ -77,7 +77,8 @@
       @animationend="onSidebarAnimationEnd"
     >
       <div class="nav-trio-logo-wrap">
-        <TriArcLoader class="nav-trio-logo nav-trio-logo-sidebar" />
+        <JPilotMark :size="60" class="nav-trio-logo nav-trio-logo-sidebar" />
+        <span class="jp-wordmark nav-brand-word">JPilot</span>
       </div>
 
       <nav class="sidebar-nav flex-1 flex flex-column align-items-center py-5">
@@ -175,8 +176,8 @@
       <div class="mobile-nav">
         <div class="mobile-nav-header">
           <div class="mobile-nav-brand">
-            <TriArcLoader class="nav-trio-logo nav-trio-logo-drawer" />
-            <div class="ld-cursor mobile-nav-title">JPilot</div>
+            <JPilotMark class="nav-trio-logo nav-trio-logo-drawer" />
+            <div class="ld-cursor jp-wordmark mobile-nav-title">JPilot</div>
           </div>
           <button
             type="button"
@@ -297,7 +298,7 @@ import Menu from 'primevue/menu'
 import Tag from 'primevue/tag'
 import Toast from 'primevue/toast'
 import BetaChatBackground from '../components/BetaChatBackground.vue'
-import TriArcLoader from '../components/TriArcLoader.vue'
+import JPilotMark from '../components/JPilotMark.vue'
 import { NEXXUS_TECH } from '../config/nexxusTech'
 import api from '../services/api'
 import { clearAuth, getStoredUser } from '../services/auth'
@@ -601,7 +602,15 @@ function isActive(item) {
 
 .nav-trio-logo-wrap {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: 0.4rem;
+}
+
+.nav-brand-word {
+  font-size: 0.875rem;
+  letter-spacing: 0.02em;
 }
 
 .nav-trio-logo {
@@ -610,7 +619,6 @@ function isActive(item) {
 }
 
 .nav-trio-logo-sidebar {
-  transform: scale(calc(52 / 56));
   transform-origin: center center;
 }
 
@@ -1108,7 +1116,7 @@ function isActive(item) {
 }
 
 .mobile-nav-title {
-  font-size: 1.125rem;
+  font-size: 1.375rem;
   color: var(--p-primary-color);
 }
 

@@ -1,8 +1,8 @@
 <template>
   <nav class="landing-nav">
     <RouterLink to="/home" class="landing-nav-brand" aria-label="JPilot home">
-      <img :src="logoSrc" alt="JPilot" class="landing-nav-logo" />
-      <span class="landing-nav-name">JPilot</span>
+      <JPilotMark tone="dark" :size="42" class="landing-nav-logo" />
+      <span class="jp-wordmark-bright landing-nav-name">JPilot</span>
     </RouterLink>
 
     <ul class="landing-nav-links">
@@ -62,9 +62,8 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
+import JPilotMark from '../JPilotMark.vue'
 import { getTheme, toggleTheme } from '../../services/theme'
-
-const logoSrc = '/jpilot-favicon.png'
 
 const navItems = [
   { label: 'Features', href: '#features' },
@@ -113,16 +112,12 @@ onUnmounted(() => {
 }
 
 .landing-nav-logo {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 50%;
-  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .landing-nav-name {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 1.3125rem;
+  letter-spacing: 0.02em;
 }
 
 .landing-nav-links {

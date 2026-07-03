@@ -5,8 +5,8 @@
         :speed="0.4"
         :scale="0.1"
         :brightness="1.1"
-        color1="#7184df"
-        color2="#10B981"
+        color1="#6366f1"
+        color2="#22d3ee"
         :noise-frequency="2.5"
         :noise-amplitude="3.5"
         :band-height="0.5"
@@ -33,8 +33,8 @@
         class="login-brand flex flex-column align-items-center mb-5"
         v-animateonscroll="{ enterClass: 'anim-rise anim-delay-1' }"
       >
-        <TriArcLoader class="login-logo" />
-        <h1 class="ld-cursor login-cursor-title m-0 mt-3">JPilot</h1>
+        <JPilotMark variant="full" :size="112" class="login-logo" />
+        <h1 class="ld-cursor jp-wordmark login-cursor-title m-0 mt-3">JPilot</h1>
         <p class="login-subtitle m-0 mt-2">{{ loginSubtitle }}</p>
       </div>
 
@@ -270,7 +270,7 @@ import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Password from 'primevue/password'
-import TriArcLoader from '../components/TriArcLoader.vue'
+import JPilotMark from '../components/JPilotMark.vue'
 import SoftAuroraBackground from '../components/SoftAuroraBackground.vue'
 import api from '../services/api'
 import { setAuth } from '../services/auth'
@@ -484,6 +484,11 @@ async function handlePasskeyLogin(preferCrossDevice = false) {
   position: relative;
   padding: 1.5rem;
   background: #000000;
+  --p-primary-color: #0891b2;
+}
+
+:global(.app-dark) .login-page {
+  --p-primary-color: #22d3ee;
 }
 
 .login-bg {
@@ -498,16 +503,16 @@ async function handlePasskeyLogin(preferCrossDevice = false) {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 50% 35%, rgba(113, 132, 223, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 40% 55%, rgba(16, 185, 129, 0.05) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 35%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 40% 55%, rgba(34, 211, 238, 0.05) 0%, transparent 45%),
     linear-gradient(180deg, transparent 65%, rgba(0, 0, 0, 0.88) 100%);
   pointer-events: none;
 }
 
 :global(.app-dark) .login-bg-overlay {
   background:
-    radial-gradient(ellipse at 50% 35%, rgba(113, 132, 223, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 40% 55%, rgba(16, 185, 129, 0.07) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 35%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 40% 55%, rgba(34, 211, 238, 0.07) 0%, transparent 45%),
     linear-gradient(180deg, transparent 65%, rgba(0, 0, 0, 0.92) 100%);
 }
 
@@ -611,6 +616,9 @@ async function handlePasskeyLogin(preferCrossDevice = false) {
 
 .login-cursor-title {
   color: var(--p-primary-color);
+  font-size: 2.25rem;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
 }
 
 .login-logo {

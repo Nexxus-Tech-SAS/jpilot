@@ -203,9 +203,16 @@ async function handleRegisterPasskey() {
 <style scoped>
 .login-page {
   padding: 1.5rem;
+  --p-primary-color: #0891b2;
+  --p-primary-100: #cffafe;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--p-primary-100) 50%, transparent), transparent 40%),
     var(--p-surface-0);
+}
+
+:global(.app-dark) .login-page {
+  --p-primary-color: #22d3ee;
+  --p-primary-100: #164e63;
 }
 
 .login-panel {
