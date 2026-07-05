@@ -13,9 +13,18 @@ import './assets/styles/atomik-loader.css'
 import './assets/styles/term-os-loader.css'
 import './assets/styles/tri-arc-loader.css'
 import './assets/styles/shadow-grow-button.css'
+// V2 skin: must load AFTER all other stylesheets (cascade order breaks ties
+// against global.css !important rules). Inert unless <html> has class ui-v2.
+import './assets/styles/v2/tokens.css'
+import './assets/styles/v2/base.css'
+import './assets/styles/v2/animations.css'
+import './assets/styles/v2/chat.css'
+import './assets/styles/v2/views.css'
+import './assets/styles/v2/public.css'
 import App from './App.vue'
 import router from './router'
 import { applyStoredTheme, initThemeConsentListener } from './services/theme'
+import { applyStoredUiVersion, initUiVersionConsentListener } from './services/uiVersion'
 
 const JpilotPreset = definePreset(Aura, {
   semantic: {
@@ -37,6 +46,8 @@ const JpilotPreset = definePreset(Aura, {
 
 applyStoredTheme()
 initThemeConsentListener()
+applyStoredUiVersion()
+initUiVersionConsentListener()
 
 const app = createApp(App)
 app.use(PrimeVue, {

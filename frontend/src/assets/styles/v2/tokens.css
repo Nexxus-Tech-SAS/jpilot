@@ -1,0 +1,132 @@
+/* ============================================================================
+   JPilot UI V2 — design tokens
+   ----------------------------------------------------------------------------
+   CONTRACT: every rule in the v2/ stylesheets MUST be scoped under `html.ui-v2`
+   (or `html.ui-v2.app-dark` for dark mode) so the classic UI is byte-identical
+   when the toggle is off. Keyframe names MUST be prefixed `v2-` to avoid
+   colliding with existing keyframes (page-fade, sidebar-peek-*, pv-*, ...).
+   ========================================================================== */
+
+html.ui-v2 {
+  /* Brand — cyan → indigo (matches the JPilot orb-nexus mark: --jp-a/--jp-b) */
+  --v2-accent: #06b6d4;
+  --v2-accent-strong: #0891b2;
+  --v2-accent-soft: rgba(6, 182, 212, 0.12);
+  --v2-accent-2: #6366f1;
+  --v2-accent-2-soft: rgba(99, 102, 241, 0.12);
+  /* Main gradient carries white text/icons (buttons, user bubbles, pills) —
+     stops match the classic jp-wordmark (#0891b2→#4f46e5) and keep ≥4.5:1
+     with white. The bright variant is decorative-only (never behind text). */
+  --v2-gradient-brand: linear-gradient(135deg, #0891b2 0%, #4f46e5 100%);
+  --v2-gradient-brand-bright: linear-gradient(135deg, #22d3ee 0%, #6366f1 100%);
+  --v2-gradient-brand-soft: linear-gradient(135deg, rgba(34, 211, 238, 0.14) 0%, rgba(99, 102, 241, 0.14) 100%);
+
+  /* Surfaces (light) */
+  --v2-bg: #f3f6fb;
+  --v2-surface: #ffffff;
+  --v2-surface-2: #f8fafc;
+  --v2-surface-glass: rgba(255, 255, 255, 0.72);
+  --v2-surface-glass-strong: rgba(255, 255, 255, 0.88);
+  --v2-surface-hover: rgba(15, 23, 42, 0.045);
+  --v2-surface-active: rgba(15, 23, 42, 0.08);
+  --v2-border: rgba(15, 23, 42, 0.08);
+  --v2-border-strong: rgba(15, 23, 42, 0.16);
+
+  /* Text */
+  --v2-text: #0f172a;
+  --v2-text-2: #475569;
+  --v2-text-3: #64748b;
+  --v2-text-on-accent: #ffffff;
+
+  /* Elevation */
+  --v2-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 8px rgba(15, 23, 42, 0.05);
+  --v2-shadow-2: 0 2px 6px rgba(15, 23, 42, 0.06), 0 10px 28px rgba(15, 23, 42, 0.09);
+  --v2-shadow-3: 0 8px 20px rgba(15, 23, 42, 0.1), 0 24px 60px rgba(15, 23, 42, 0.16);
+  --v2-glow-accent: 0 0 0 1px rgba(34, 211, 238, 0.35), 0 4px 24px rgba(34, 211, 238, 0.25);
+
+  /* Radius */
+  --v2-radius-sm: 0.625rem;
+  --v2-radius-md: 0.875rem;
+  --v2-radius-lg: 1.25rem;
+  --v2-radius-xl: 1.75rem;
+  --v2-radius-full: 999px;
+
+  /* Motion */
+  --v2-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --v2-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --v2-dur-fast: 150ms;
+  --v2-dur: 250ms;
+  --v2-dur-slow: 400ms;
+
+  /* Effects */
+  --v2-blur: 18px;
+
+  /* Touch */
+  --v2-touch-target: 44px;
+
+  /* PrimeVue primary remap: emerald → brand cyan (all --p-primary-* consumers) */
+  --p-primary-50: #ecfeff;
+  --p-primary-100: #cffafe;
+  --p-primary-200: #a5f3fc;
+  --p-primary-300: #67e8f9;
+  --p-primary-400: #22d3ee;
+  --p-primary-500: #06b6d4;
+  --p-primary-600: #0891b2;
+  --p-primary-700: #0e7490;
+  --p-primary-800: #155e75;
+  --p-primary-900: #164e63;
+  --p-primary-950: #083344;
+  --p-primary-color: #0891b2;
+  --p-primary-contrast-color: #ffffff;
+  --p-primary-hover-color: #0e7490;
+  --p-primary-active-color: #155e75;
+
+  /* Refresh the existing glass-panel token system under V2 */
+  --glass-panel-bg: rgba(255, 255, 255, 0.62);
+  --glass-panel-border: rgba(15, 23, 42, 0.08);
+  --glass-panel-shadow: 0 2px 6px rgba(15, 23, 42, 0.05), 0 14px 40px rgba(15, 23, 42, 0.08);
+}
+
+html.ui-v2.app-dark {
+  /* Surfaces (dark) */
+  --v2-bg: #070b14;
+  --v2-surface: #0d1322;
+  --v2-surface-2: #111a2e;
+  --v2-surface-glass: rgba(13, 19, 34, 0.66);
+  --v2-surface-glass-strong: rgba(13, 19, 34, 0.86);
+  --v2-surface-hover: rgba(148, 163, 184, 0.08);
+  --v2-surface-active: rgba(148, 163, 184, 0.14);
+  --v2-border: rgba(148, 163, 184, 0.14);
+  --v2-border-strong: rgba(148, 163, 184, 0.26);
+
+  --v2-text: #e2e8f0;
+  --v2-text-2: #94a3b8;
+  --v2-text-3: #8b9bb0;
+
+  --v2-accent-soft: rgba(34, 211, 238, 0.16);
+  --v2-accent-2-soft: rgba(129, 140, 248, 0.16);
+
+  --v2-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --v2-shadow-2: 0 2px 6px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.4);
+  --v2-shadow-3: 0 8px 20px rgba(0, 0, 0, 0.45), 0 24px 60px rgba(0, 0, 0, 0.55);
+  --v2-glow-accent: 0 0 0 1px rgba(34, 211, 238, 0.4), 0 4px 28px rgba(34, 211, 238, 0.22);
+
+  /* PrimeVue primary in dark mode */
+  --p-primary-color: #22d3ee;
+  --p-primary-contrast-color: #083344;
+  --p-primary-hover-color: #67e8f9;
+  --p-primary-active-color: #a5f3fc;
+
+  --glass-panel-bg: rgba(10, 15, 28, 0.6);
+  --glass-panel-border: rgba(148, 163, 184, 0.14);
+  --glass-panel-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+
+/* Collapse token-driven motion for users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  html.ui-v2 {
+    --v2-dur-fast: 1ms;
+    --v2-dur: 1ms;
+    --v2-dur-slow: 1ms;
+  }
+}

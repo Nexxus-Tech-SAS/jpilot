@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import MainLayout from '../layouts/MainLayout.vue'
+import LayoutGate from '../layouts/LayoutGate.vue'
 import { getToken, getStoredUser } from '../services/auth'
 import {
   getLicenseForGate,
@@ -56,7 +56,7 @@ const router = createRouter({
     },
     {
       path: '/',
-      component: MainLayout,
+      component: LayoutGate,
       meta: { requiresAuth: true },
       children: [
         { path: '', name: 'dashboard', component: DashboardView, meta: { atmosphere: true } },

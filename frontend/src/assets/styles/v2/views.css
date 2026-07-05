@@ -1,0 +1,1574 @@
+/* JPilot UI V2 — views layer.
+   CONTRACT: every rule scoped under html.ui-v2 / html.ui-v2.app-dark; keyframes prefixed v2-.
+   Scope: Dashboard (.home), Settings (.settings-beta), Calibration Studio (.studio),
+   Plans (.plans-page + body-teleported .plans-compare-drawer), and the shared
+   atmosphere-surface re-skin. Generic .content-panel/.stat-card/PrimeVue treatments
+   live in v2/base.css (base agent) — this file only refines inside view scopes. */
+
+/* ==========================================================================
+   0) ATMOSPHERE ROUTES — re-skin the frosted surfaces over the orbit canvas.
+   global.css paints .content-panel/.stat-card/.stat-tile/.welcome-panel/
+   .settings-rail/.settings-detail with !important inside
+   .main-content-atmosphere at >=992px. We load later, so equal-importance +
+   higher specificity wins; supply v2 glass values from the token sheet.
+   ========================================================================== */
+@media (min-width: 992px) {
+  html.ui-v2 .main-content-atmosphere :is(
+    .content-panel,
+    .stat-card,
+    .stat-tile,
+    .welcome-panel,
+    .settings-rail
+  ) {
+    background: var(--v2-surface-glass) !important;
+    border-color: var(--v2-border) !important;
+    box-shadow: var(--v2-shadow-1) !important;
+    backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  }
+
+  /* The settings detail column is a layout wrapper, not a card — lift the
+     legacy glass wash off it so v2 cards float directly on the atmosphere. */
+  html.ui-v2 .main-content-atmosphere .settings-detail {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* Hover feedback on glassed tiles: the atmosphere rule pins border/shadow with
+   !important, so hover states must out-!important it too (classic never did —
+   its stat tiles were hover-dead on atmosphere routes). */
+@media (min-width: 992px) and (hover: hover) {
+  html.ui-v2 .main-content-atmosphere :is(.stat-tile, .stat-card):hover {
+    background: var(--v2-surface-glass-strong) !important;
+    border-color: color-mix(in srgb, var(--v2-accent) 36%, var(--v2-border)) !important;
+    box-shadow: var(--v2-shadow-2), 0 0 24px var(--v2-accent-soft) !important;
+  }
+}
+
+/* ==========================================================================
+   1) DASHBOARD — .home
+   ========================================================================== */
+
+html.ui-v2 .home {
+  gap: 1.05rem;
+  padding: 1.5rem 1.5rem 0.75rem;
+}
+
+html.ui-v2 .home .home-update {
+  border-radius: var(--v2-radius-md);
+}
+
+/* ---- Entrance choreography (retimed home-rise; --stagger stays inline) ---- */
+html.ui-v2 .home .home-hero,
+html.ui-v2 .home .home-roles > li,
+html.ui-v2 .home .home-activity,
+html.ui-v2 .home .home-overview,
+html.ui-v2 .home .home-articles {
+  animation-name: v2-home-rise;
+  animation-duration: calc(var(--v2-dur-slow) * 1.4);
+  animation-timing-function: var(--v2-ease);
+  animation-delay: var(--stagger, 0ms);
+  animation-fill-mode: both;
+}
+
+@keyframes v2-home-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Hero ---- */
+html.ui-v2 .home .home-hero {
+  gap: 0.5rem;
+}
+
+html.ui-v2 .home .home-eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--v2-text-2);
+}
+
+html.ui-v2 .home .home-eyebrow .pi {
+  background: var(--v2-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+html.ui-v2 .home .home-greeting {
+  font-size: clamp(1.65rem, 1rem + 2.4vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--v2-text);
+  background: linear-gradient(120deg, #0f172a 0%, #0891b2 62%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2.app-dark .home .home-greeting {
+  background: linear-gradient(120deg, #f1f5f9 0%, #22d3ee 62%, #818cf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2 .home .home-subtitle {
+  font-size: 0.95rem;
+  color: var(--v2-text-2);
+}
+
+html.ui-v2 .home .home-hero-actions {
+  gap: 0.65rem;
+  margin-top: 0.4rem;
+}
+
+/* Pill CTAs */
+html.ui-v2 .home .home-cta {
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.6rem 1.25rem;
+  border-radius: var(--v2-radius-full);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--v2-text-on-accent);
+  background: var(--v2-gradient-brand);
+  border: 1px solid transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 8px 20px rgba(6, 182, 212, 0.26);
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease),
+    filter var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .home .home-cta:active {
+  transform: scale(0.97);
+}
+
+html.ui-v2 .home .home-cta:focus-visible {
+  outline: none;
+  box-shadow: var(--v2-glow-accent), 0 8px 20px rgba(6, 182, 212, 0.22);
+}
+
+html.ui-v2 .home .home-cta-ghost {
+  color: var(--v2-text);
+  background: var(--v2-surface-glass);
+  border-color: var(--v2-border-strong);
+  backdrop-filter: blur(var(--v2-blur));
+  -webkit-backdrop-filter: blur(var(--v2-blur));
+  box-shadow: var(--v2-shadow-1);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .home .home-cta:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      0 12px 28px rgba(6, 182, 212, 0.35);
+    filter: saturate(1.08);
+  }
+
+  html.ui-v2 .home .home-cta-ghost:hover {
+    background: var(--v2-surface-glass-strong);
+    border-color: color-mix(in srgb, var(--v2-accent) 45%, var(--v2-border-strong));
+    box-shadow: var(--v2-shadow-2);
+    filter: none;
+  }
+}
+
+/* ---- Role tiles: accent-lit glass cards ---- */
+html.ui-v2 .home .home-roles {
+  gap: 0.9rem;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  html.ui-v2 .home .home-roles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  html.ui-v2 .home .home-roles {
+    grid-template-columns: 1fr;
+  }
+}
+
+html.ui-v2 .home .home-role {
+  position: relative;
+  overflow: hidden;
+  gap: 0.85rem;
+  padding: 1.05rem;
+  border-radius: var(--v2-radius-lg);
+  border-color: color-mix(in srgb, var(--persona-accent) 16%, var(--v2-border));
+  transition:
+    transform var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    border-color var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .home .home-role > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Accent corner wash — revealed on hover/focus. */
+html.ui-v2 .home .home-role::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    130% 100% at 0% 0%,
+    color-mix(in srgb, var(--persona-accent) 15%, transparent) 0%,
+    transparent 55%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--v2-dur) var(--v2-ease);
+}
+
+/* Accent gradient hairline along the top edge. */
+html.ui-v2 .home .home-role::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 1;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--persona-accent) 75%, transparent) 0%,
+    transparent 70%
+  );
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .home .home-role:focus-visible {
+  outline: none;
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--persona-accent) 55%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--persona-accent) 55%, transparent),
+    0 14px 34px color-mix(in srgb, var(--persona-accent) 22%, rgba(2, 6, 23, 0.14));
+}
+
+html.ui-v2 .home .home-role:focus-visible::before,
+html.ui-v2 .home .home-role:focus-visible::after {
+  opacity: 1;
+}
+
+html.ui-v2 .home .home-role:active {
+  transform: scale(0.98);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .home .home-role:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--persona-accent) 48%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 2px 8px rgba(2, 6, 23, 0.06),
+      0 14px 34px color-mix(in srgb, var(--persona-accent) 24%, rgba(2, 6, 23, 0.14));
+  }
+
+  html.ui-v2 .home .home-role:hover::before,
+  html.ui-v2 .home .home-role:hover::after {
+    opacity: 1;
+  }
+
+  html.ui-v2 .home .home-role:hover .home-role-icon {
+    transform: scale(1.07);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 4px 14px color-mix(in srgb, var(--persona-accent) 30%, transparent);
+  }
+
+  html.ui-v2 .home .home-role:hover .home-role-arrow {
+    transform: translateX(4px);
+    color: var(--persona-accent);
+  }
+}
+
+/* Kill sticky-hover lifts from the original scoped rules on touch. */
+@media (hover: none) {
+  html.ui-v2 .home .home-role:hover,
+  html.ui-v2 .home .home-stat:hover,
+  html.ui-v2 .home .home-quick-btn:hover,
+  html.ui-v2 .home .home-article:hover,
+  html.ui-v2 .home .home-cta:hover {
+    transform: none;
+  }
+}
+
+html.ui-v2 .home .home-role-icon {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: var(--v2-radius-md);
+  font-size: 1.15rem;
+  color: var(--persona-accent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--persona-accent) 22%, transparent) 0%,
+    color-mix(in srgb, var(--persona-accent) 8%, transparent) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 3px 10px color-mix(in srgb, var(--persona-accent) 12%, transparent);
+  transition:
+    transform var(--v2-dur) var(--v2-ease-spring),
+    box-shadow var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .home .home-role-name {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--v2-text);
+}
+
+html.ui-v2 .home .home-role-cap {
+  padding: 0.12rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--persona-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--persona-accent) 10%, transparent);
+  border-radius: var(--v2-radius-full);
+  letter-spacing: 0.05em;
+}
+
+html.ui-v2 .home .home-role-desc {
+  line-height: 1.45;
+  color: var(--v2-text-2);
+}
+
+html.ui-v2 .home .home-role-arrow {
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease);
+}
+
+/* ---- Lower region ---- */
+html.ui-v2 .home .home-lower {
+  gap: 1.05rem;
+}
+
+html.ui-v2 .home .home-activity {
+  border-radius: var(--v2-radius-lg);
+}
+
+html.ui-v2 .home .home-activity .activity-panel {
+  border-radius: var(--v2-radius-lg);
+}
+
+html.ui-v2 .home .panel-heading {
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+html.ui-v2 .home .activity-sub {
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .home .activity-detail-link {
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--v2-radius-full);
+  border: 1px solid color-mix(in srgb, var(--v2-accent) 30%, transparent);
+  background: var(--v2-accent-soft);
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .home .activity-detail-link:hover {
+  text-decoration: none;
+  background: color-mix(in srgb, var(--v2-accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--v2-accent) 48%, transparent);
+}
+
+html.ui-v2 .home .activity-stat {
+  border-radius: var(--v2-radius-md);
+}
+
+/* Tablet: pair the rail sections side by side once .home-lower stacks. */
+@media (min-width: 768px) and (max-width: 991px) {
+  html.ui-v2 .home .home-rail {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+}
+
+html.ui-v2 .home .home-overview {
+  border-radius: var(--v2-radius-lg);
+  padding: 1.1rem;
+  gap: 0.85rem;
+}
+
+/* ---- Overview stat tiles ---- */
+html.ui-v2 .home .home-stat {
+  gap: 0.15rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--v2-radius-md);
+  border: 1px solid var(--v2-border);
+  background: color-mix(in srgb, var(--v2-surface) 55%, transparent);
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease),
+    background var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .home .home-stat:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--v2-accent) 42%, var(--v2-border));
+    background: color-mix(in srgb, var(--v2-surface) 75%, transparent);
+    box-shadow: var(--v2-shadow-1);
+  }
+}
+
+html.ui-v2 .home .home-stat:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .home .home-stat-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .home .home-stat-value {
+  font-size: 1.45rem;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+html.ui-v2 .home .home-stat-detail {
+  color: var(--v2-text-3);
+}
+
+/* ---- Status dots ---- */
+html.ui-v2 .home .home-dot-ok {
+  background: #10b981;
+  animation: v2-home-dot-pulse 2.8s ease-in-out infinite;
+}
+
+html.ui-v2 .home .home-dot-bad {
+  background: #f43f5e;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #f43f5e 22%, transparent);
+}
+
+@keyframes v2-home-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, #10b981 24%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, #10b981 8%, transparent);
+  }
+}
+
+/* ---- Quick actions ---- */
+html.ui-v2 .home .home-quick {
+  gap: 0.5rem;
+}
+
+html.ui-v2 .home .home-quick-btn {
+  min-height: 2.4rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--v2-radius-full);
+  font-size: 0.78rem;
+  border: 1px solid var(--v2-border);
+  background: color-mix(in srgb, var(--v2-surface) 55%, transparent);
+  color: var(--v2-text);
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    background var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .home .home-quick-btn:active {
+  transform: scale(0.97);
+}
+
+html.ui-v2 .home .home-quick-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  html.ui-v2 .home .home-quick-btn:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--v2-accent) 45%, var(--v2-border));
+    background: var(--v2-accent-soft);
+    box-shadow: var(--v2-shadow-1);
+  }
+}
+
+html.ui-v2 .home .home-quick-btn-primary {
+  color: var(--p-primary-color);
+  border-color: color-mix(in srgb, var(--v2-accent) 40%, transparent);
+  background: var(--v2-gradient-brand-soft);
+}
+
+/* ---- Articles ---- */
+html.ui-v2 .home .home-articles {
+  border-radius: var(--v2-radius-lg);
+  padding: 1.1rem;
+}
+
+html.ui-v2 .home .home-articles-eyebrow {
+  letter-spacing: 0.1em;
+  background: var(--v2-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2 .home .home-articles-all {
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--v2-radius-full);
+  border: 1px solid transparent;
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .home .home-articles-all:hover {
+  text-decoration: none;
+  background: var(--v2-accent-soft);
+  border-color: color-mix(in srgb, var(--v2-accent) 32%, transparent);
+}
+
+html.ui-v2 .home .home-articles-all:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .home .home-article {
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--v2-radius-md);
+  border: 1px solid var(--v2-border);
+  background: color-mix(in srgb, var(--v2-surface) 50%, transparent);
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    background var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .home .home-article:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--v2-accent) 40%, var(--v2-border));
+    background: color-mix(in srgb, var(--v2-surface) 72%, transparent);
+    box-shadow: var(--v2-shadow-1);
+  }
+
+  html.ui-v2 .home .home-article:hover .home-article-arrow {
+    transform: translateX(3px);
+    color: var(--p-primary-color);
+  }
+}
+
+html.ui-v2 .home .home-article:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .home .home-article-title {
+  color: var(--v2-text);
+}
+
+html.ui-v2 .home .home-article-meta {
+  color: var(--v2-text-3);
+}
+
+/* ---- Dashboard mobile mirror (our base rules out-specify the originals) ---- */
+@media (max-width: 991px) {
+  html.ui-v2 .home {
+    gap: 1rem;
+    padding: 0.25rem 0.25rem 1rem;
+  }
+}
+
+/* ==========================================================================
+   2) SETTINGS — .settings-beta
+   ========================================================================== */
+
+html.ui-v2 .settings-beta .settings-beta-layout {
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+/* ---- Rail ---- */
+html.ui-v2 .settings-beta .settings-rail {
+  gap: 1.1rem;
+  padding: 1.1rem 0.85rem;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+}
+
+html.ui-v2 .settings-beta .settings-rail-title {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  gap: 0.55rem;
+}
+
+html.ui-v2 .settings-beta .settings-rail-title .pi {
+  background: var(--v2-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2 .settings-beta .settings-search .p-inputtext {
+  width: 100%;
+  border-radius: var(--v2-radius-full);
+  background: color-mix(in srgb, var(--v2-surface) 65%, transparent);
+  border-color: var(--v2-border);
+}
+
+html.ui-v2 .settings-beta .settings-rail-nav {
+  gap: 0.2rem;
+}
+
+html.ui-v2 .settings-beta .rail-group-label {
+  margin: 0.95rem 0.7rem 0.35rem;
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .settings-beta .rail-group-label:first-child {
+  margin-top: 0.15rem;
+}
+
+/* Nav links — sliding accent pill */
+html.ui-v2 .settings-beta .rail-link {
+  position: relative;
+  min-height: 2.5rem;
+  gap: 0.65rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--v2-radius-md);
+  color: var(--v2-text-2);
+  font-weight: 500;
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+/* Accent bar that springs in on the active item. */
+html.ui-v2 .settings-beta .rail-link::before {
+  content: '';
+  position: absolute;
+  left: 0.3rem;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: var(--v2-radius-full);
+  background: linear-gradient(180deg, #22d3ee 0%, #6366f1 100%);
+  opacity: 0;
+  transform: scaleY(0);
+  transition:
+    transform var(--v2-dur) var(--v2-ease-spring),
+    opacity var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .settings-beta .rail-link:active {
+  transform: scale(0.98);
+}
+
+html.ui-v2 .settings-beta .rail-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .settings-beta .rail-link-icon {
+  color: var(--v2-text-3);
+  transition: color var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .settings-beta .rail-link-active {
+  background: var(--v2-gradient-brand-soft);
+  border-color: color-mix(in srgb, var(--v2-accent) 24%, var(--v2-border));
+  color: var(--v2-text);
+  box-shadow: var(--v2-shadow-1);
+}
+
+html.ui-v2 .settings-beta .rail-link-active::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+html.ui-v2 .settings-beta .rail-link-active .rail-link-icon {
+  color: var(--p-primary-color);
+}
+
+html.ui-v2 .settings-beta .rail-link-active .rail-link-label {
+  color: var(--v2-text);
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  html.ui-v2 .settings-beta .rail-link:hover {
+    background: var(--v2-surface-hover);
+    color: var(--v2-text);
+    border-color: transparent;
+  }
+
+  html.ui-v2 .settings-beta .rail-link:hover .rail-link-icon {
+    color: var(--v2-text-2);
+  }
+
+  html.ui-v2 .settings-beta .rail-link-active:hover {
+    background: var(--v2-gradient-brand-soft);
+    border-color: color-mix(in srgb, var(--v2-accent) 24%, var(--v2-border));
+  }
+
+  html.ui-v2 .settings-beta .rail-link-active:hover .rail-link-icon {
+    color: var(--p-primary-color);
+  }
+}
+
+/* Chevron: dead affordance in classic — reveal it on hover (desktop rail). */
+@media (min-width: 992px) {
+  html.ui-v2 .settings-beta .rail-link-chevron {
+    opacity: 0;
+    transform: translateX(-4px);
+    transition:
+      opacity var(--v2-dur-fast) var(--v2-ease),
+      transform var(--v2-dur-fast) var(--v2-ease);
+  }
+
+  html.ui-v2 .settings-beta .rail-link:hover .rail-link-chevron,
+  html.ui-v2 .settings-beta .rail-link:focus-visible .rail-link-chevron {
+    opacity: 1;
+    transform: none;
+  }
+
+  html.ui-v2 .settings-beta .rail-link-active .rail-link-chevron {
+    opacity: 0.75;
+    transform: none;
+    color: var(--p-primary-color);
+  }
+}
+
+html.ui-v2 .settings-beta .rail-empty {
+  color: var(--v2-text-3);
+}
+
+/* ---- Detail head ---- */
+html.ui-v2 .settings-beta .detail-title {
+  gap: 0.7rem;
+  font-size: 1.55rem;
+  letter-spacing: -0.03em;
+}
+
+html.ui-v2 .settings-beta .detail-title-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--v2-radius-md);
+  background: var(--v2-gradient-brand-soft);
+  color: var(--p-primary-color);
+  font-size: 1.1rem;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--v2-accent) 20%, transparent);
+}
+
+html.ui-v2 .settings-beta .detail-desc {
+  color: var(--v2-text-2);
+  max-width: 60ch;
+}
+
+html.ui-v2 .settings-beta .detail-back {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--v2-radius-md);
+  border-color: var(--v2-border);
+  background: var(--v2-surface);
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .settings-beta .detail-back:active {
+  transform: scale(0.94);
+}
+
+html.ui-v2 .settings-beta .detail-back:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+/* ---- Sub-tabs: floating pill rail ---- */
+html.ui-v2 .settings-beta .detail-tabs {
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border-bottom: 0;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-full);
+  background: var(--v2-surface-glass);
+  backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+}
+
+html.ui-v2 .settings-beta .detail-tab {
+  gap: 0.45rem;
+  min-height: 2.25rem;
+  padding: 0.45rem 1rem;
+  border: 1px solid transparent;
+  border-radius: var(--v2-radius-full);
+  color: var(--v2-text-2);
+  font-weight: 500;
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .settings-beta .detail-tab:hover {
+    background: var(--v2-surface-hover);
+    color: var(--v2-text);
+  }
+}
+
+html.ui-v2 .settings-beta .detail-tab:active {
+  transform: scale(0.96);
+}
+
+html.ui-v2 .settings-beta .detail-tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .settings-beta .detail-tab-active {
+  background: var(--v2-surface);
+  border-color: var(--v2-border);
+  color: var(--p-primary-color);
+  font-weight: 600;
+  box-shadow: var(--v2-shadow-1);
+  animation: v2-settings-tab-pop 260ms var(--v2-ease-spring);
+}
+
+@keyframes v2-settings-tab-pop {
+  0% {
+    transform: scale(0.94);
+  }
+  60% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ---- Panel switch entrance (KeepAlive re-attaches the DOM node) ---- */
+html.ui-v2 .settings-beta .detail-body > * {
+  animation: v2-settings-panel-in var(--v2-dur-slow) var(--v2-ease) both;
+}
+
+@keyframes v2-settings-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Setting rows: out-specify the per-panel scoped duplicates ---- */
+html.ui-v2 .settings-beta .section-title {
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--v2-text);
+}
+
+html.ui-v2 .settings-beta .section-copy {
+  color: var(--v2-text-2);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+html.ui-v2 .settings-beta .setting-row {
+  padding-bottom: 1.05rem;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+html.ui-v2 .settings-beta .setting-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+html.ui-v2 .settings-beta .setting-label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--v2-text);
+}
+
+html.ui-v2 .settings-beta .setting-hint {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--v2-text-2);
+  max-width: 56ch;
+}
+
+/* ---- Settings mobile mirror (drill-in list keeps its flat card look) ---- */
+@media (max-width: 991px) {
+  html.ui-v2 .settings-beta .settings-beta-layout {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  html.ui-v2 .settings-beta .settings-rail {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    gap: 1.25rem;
+  }
+
+  html.ui-v2 .settings-beta .settings-rail-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  html.ui-v2 .settings-beta .rail-group-label {
+    margin: 0 0.35rem 0.35rem;
+  }
+
+  html.ui-v2 .settings-beta .rail-link {
+    min-height: 3.25rem;
+    padding: 0.9rem 0.95rem;
+    border: 1px solid var(--v2-border);
+    border-radius: var(--v2-radius-md);
+    background: var(--v2-surface);
+    font-size: 0.95rem;
+    color: var(--v2-text);
+  }
+
+  html.ui-v2 .settings-beta .rail-link-chevron {
+    opacity: 1;
+    color: var(--v2-text-3);
+  }
+
+  html.ui-v2 .settings-beta .detail-title {
+    font-size: 1.3rem;
+  }
+}
+
+/* ==========================================================================
+   3) CALIBRATION STUDIO — .studio
+   ========================================================================== */
+
+html.ui-v2 .studio {
+  gap: 1.1rem;
+  padding: 1.5rem 1.5rem 0.75rem;
+}
+
+html.ui-v2 .studio .studio-title {
+  font-size: 1.55rem;
+  letter-spacing: -0.03em;
+  background: linear-gradient(120deg, #0f172a 0%, #0891b2 62%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2.app-dark .studio .studio-title {
+  background: linear-gradient(120deg, #f1f5f9 0%, #22d3ee 62%, #818cf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2 .studio .studio-subtitle {
+  color: var(--v2-text-2);
+  font-size: 0.9rem;
+}
+
+/* ---- Stat tiles ---- */
+html.ui-v2 .studio .studio-stats {
+  gap: 0.9rem;
+}
+
+html.ui-v2 .studio .stat-tile {
+  gap: 0.95rem;
+  padding: 1.1rem 1.2rem;
+  border-radius: var(--v2-radius-lg);
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  transition:
+    transform var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    border-color var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .studio .stat-tile:active {
+  transform: scale(0.98);
+}
+
+html.ui-v2 .studio .stat-tile:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  html.ui-v2 .studio .stat-tile:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--v2-accent) 36%, var(--v2-border));
+    box-shadow: var(--v2-shadow-2);
+  }
+
+  html.ui-v2 .studio .stat-tile:hover .stat-tile-icon {
+    transform: scale(1.08);
+  }
+}
+
+/* !important so the alert border survives our atmosphere glass override. */
+html.ui-v2 .studio .stat-tile-alert {
+  border-color: color-mix(in srgb, #f97316 55%, var(--v2-border)) !important;
+  box-shadow: 0 0 20px color-mix(in srgb, #f97316 10%, transparent);
+}
+
+/* Gradient icon chips per existing accent classes */
+html.ui-v2 .studio .stat-tile-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--v2-radius-md);
+  font-size: 1.15rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: transform var(--v2-dur) var(--v2-ease-spring);
+}
+
+html.ui-v2 .studio .stat-skill {
+  color: var(--p-primary-color);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #22d3ee 24%, transparent) 0%,
+    color-mix(in srgb, #6366f1 18%, transparent) 100%
+  );
+}
+
+html.ui-v2 .studio .stat-persona {
+  color: #8b5cf6;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #a855f7 24%, transparent) 0%,
+    color-mix(in srgb, #6366f1 16%, transparent) 100%
+  );
+}
+
+html.ui-v2 .studio .stat-pack {
+  color: #0d9488;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #2dd4bf 24%, transparent) 0%,
+    color-mix(in srgb, #0ea5e9 16%, transparent) 100%
+  );
+}
+
+html.ui-v2 .studio .stat-update {
+  color: #ea580c;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #fb923c 26%, transparent) 0%,
+    color-mix(in srgb, #f43f5e 16%, transparent) 100%
+  );
+}
+
+html.ui-v2.app-dark .studio .stat-persona {
+  color: #a78bfa;
+}
+
+html.ui-v2.app-dark .studio .stat-pack {
+  color: #2dd4bf;
+}
+
+html.ui-v2.app-dark .studio .stat-update {
+  color: #fb923c;
+}
+
+html.ui-v2 .studio .stat-tile-value {
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+html.ui-v2 .studio .stat-tile-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--v2-text-3);
+}
+
+/* ---- Catalog toolbar: pills ---- */
+html.ui-v2 .studio .catalog-toolbar {
+  gap: 0.85rem;
+}
+
+html.ui-v2 .studio .catalog-search .p-inputtext {
+  border-radius: var(--v2-radius-full);
+}
+
+html.ui-v2 .studio :is(.view-switch, .quick-filter, .type-filter) {
+  padding: 0.25rem;
+  gap: 0.2rem;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-full);
+  background: color-mix(in srgb, var(--v2-surface) 70%, transparent);
+}
+
+html.ui-v2 .studio :is(.view-switch, .quick-filter, .type-filter) .p-togglebutton {
+  border: 0;
+  background: transparent;
+  border-radius: var(--v2-radius-full);
+  padding: 0.45rem 0.95rem;
+  color: var(--v2-text-2);
+  font-weight: 500;
+}
+
+html.ui-v2 .studio :is(.view-switch, .quick-filter, .type-filter) .p-togglebutton::before {
+  border-radius: var(--v2-radius-full);
+}
+
+html.ui-v2 .studio :is(.view-switch, .quick-filter, .type-filter) .p-togglebutton.p-togglebutton-checked {
+  color: var(--p-primary-color);
+  font-weight: 600;
+}
+
+html.ui-v2 .studio .filter-select {
+  border-radius: var(--v2-radius-full);
+}
+
+html.ui-v2 .studio .catalog-count {
+  color: var(--v2-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Catalog cards (MarketplaceSkillCard rides --mk-tier-accent) ---- */
+html.ui-v2 .studio .catalog-grid {
+  gap: 1rem;
+}
+
+html.ui-v2 .studio .mk-card {
+  border-radius: var(--v2-radius-lg);
+  padding: 1.2rem 1.25rem;
+  transition:
+    transform var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    border-color var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .studio .mk-card:active {
+  transform: scale(0.99);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .studio .mk-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--mk-tier-accent, var(--p-primary-color)) 45%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      0 2px 8px rgba(2, 6, 23, 0.06),
+      0 14px 34px color-mix(in srgb, var(--mk-tier-accent, var(--p-primary-color)) 20%, rgba(2, 6, 23, 0.12));
+  }
+}
+
+html.ui-v2 .studio .mk-card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .studio .mk-vendor-mark {
+  border-radius: var(--v2-radius-md);
+}
+
+/* ---- Skeleton shimmer ---- */
+html.ui-v2 .studio .skeleton-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--v2-radius-lg);
+  border-color: var(--v2-border);
+}
+
+html.ui-v2 .studio .skeleton-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--v2-text) 6%, transparent) 50%,
+    transparent 80%
+  );
+  animation: v2-studio-shimmer 1.6s var(--v2-ease) infinite;
+  pointer-events: none;
+}
+
+@keyframes v2-studio-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ---- Empty state ---- */
+html.ui-v2 .studio .catalog-empty {
+  border-radius: var(--v2-radius-lg);
+  border: 1px dashed var(--v2-border-strong);
+}
+
+html.ui-v2 .studio .catalog-empty-icon {
+  background: var(--v2-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ---- Studio mobile mirror ---- */
+@media (max-width: 991px) {
+  html.ui-v2 .studio {
+    padding: 0.25rem 0.25rem 1rem;
+  }
+}
+
+/* ==========================================================================
+   4) PLANS — .plans-page (+ teleported .plans-compare-drawer)
+   ========================================================================== */
+
+html.ui-v2 .plans-page {
+  gap: 1.1rem;
+  padding: 1.5rem 1.5rem 0.75rem;
+}
+
+/* ---- Hero ---- */
+html.ui-v2 .plans-page .plans-eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--v2-text-2);
+}
+
+html.ui-v2 .plans-page .plans-eyebrow .pi {
+  background: var(--v2-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+html.ui-v2 .plans-page .plans-hero-title {
+  font-size: clamp(1.65rem, 1rem + 2.4vw, 2.4rem);
+  letter-spacing: -0.03em;
+  background: linear-gradient(120deg, #0f172a 0%, #0891b2 62%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2.app-dark .plans-page .plans-hero-title {
+  background: linear-gradient(120deg, #f1f5f9 0%, #22d3ee 62%, #818cf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2 .plans-page .plans-hero-copy {
+  color: var(--v2-text-2);
+  font-size: 0.925rem;
+}
+
+html.ui-v2 .plans-page .plans-section-title {
+  letter-spacing: -0.02em;
+}
+
+html.ui-v2 .plans-page .plans-section-copy {
+  color: var(--v2-text-2);
+}
+
+/* ---- Plan cards (accents ride inline --tier-accent/--card-accent) ---- */
+html.ui-v2 .plans-page .plan-card {
+  gap: 1.05rem;
+  padding: 1.6rem;
+  border-radius: var(--v2-radius-lg);
+  transition:
+    transform var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    border-color var(--v2-dur) var(--v2-ease);
+}
+
+/* Overlay (touch / <=1280px) mode keeps its compact rhythm. */
+html.ui-v2 .plans-page--overlay .plan-card {
+  gap: 0.7rem;
+  padding: 1.2rem 1.3rem;
+}
+
+/* Accent bar -> soft gradient beam */
+html.ui-v2 .plans-page .plan-card__accent {
+  height: 2px;
+  opacity: 1;
+  background: linear-gradient(
+    90deg,
+    var(--tier-accent) 0%,
+    color-mix(in srgb, var(--tier-accent) 35%, transparent) 55%,
+    transparent 100%
+  );
+  box-shadow: 0 0 14px color-mix(in srgb, var(--tier-accent) 45%, transparent);
+}
+
+/* Gradient border ring for the current and recommended tiers. */
+html.ui-v2 .plans-page .plan-card--current,
+html.ui-v2 .plans-page .plan-card--recommended {
+  border-color: transparent;
+}
+
+html.ui-v2 .plans-page .plan-card--current::before,
+html.ui-v2 .plans-page .plan-card--recommended::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--tier-accent) 80%, transparent) 0%,
+    color-mix(in srgb, var(--tier-accent) 18%, transparent) 45%,
+    color-mix(in srgb, var(--tier-accent) 60%, transparent) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+html.ui-v2 .plans-page .plan-card--current {
+  box-shadow:
+    0 2px 8px rgba(2, 6, 23, 0.06),
+    0 14px 34px color-mix(in srgb, var(--card-accent) 20%, rgba(2, 6, 23, 0.12));
+}
+
+html.ui-v2 .plans-page .plan-card--recommended {
+  box-shadow:
+    0 2px 8px rgba(2, 6, 23, 0.05),
+    0 12px 30px color-mix(in srgb, var(--card-accent) 15%, rgba(2, 6, 23, 0.1));
+}
+
+/* Overlay mode: the original scoped `.plans-page--overlay .plan-card.glass-panel`
+   rule out-specifies a plain triple-class chain — match it so ring cards do not
+   get a doubled edge (solid border + gradient ring). */
+html.ui-v2 .plans-page--overlay :is(.plan-card--current, .plan-card--recommended).glass-panel {
+  border-color: transparent;
+}
+
+@media (hover: hover) {
+  html.ui-v2 .plans-page .plan-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--tier-accent) 45%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      0 2px 8px rgba(2, 6, 23, 0.05),
+      0 16px 40px color-mix(in srgb, var(--tier-accent) 22%, rgba(2, 6, 23, 0.14));
+  }
+
+  /* Ring cards keep their gradient border on hover. */
+  html.ui-v2 .plans-page :is(.plan-card--current, .plan-card--recommended):hover {
+    border-color: transparent;
+  }
+}
+
+html.ui-v2 .plans-page .plan-card__name {
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+html.ui-v2 .plans-page .plan-card__tagline {
+  color: var(--v2-text-2);
+}
+
+html.ui-v2 .plans-page .plan-card__price-value {
+  font-size: 1.75rem;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+html.ui-v2 .plans-page .plan-card__more {
+  color: var(--v2-text-3);
+}
+
+/* ---- Compare + aside ---- */
+html.ui-v2 .plans-page .compare-table-card {
+  border-radius: var(--v2-radius-lg);
+}
+
+/* ---- Enterprise CTA (keeps its blue-violet tier identity) ---- */
+html.ui-v2 .plans-page .enterprise-cta {
+  border-radius: var(--v2-radius-lg);
+}
+
+html.ui-v2 .plans-page .enterprise-cta__icon {
+  border-radius: var(--v2-radius-md);
+}
+
+html.ui-v2 .plans-page .enterprise-cta__btn {
+  border-radius: var(--v2-radius-full);
+  min-height: 2.5rem;
+}
+
+html.ui-v2 .plans-page .enterprise-cta__btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, #8b5cf6 70%, transparent);
+  outline-offset: 2px;
+}
+
+/* ---- Overlay footer ---- */
+html.ui-v2 .plans-page .plans-footer__compare {
+  border-radius: var(--v2-radius-lg);
+}
+
+html.ui-v2 .plans-page .plans-footer__compare-icon-wrap {
+  border-radius: var(--v2-radius-md);
+  background: var(--v2-gradient-brand-soft);
+  color: var(--p-primary-color);
+}
+
+html.ui-v2 .plans-page .plans-footer__compare-btn {
+  border-radius: var(--v2-radius-full);
+  min-height: 2.5rem;
+  border-color: color-mix(in srgb, var(--v2-accent) 40%, transparent);
+  background: var(--v2-gradient-brand-soft);
+  color: var(--p-primary-color);
+}
+
+html.ui-v2 .plans-page .plans-footer__compare:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+/* ---- Compare drawer (body-teleported; html.ui-v2 scope still reaches it) ---- */
+/* Base floats all drawers (inset margins, radius-xl) — align with that
+   treatment instead of fighting it with attached-sheet geometry. */
+html.ui-v2 .plans-compare-drawer.p-drawer {
+  background: var(--v2-surface-glass-strong);
+  backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-xl);
+  box-shadow: var(--v2-shadow-3);
+}
+
+html.ui-v2 .plans-compare-drawer .p-drawer-header {
+  border-bottom: 1px solid var(--v2-border);
+}
+
+html.ui-v2 .plans-compare-drawer .p-drawer-title {
+  letter-spacing: -0.01em;
+}
+
+/* ---- Plans layout mirrors (our base rules out-specify scoped originals) ---- */
+@media (min-width: 1101px) {
+  html.ui-v2 .plans-page {
+    gap: 1.25rem;
+  }
+}
+
+@media (max-width: 991px) {
+  html.ui-v2 .plans-page {
+    padding: 0.25rem 0.25rem 1rem;
+  }
+
+  html.ui-v2 .plans-page .plans-hero-title {
+    font-size: 1.45rem;
+  }
+}
+
+/* ==========================================================================
+   5) SHARED — touch targets, reduced motion
+   ========================================================================== */
+
+@media (pointer: coarse) {
+  html.ui-v2 .home .home-cta,
+  html.ui-v2 .home .home-quick-btn,
+  html.ui-v2 .home .home-articles-all,
+  html.ui-v2 .home .activity-detail-link,
+  html.ui-v2 .settings-beta .rail-link,
+  html.ui-v2 .settings-beta .detail-tab,
+  html.ui-v2 .settings-beta .detail-back,
+  html.ui-v2 .studio :is(.view-switch, .quick-filter, .type-filter) .p-togglebutton,
+  html.ui-v2 .plans-page .plans-footer__compare-btn,
+  html.ui-v2 .plans-page .enterprise-cta__btn {
+    min-height: var(--v2-touch-target);
+  }
+
+  html.ui-v2 .home .home-article {
+    min-height: var(--v2-touch-target);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.ui-v2 .home .home-hero,
+  html.ui-v2 .home .home-roles > li,
+  html.ui-v2 .home .home-activity,
+  html.ui-v2 .home .home-overview,
+  html.ui-v2 .home .home-articles,
+  html.ui-v2 .home .home-dot-ok,
+  html.ui-v2 .settings-beta .detail-body > *,
+  html.ui-v2 .settings-beta .detail-tab-active,
+  html.ui-v2 .studio .skeleton-card::after {
+    animation: none;
+  }
+
+  html.ui-v2 .home .home-cta:hover,
+  html.ui-v2 .home .home-cta:active,
+  html.ui-v2 .home .home-role:hover,
+  html.ui-v2 .home .home-role:focus-visible,
+  html.ui-v2 .home .home-role:active,
+  html.ui-v2 .home .home-role:hover .home-role-icon,
+  html.ui-v2 .home .home-stat:hover,
+  html.ui-v2 .home .home-quick-btn:hover,
+  html.ui-v2 .home .home-quick-btn:active,
+  html.ui-v2 .home .home-article:hover,
+  html.ui-v2 .settings-beta .rail-link:active,
+  html.ui-v2 .settings-beta .detail-tab:active,
+  html.ui-v2 .settings-beta .detail-back:active,
+  html.ui-v2 .studio .stat-tile:hover,
+  html.ui-v2 .studio .stat-tile:active,
+  html.ui-v2 .studio .stat-tile:hover .stat-tile-icon,
+  html.ui-v2 .studio .mk-card:hover,
+  html.ui-v2 .studio .mk-card:active,
+  html.ui-v2 .plans-page .plan-card:hover {
+    transform: none;
+  }
+}

@@ -157,6 +157,7 @@
               :text="showConversationSwitcher"
               :outlined="!showConversationSwitcher"
               rounded
+              class="beta-action-stop"
               @click="stopChat"
             />
             <template v-if="!showConversationSwitcher">
@@ -167,6 +168,7 @@
                 outlined
                 severity="secondary"
                 rounded
+                class="beta-action-websearch"
                 @click="session.webSearch = !session.webSearch"
               />
               <Button
@@ -178,6 +180,7 @@
                 rounded
                 :disabled="isGenerating"
                 aria-label="Clear conversation"
+                class="beta-action-clear"
                 @click="clearBetaConversation"
               />
             </template>
@@ -189,6 +192,7 @@
               rounded
               severity="secondary"
               aria-label="Open chats"
+              class="beta-action-chats"
               @click="$emit('open-conversations')"
             />
             <Button
@@ -220,6 +224,7 @@
               :outlined="!showConversationSwitcher"
               severity="secondary"
               rounded
+              class="beta-action-options"
               @click="toggleBetaOptions"
             />
           </div>
@@ -451,7 +456,13 @@
           </div>
 
           <template v-else>
-            <div v-for="(msg, index) in session.messages" :key="index">
+            <div
+              v-for="(msg, index) in session.messages"
+              :key="index"
+              class="beta-msg-row"
+              :class="msg.role === 'user' ? 'beta-msg-row-user' : 'beta-msg-row-assistant'"
+              :style="{ '--msg-index': index }"
+            >
               <div
                 v-if="msg.roleSwitchNotice"
                 class="role-switch-notice"
@@ -613,7 +624,7 @@
               </div>
             </div>
 
-            <div v-if="isGenerating" class="beta-msg-grid beta-msg-grid-assistant">
+            <div v-if="isGenerating" class="beta-msg-grid beta-msg-grid-assistant beta-msg-generating">
               <div class="beta-msg-avatar-col">
                 <span
                   v-if="showBetaLabel"
@@ -760,6 +771,7 @@
             <Button
               label="Send"
               icon="pi pi-send"
+              class="beta-footer-send"
               :disabled="sendDisabled"
               @click="sendMessage()"
             />

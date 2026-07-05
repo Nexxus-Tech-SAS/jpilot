@@ -1,0 +1,470 @@
+/* JPilot UI V2 — public layer.
+   CONTRACT: every rule scoped under html.ui-v2 / html.ui-v2.app-dark; keyframes prefixed v2-.
+   Scope: Login (.login-page), Legal (.legal-page), Landing (.landing-page — light touch).
+   The login two-step form, ids (#password), autocomplete attrs, and webauthn flow are
+   untouched — this file is pure skin. */
+
+/* ==========================================================================
+   1) LOGIN — .login-page (always-black page under the aurora canvas)
+   ========================================================================== */
+
+html.ui-v2 .login-page {
+  min-height: 100dvh;
+  /* Bottom clearance so the absolute .login-legal never overlaps the panel
+     on short viewports (landscape phones, open soft keyboard). */
+  padding: 1.5rem 1.5rem 5.5rem;
+}
+
+/* ---- Panel: v2 glass with a refined dual-accent glow ---- */
+html.ui-v2 .login-panel {
+  width: min(100%, 25rem);
+  padding: 2.75rem 2.15rem 2.35rem;
+  border-radius: var(--v2-radius-xl);
+  background: color-mix(in srgb, var(--p-content-background) 86%, transparent);
+  backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--p-primary-color) 18%, var(--p-content-border-color));
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(34, 211, 238, 0.1),
+    0 0 48px rgba(34, 211, 238, 0.12),
+    0 0 90px rgba(99, 102, 241, 0.1);
+}
+
+html.ui-v2.app-dark .login-panel {
+  background: rgba(10, 15, 28, 0.72);
+  border-color: color-mix(in srgb, var(--p-primary-color) 26%, rgba(148, 163, 184, 0.16));
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(34, 211, 238, 0.14),
+    0 0 56px rgba(34, 211, 238, 0.14),
+    0 0 110px rgba(99, 102, 241, 0.12);
+}
+
+/* ---- Brand header ---- */
+html.ui-v2 .login-page .login-logo {
+  filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.35));
+}
+
+html.ui-v2 .login-page .login-cursor-title {
+  letter-spacing: 0.01em;
+}
+
+html.ui-v2 .login-page .login-subtitle {
+  color: var(--p-text-muted-color);
+  font-size: 0.875rem;
+  letter-spacing: 0.01em;
+}
+
+html.ui-v2 .login-page .login-meta-tag {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.7rem;
+}
+
+html.ui-v2 .login-page .login-meta-edition {
+  background: var(--v2-gradient-brand-soft);
+  border-color: color-mix(in srgb, var(--p-primary-color) 40%, transparent);
+}
+
+/* ---- Entrance retiming (longhand only — .anim-delay-N must keep working) ---- */
+html.ui-v2 .login-page .anim-panel-in {
+  animation-name: v2-login-panel-in;
+  animation-duration: calc(var(--v2-dur-slow) * 2);
+  animation-timing-function: var(--v2-ease);
+  animation-fill-mode: backwards;
+}
+
+html.ui-v2 .login-page .anim-rise {
+  animation-name: v2-login-rise;
+  animation-duration: calc(var(--v2-dur-slow) * 1.5);
+  animation-timing-function: var(--v2-ease);
+  animation-fill-mode: backwards;
+}
+
+@keyframes v2-login-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes v2-login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Fields + agree row ---- */
+html.ui-v2 .login-page .field-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--p-text-muted-color);
+}
+
+html.ui-v2 .login-page .field-hint {
+  line-height: 1.45;
+}
+
+html.ui-v2 .login-page .agree-label {
+  line-height: 1.5;
+}
+
+html.ui-v2 .login-page .agree-label a {
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--p-primary-color) 35%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .login-page .agree-label a:hover {
+    text-decoration-color: var(--p-primary-color);
+  }
+}
+
+html.ui-v2 .login-page .agree-label a:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--p-primary-color) 65%, transparent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ---- Action button: retheme the shadow-grow .btn through its own vars ---- */
+html.ui-v2 .login-page .login-action-btn {
+  --bink: var(--p-primary-color);
+  --bsurf: color-mix(in srgb, var(--p-primary-color) 30%, transparent);
+  min-height: 2.85rem;
+  border-radius: var(--v2-radius-full);
+  border-color: color-mix(in srgb, var(--p-primary-color) 45%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #22d3ee 14%, transparent) 0%,
+    color-mix(in srgb, #6366f1 14%, transparent) 100%
+  );
+}
+
+html.ui-v2 .login-page .login-action-btn:focus-visible:not(:disabled) {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #22d3ee 26%, transparent) 0%,
+    color-mix(in srgb, #6366f1 26%, transparent) 100%
+  );
+  border-color: color-mix(in srgb, var(--p-primary-color) 65%, transparent);
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 10px 24px -8px color-mix(in srgb, var(--p-primary-color) 55%, transparent),
+    0 0 32px color-mix(in srgb, var(--p-primary-color) 22%, transparent);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .login-page .login-action-btn:hover:not(:disabled) {
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, #22d3ee 26%, transparent) 0%,
+      color-mix(in srgb, #6366f1 26%, transparent) 100%
+    );
+    border-color: color-mix(in srgb, var(--p-primary-color) 65%, transparent);
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      0 10px 24px -8px color-mix(in srgb, var(--p-primary-color) 55%, transparent),
+      0 0 32px color-mix(in srgb, var(--p-primary-color) 22%, transparent);
+  }
+}
+
+html.ui-v2 .login-page .login-action-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+html.ui-v2 .login-page .login-action-btn:disabled {
+  background: color-mix(in srgb, var(--p-primary-color) 6%, transparent);
+  border-color: color-mix(in srgb, var(--p-primary-color) 25%, transparent);
+  box-shadow: none;
+  transform: none;
+  cursor: not-allowed;
+}
+
+/* ---- Step two: signing-in-as chip + change pill ---- */
+html.ui-v2 .login-page .login-step-user {
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--v2-radius-md);
+  border: 1px solid var(--p-content-border-color);
+  background: color-mix(in srgb, var(--p-text-color) 4%, transparent);
+}
+
+html.ui-v2 .login-page .login-step-change {
+  padding: 0.35rem 0.8rem;
+  border-radius: var(--v2-radius-full);
+  border: 1px solid color-mix(in srgb, var(--p-primary-color) 35%, transparent);
+  background: color-mix(in srgb, var(--p-primary-color) 8%, transparent);
+  font-weight: 600;
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .login-page .login-step-change:hover {
+    text-decoration: none;
+    background: color-mix(in srgb, var(--p-primary-color) 16%, transparent);
+    border-color: color-mix(in srgb, var(--p-primary-color) 55%, transparent);
+  }
+}
+
+html.ui-v2 .login-page .login-step-change:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--p-primary-color) 65%, transparent);
+  outline-offset: 2px;
+}
+
+/* ---- Divider: gradient hairlines ---- */
+html.ui-v2 .login-page .login-divider::before {
+  background: linear-gradient(90deg, transparent, var(--p-content-border-color));
+}
+
+html.ui-v2 .login-page .login-divider::after {
+  background: linear-gradient(90deg, var(--p-content-border-color), transparent);
+}
+
+html.ui-v2 .login-page .reset-link {
+  text-underline-offset: 3px;
+}
+
+html.ui-v2 .login-page .reset-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--p-primary-color) 65%, transparent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ---- Passkey cross-device panel ---- */
+html.ui-v2 .login-page .cross-device-panel {
+  border-radius: var(--v2-radius-lg);
+  border-color: color-mix(in srgb, var(--p-primary-color) 22%, var(--p-content-border-color));
+  background: color-mix(in srgb, var(--p-primary-color) 6%, transparent);
+}
+
+html.ui-v2 .login-page .cross-device-qr-area {
+  border-radius: var(--v2-radius-md);
+  transition:
+    border-color var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .login-page .cross-device-qr-area.active {
+  border-color: color-mix(in srgb, var(--p-primary-color) 55%, var(--p-content-border-color));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--p-primary-color) 18%, transparent),
+    0 0 24px color-mix(in srgb, var(--p-primary-color) 16%, transparent);
+}
+
+/* ---- Legal footer (always over the black aurora) ---- */
+html.ui-v2 .login-page .login-legal {
+  font-size: 0.78rem;
+  gap: 0.35rem 0.85rem;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+html.ui-v2 .login-page .login-legal a {
+  color: rgba(148, 163, 184, 0.85);
+  transition: color var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .login-page .login-legal a:hover {
+    color: #22d3ee;
+  }
+}
+
+html.ui-v2 .login-page .login-legal a:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.65);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   2) LEGAL — .legal-page
+   ========================================================================== */
+
+html.ui-v2 .legal-page {
+  min-height: 100dvh;
+  background: var(--v2-bg);
+}
+
+html.ui-v2 .legal-page .legal-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 0.9rem 1.5rem;
+  padding-top: calc(0.9rem + env(safe-area-inset-top, 0px));
+  background: var(--v2-surface-glass);
+  backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  border-bottom: 1px solid var(--v2-border);
+}
+
+html.ui-v2 .legal-page .legal-back {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-full);
+  color: var(--v2-text-2);
+  transition:
+    color var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    background var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .legal-page .legal-back:hover {
+    color: var(--v2-text);
+    border-color: color-mix(in srgb, var(--v2-accent) 45%, var(--v2-border));
+    background: var(--v2-surface-hover);
+  }
+}
+
+html.ui-v2 .legal-page .legal-back:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+/* ---- Pill tab nav ---- */
+html.ui-v2 .legal-page .legal-nav {
+  border-bottom: 0;
+  padding: 0.15rem;
+}
+
+html.ui-v2 .legal-page .legal-nav-list {
+  display: inline-flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-full);
+  background: var(--v2-surface);
+  box-shadow: var(--v2-shadow-1);
+}
+
+html.ui-v2 .legal-page .legal-nav-item {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+html.ui-v2 .legal-page .legal-nav-link {
+  min-height: 2.25rem;
+  padding: 0.45rem 1rem;
+  border-radius: var(--v2-radius-full);
+  color: var(--v2-text-2);
+  white-space: nowrap;
+  transition:
+    color var(--v2-dur-fast) var(--v2-ease),
+    background var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .legal-page .legal-nav-link:hover {
+    color: var(--v2-text);
+    background: var(--v2-surface-hover);
+  }
+}
+
+html.ui-v2 .legal-page .legal-nav-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--v2-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .legal-page .legal-nav-item.is-active .legal-nav-link {
+  color: var(--p-primary-color);
+  font-weight: 600;
+  background: var(--v2-gradient-brand-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--v2-accent) 24%, transparent);
+}
+
+/* ---- Content panel ---- */
+html.ui-v2 .legal-page .legal-content {
+  background: var(--v2-surface);
+  border-color: var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-1);
+  padding: 1.75rem;
+}
+
+@media (max-width: 767px) {
+  html.ui-v2 .legal-page .legal-content {
+    padding: 1.25rem;
+  }
+}
+
+/* ==========================================================================
+   3) LANDING — .landing-page (light-touch refinement)
+   ========================================================================== */
+
+html.ui-v2 .landing-page .landing-hero-title {
+  background: linear-gradient(115deg, #ffffff 40%, #a5f3fc 72%, #c7d2fe 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.ui-v2 .landing-page .landing-btn {
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    background var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    opacity var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .landing-page .landing-btn:hover {
+    transform: translateY(-2px);
+  }
+}
+
+html.ui-v2 .landing-page .landing-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+html.ui-v2 .landing-page .landing-btn:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.7);
+  outline-offset: 3px;
+}
+
+/* ==========================================================================
+   4) SHARED — touch targets, reduced motion
+   ========================================================================== */
+
+@media (pointer: coarse) {
+  html.ui-v2 .login-page .login-action-btn,
+  html.ui-v2 .login-page .login-step-change,
+  html.ui-v2 .legal-page .legal-back,
+  html.ui-v2 .legal-page .legal-nav-link {
+    min-height: var(--v2-touch-target);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.ui-v2 .login-page .anim-panel-in,
+  html.ui-v2 .login-page .anim-rise {
+    animation: none;
+  }
+
+  html.ui-v2 .login-page .login-action-btn:hover:not(:disabled),
+  html.ui-v2 .login-page .login-action-btn:focus-visible:not(:disabled),
+  html.ui-v2 .login-page .login-action-btn:active:not(:disabled),
+  html.ui-v2 .landing-page .landing-btn:hover,
+  html.ui-v2 .landing-page .landing-btn:active {
+    transform: none;
+  }
+}

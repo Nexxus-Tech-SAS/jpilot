@@ -1,0 +1,1713 @@
+/* ============================================================================
+   JPilot UI V2 — chat layer
+   ----------------------------------------------------------------------------
+   CONTRACT: every rule scoped under html.ui-v2 (dark: html.ui-v2.app-dark);
+   keyframes prefixed v2-. This sheet owns .copilot-page, .stage, and the
+   .beta- , .chat- , .bw- , .tool-trace- families under ui-v2. It loads LAST,
+   so equal specificity + !important ties resolve in its favour.
+
+   Must-not-break notes honoured throughout:
+   - ref="messagesEl" (.beta-messages.user-message-container) stays the ONLY
+     scroll container: padding/colors only, no nested scrollers, no reverse.
+   - #beta-architect-design-slot / .beta-chat-workspace-split display rules
+     untouched (only surface styling).
+   - Inline data vars (--role-accent, --stagger, --beta-chat-*-mix,
+     --msg-index) are styled THROUGH, never against.
+   - Shared classic/beta classes are scoped via .chat-pane-beta so the latent
+     classic variant stays byte-identical.
+   ========================================================================== */
+
+/* ============================================================
+   1. Keyframes (v2- prefixed; killed under reduced motion at EOF)
+   ============================================================ */
+@keyframes v2-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes v2-shimmer-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes v2-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes v2-pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 5px rgba(34, 211, 238, 0);
+  }
+}
+
+/* ============================================================
+   2. Custom-property levers — re-theme the pane wholesale
+   ============================================================ */
+html.ui-v2 .chat-pane {
+  --glass-bg: var(--v2-surface-glass);
+  --glass-strong: var(--v2-surface-glass-strong);
+  --glass-border: var(--v2-border);
+  --glass-text: var(--v2-text);
+  --glass-muted: var(--v2-text-2);
+  --glass-field: var(--v2-surface-hover);
+}
+
+/* Explicit dark duplicate so global.css `html.app-dark .chat-pane` and the
+   scoped :global(.app-dark) rules cannot re-win; tokens are theme-aware. */
+html.ui-v2.app-dark .chat-pane {
+  --glass-bg: var(--v2-surface-glass);
+  --glass-strong: var(--v2-surface-glass-strong);
+  --glass-border: var(--v2-border);
+  --glass-text: var(--v2-text);
+  --glass-muted: var(--v2-text-2);
+  --glass-field: var(--v2-surface-hover);
+}
+
+/* The "generating" outline ring fights the transparent lab pane — replaced by
+   the animated loading bubble below. */
+html.ui-v2 .chat-pane.pane-generating {
+  box-shadow: none;
+}
+
+/* ============================================================
+   3. Page, stage & layout chrome (desktop ≥992px)
+   ============================================================ */
+@media (min-width: 992px) {
+  html.ui-v2 .copilot-page {
+    height: calc(100dvh - 5rem);
+  }
+
+  html.ui-v2 .stage {
+    border-radius: var(--v2-radius-xl);
+  }
+
+  html.ui-v2 .beta-chat-layout {
+    gap: 1.25rem;
+    padding: 1rem;
+  }
+
+  html.ui-v2 .beta-chat-layout-sidebar-hidden {
+    gap: 0;
+  }
+
+  html.ui-v2 .beta-chat-workspace {
+    gap: 1rem;
+  }
+
+  /* Cards: bigger radius, token borders/shadows. Background is intentionally
+     NOT set — it flows from the user-tunable --beta-chat-*-mix glass vars. */
+  html.ui-v2 .beta-sidebar-card.content-panel,
+  html.ui-v2 .beta-chat-card.content-panel {
+    border-radius: var(--v2-radius-xl);
+    border-color: var(--v2-border);
+    box-shadow: var(--v2-shadow-2);
+  }
+
+  html.ui-v2 .beta-chat-layout-lab .beta-sidebar-card.content-panel,
+  html.ui-v2 .beta-chat-layout-lab .beta-chat-card.content-panel {
+    border-color: var(--v2-border);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      var(--v2-shadow-2);
+  }
+
+  html.ui-v2.app-dark .beta-chat-layout-lab .beta-sidebar-card.content-panel,
+  html.ui-v2.app-dark .beta-chat-layout-lab .beta-chat-card.content-panel {
+    border-color: var(--v2-border);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      var(--v2-shadow-2);
+  }
+
+  /* Modern glass conversation sidebar, slimmed to ~17rem. */
+  html.ui-v2 .beta-sidebar-card {
+    width: 17rem;
+  }
+
+  html.ui-v2 .beta-sidebar-card-inner {
+    width: 17rem;
+  }
+
+  /* Re-assert the JS-driven collapse (our width rule outranks the original). */
+  html.ui-v2 .beta-sidebar-card-collapsed {
+    width: 0;
+    opacity: 0;
+    border-color: transparent;
+    box-shadow: none;
+    pointer-events: none;
+  }
+
+  /* Architect Document Editor card — same surface language.
+     (display rules untouched: .beta-chat-workspace-split still controls it.) */
+  html.ui-v2 .beta-chat-workspace-split .beta-chat-card.content-panel,
+  html.ui-v2 .beta-chat-workspace-split .beta-design-card.content-panel {
+    border-radius: var(--v2-radius-lg);
+  }
+
+  html.ui-v2 .beta-chat-workspace-split .beta-design-card.content-panel {
+    background: var(--v2-surface);
+    border-color: var(--v2-border);
+    box-shadow: var(--v2-shadow-2);
+  }
+}
+
+/* ============================================================
+   4. Conversation sidebar (BetaChatSidebar + BetaChatPaneCard)
+   ============================================================ */
+html.ui-v2 .beta-sidebar-profile,
+html.ui-v2 .beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-profile {
+  padding: 1.1rem 1.15rem 0.9rem;
+  border-bottom-color: color-mix(in srgb, var(--v2-border) 70%, transparent);
+}
+
+html.ui-v2 .beta-sidebar-brand {
+  background: var(--v2-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+html.ui-v2 .beta-sidebar-tagline {
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .beta-sidebar-body,
+html.ui-v2 .beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-body {
+  gap: 0.7rem;
+  padding: 0.9rem;
+}
+
+/* Animated gradient "New chat" pill. */
+html.ui-v2 .beta-new-chat-btn {
+  border: 0;
+  border-radius: var(--v2-radius-full);
+  background-color: var(--v2-accent);
+  background-image: var(--v2-gradient-brand);
+  background-size: 170% 170%;
+  background-position: 0% 50%;
+  color: var(--v2-text-on-accent);
+  font-weight: 600;
+  padding: 0.55rem 1rem;
+  box-shadow: 0 4px 14px rgba(34, 211, 238, 0.28);
+  transition:
+    background-position var(--v2-dur-slow) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .beta-new-chat-btn:not(:disabled):hover {
+    background-image: var(--v2-gradient-brand);
+    background-position: 100% 50%;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+    transform: translateY(-1px);
+  }
+}
+
+html.ui-v2 .beta-new-chat-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+html.ui-v2 .beta-new-chat-btn:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .beta-chat-count {
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .beta-sidebar-search .p-inputtext {
+  border-radius: var(--v2-radius-full);
+  background: color-mix(in srgb, var(--v2-surface) 55%, transparent);
+  border-color: var(--v2-border);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  transition:
+    border-color var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .beta-sidebar-search .p-inputtext:focus {
+  border-color: transparent;
+  box-shadow: var(--v2-glow-accent);
+}
+
+html.ui-v2 .beta-sidebar-search .p-inputicon {
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .beta-sidebar-list,
+html.ui-v2 .beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-list {
+  gap: 0.4rem;
+  padding: 0.15rem;
+  scrollbar-width: thin;
+}
+
+/* Pane cards — quiet at rest, lift on hover, role-accent bar when active. */
+html.ui-v2 .beta-sidebar:not(.beta-sidebar-drawer) .beta-pane-card,
+html.ui-v2 .beta-sidebar-drawer .beta-pane-card {
+  border-radius: var(--v2-radius-md);
+  border-color: transparent;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  padding: 0.6rem 0.7rem;
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .beta-sidebar:not(.beta-sidebar-drawer) .beta-pane-card:hover,
+  html.ui-v2 .beta-sidebar-drawer .beta-pane-card:hover {
+    background: var(--v2-surface-hover);
+    border-color: var(--v2-border);
+    box-shadow: var(--v2-shadow-1);
+    transform: translateY(-1px);
+  }
+
+  html.ui-v2.app-dark .beta-sidebar:not(.beta-sidebar-drawer) .beta-pane-card:hover,
+  html.ui-v2.app-dark .beta-sidebar-drawer .beta-pane-card:hover {
+    background: var(--v2-surface-hover);
+  }
+}
+
+/* Active card: accent border + inset accent bar via inline --role-accent. */
+html.ui-v2 .beta-sidebar:not(.beta-sidebar-drawer) .beta-pane-card.beta-pane-card-active,
+html.ui-v2 .beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-pane-card.beta-pane-card-active,
+html.ui-v2 .beta-sidebar-drawer .beta-pane-card.beta-pane-card-active {
+  border-color: color-mix(in srgb, var(--role-accent, var(--v2-accent)) 45%, transparent);
+  background: color-mix(in srgb, var(--role-accent, var(--v2-accent)) 9%, transparent);
+  box-shadow:
+    inset 3px 0 0 0 var(--role-accent, var(--v2-accent)),
+    var(--v2-shadow-1);
+}
+
+html.ui-v2 .beta-pane-card:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .beta-pane-card-avatar,
+html.ui-v2 .beta-pane-card-lab .beta-pane-card-avatar {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--role-accent, var(--v2-accent)) 30%, transparent),
+    var(--v2-shadow-1);
+}
+
+html.ui-v2 .beta-pane-card-status {
+  border-color: var(--v2-surface);
+}
+
+html.ui-v2 .beta-pane-card-status-busy {
+  animation: v2-pulse-dot 1.8s var(--v2-ease) infinite;
+}
+
+html.ui-v2 .beta-pane-card-title,
+html.ui-v2 .beta-pane-card-lab .beta-pane-card-title {
+  font-size: 0.875rem;
+  letter-spacing: -0.01em;
+  color: var(--v2-text);
+}
+
+html.ui-v2 .beta-pane-card-preview,
+html.ui-v2 .beta-pane-card-lab .beta-pane-card-preview {
+  font-size: 0.75rem;
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .beta-sidebar-limit {
+  font-size: 0.72rem;
+}
+
+/* ============================================================
+   5. Chat header (desktop / non-compact)
+   ============================================================ */
+html.ui-v2 .chat-pane-beta .beta-header:not(.beta-header-compact) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--v2-border) 80%, transparent);
+  padding: 0.7rem 1rem;
+  gap: 0.75rem;
+  transition: border-color var(--v2-dur) var(--v2-ease);
+}
+
+@media (min-width: 992px) {
+  html.ui-v2 .chat-pane-beta .beta-header:not(.beta-header-compact) {
+    padding: 0.85rem 1.5rem;
+  }
+}
+
+/* Cleaner welcome: no divider while the conversation is empty. */
+html.ui-v2 .chat-pane-beta.pane-empty .beta-header:not(.beta-header-compact) {
+  border-bottom-color: transparent;
+}
+
+html.ui-v2 .chat-pane-beta .beta-avatar,
+html.ui-v2 .chat-pane-lab .beta-avatar {
+  width: 2.6rem;
+  height: 2.6rem;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--role-accent, var(--v2-accent)) 32%, transparent),
+    var(--v2-shadow-1);
+}
+
+html.ui-v2 .chat-pane-beta .beta-status-dot {
+  border-color: var(--v2-surface);
+}
+
+html.ui-v2 .chat-pane-beta .beta-status-busy {
+  animation: v2-pulse-dot 1.8s var(--v2-ease) infinite;
+}
+
+html.ui-v2 .chat-pane-beta .beta-title,
+html.ui-v2 .chat-pane-lab .beta-title {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--v2-text);
+}
+
+html.ui-v2 .chat-pane-beta .beta-title-brand,
+html.ui-v2 .chat-pane-lab .beta-title-brand {
+  background: var(--v2-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  font-weight: 700;
+}
+
+html.ui-v2 .chat-pane-beta .beta-subtitle,
+html.ui-v2 .chat-pane-lab .beta-subtitle {
+  font-size: 0.75rem;
+  color: var(--v2-text-3);
+}
+
+/* Role toggle — soft segmented pill; accents flow via --role-option-accent. */
+html.ui-v2 .chat-pane-beta .beta-role-toggle {
+  border-radius: var(--v2-radius-full);
+  background: var(--v2-surface-hover);
+  padding: 0.2rem;
+  gap: 0.15rem;
+  border: 1px solid color-mix(in srgb, var(--v2-border) 70%, transparent);
+}
+
+html.ui-v2 .chat-pane-beta .beta-role-toggle .p-togglebutton {
+  border: 0;
+  border-radius: var(--v2-radius-full);
+  background: transparent;
+  padding: 0.4rem 0.6rem;
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .chat-pane-beta .beta-role-toggle .p-togglebutton .p-togglebutton-content {
+  background: transparent;
+  box-shadow: none;
+}
+
+html.ui-v2 .chat-pane-beta .beta-role-toggle .p-togglebutton.p-togglebutton-checked {
+  background: var(--v2-surface);
+  box-shadow: var(--v2-shadow-1);
+}
+
+/* Preserve the custom-persona divider the original draws on the 4th option. */
+html.ui-v2 .chat-pane-beta .beta-role-toggle .p-togglebutton:nth-child(4) {
+  border-left: 2px solid #f59e0b;
+  border-radius: 0 var(--v2-radius-full) var(--v2-radius-full) 0;
+}
+
+html.ui-v2 .chat-pane-beta .p-select.beta-header-model-select {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--v2-border) 80%, transparent);
+  border-radius: var(--v2-radius-full);
+  box-shadow: none;
+}
+
+html.ui-v2 .chat-pane-beta .beta-header-model-select .p-select-label {
+  font-size: 0.72rem;
+  color: var(--v2-text-2);
+}
+
+html.ui-v2 .chat-pane-beta .beta-header-model-name {
+  font-size: 0.72rem;
+  color: var(--v2-text-3);
+}
+
+/* Header actions — consistent ghost buttons (incl. new beta-action-* hooks:
+   stop / websearch / clear / chats / options + nav / design / sidebar). */
+html.ui-v2 .chat-pane-beta .beta-header:not(.beta-header-compact) .beta-header-actions .p-button {
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: var(--v2-radius-full);
+  color: var(--v2-text-2);
+  border: 1px solid var(--v2-border);
+  background: color-mix(in srgb, var(--v2-surface) 35%, transparent);
+  box-shadow: none;
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .chat-pane-beta .beta-header:not(.beta-header-compact) .beta-header-actions .p-button:not(:disabled):hover {
+    background: var(--v2-surface-hover);
+    color: var(--v2-text);
+    border-color: var(--v2-border-strong);
+    transform: translateY(-1px);
+  }
+}
+
+html.ui-v2 .chat-pane-beta .beta-header-actions .p-button:not(:disabled):active {
+  transform: scale(0.95);
+}
+
+html.ui-v2 .chat-pane-beta .beta-header-actions .p-button:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+/* Stop keeps its danger identity on top of the ghost treatment. */
+html.ui-v2 .chat-pane-beta .beta-header-actions .p-button.beta-action-stop {
+  color: var(--p-red-500, #ef4444);
+  border-color: color-mix(in srgb, var(--p-red-500, #ef4444) 40%, transparent);
+  background: color-mix(in srgb, var(--p-red-500, #ef4444) 10%, transparent);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .chat-pane-beta .beta-header-actions .p-button.beta-action-stop:not(:disabled):hover {
+    color: var(--p-red-500, #ef4444);
+    background: color-mix(in srgb, var(--p-red-500, #ef4444) 18%, transparent);
+    border-color: color-mix(in srgb, var(--p-red-500, #ef4444) 55%, transparent);
+  }
+}
+
+/* ============================================================
+   6. Message stream — centered readable column + staggered entry
+   ============================================================ */
+html.ui-v2 .chat-pane-beta .beta-shell:not(.beta-shell-compact) .beta-messages.user-message-container {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+@media (min-width: 992px) {
+  html.ui-v2 .chat-pane-beta .beta-shell:not(.beta-shell-compact) .beta-messages.user-message-container {
+    padding: 1.25rem 2rem 1.5rem;
+  }
+}
+
+/* Readable column: rows and the live generating row centre at ~52rem. */
+html.ui-v2 .chat-pane-beta .beta-msg-row,
+html.ui-v2 .chat-pane-beta .beta-messages > .beta-msg-generating {
+  width: 100%;
+  max-width: 52rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+html.ui-v2 .chat-pane-beta .beta-messages > .beta-empty-note {
+  max-width: 52rem;
+  margin: 1rem auto 0;
+  text-align: center;
+  color: var(--v2-text-3);
+}
+
+/* Entry animation — fade + rise. The stagger cascade applies only to the
+   first rows of a freshly mounted list: rows appended later (new replies in
+   long conversations) must never wait out the delay, so they animate
+   immediately with no delay. */
+html.ui-v2 .chat-pane-beta .beta-msg-row {
+  animation: v2-msg-in var(--v2-dur-slow) var(--v2-ease) backwards;
+}
+
+html.ui-v2 .chat-pane-beta .beta-msg-row:nth-child(-n + 12) {
+  animation-delay: min(calc(var(--msg-index, 0) * 40ms), 400ms);
+}
+
+html.ui-v2 .chat-pane-beta .beta-messages > .beta-msg-generating {
+  animation: v2-msg-in var(--v2-dur-slow) var(--v2-ease) both;
+}
+
+html.ui-v2 .chat-pane-beta .beta-msg-grid {
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+html.ui-v2 .chat-pane-beta .beta-msg-avatar,
+html.ui-v2 .chat-pane-beta .beta-msg-avatar-role {
+  width: 2rem;
+  height: 2rem;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--role-accent, var(--v2-accent)) 30%, transparent),
+    var(--v2-shadow-1);
+}
+
+html.ui-v2 .chat-pane-beta .beta-msg-avatar-role i {
+  font-size: 0.85rem;
+}
+
+html.ui-v2 .chat-pane-beta .beta-message-author {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--v2-text-2);
+  margin-bottom: 0.3rem;
+}
+
+html.ui-v2 .chat-pane-beta .beta-message-time {
+  font-size: 0.6875rem;
+  color: var(--v2-text-3);
+  margin-top: 0.4rem;
+}
+
+/* ---------- Bubbles ---------- */
+/* Assistant: clean surface card with a soft asymmetric radius. */
+html.ui-v2 .chat-pane-beta .beta-bubble.beta-bubble-assistant {
+  max-width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 0.45rem var(--v2-radius-lg) var(--v2-radius-lg) var(--v2-radius-lg);
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--v2-shadow-1);
+  color: var(--v2-text);
+  font-weight: 450;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+html.ui-v2.app-dark .chat-pane-beta .beta-bubble.beta-bubble-assistant {
+  background: var(--v2-surface-2);
+  border-color: var(--v2-border);
+  box-shadow: var(--v2-shadow-1);
+  color: var(--v2-text);
+}
+
+/* User: brand-gradient pill, white text. */
+html.ui-v2 .chat-pane-beta .beta-bubble.beta-bubble-user {
+  max-width: 76%;
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: var(--v2-radius-lg) var(--v2-radius-lg) 0.45rem var(--v2-radius-lg);
+  background: var(--v2-gradient-brand);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--v2-text-on-accent);
+  font-weight: 500;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  box-shadow: 0 4px 16px rgba(79, 111, 245, 0.28);
+}
+
+html.ui-v2.app-dark .chat-pane-beta .beta-bubble.beta-bubble-user {
+  background: var(--v2-gradient-brand);
+  color: var(--v2-text-on-accent);
+  border: 0;
+  box-shadow: 0 4px 18px rgba(34, 211, 238, 0.18);
+}
+
+/* Markdown typography inside assistant bubbles. */
+html.ui-v2 .chat-pane-beta .beta-bubble .chat-markdown {
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+html.ui-v2 .chat-pane-beta .beta-bubble .chat-markdown code {
+  font-size: 0.82em;
+  padding: 0.1em 0.4em;
+  border-radius: 0.4em;
+  background: var(--v2-surface-hover);
+  border: 1px solid var(--v2-border);
+}
+
+html.ui-v2 .chat-pane-beta .beta-bubble .chat-markdown pre {
+  border-radius: var(--v2-radius-md);
+  border: 1px solid var(--v2-border);
+}
+
+html.ui-v2 .chat-pane-beta .beta-bubble .chat-markdown pre code {
+  border: 0;
+  background: transparent;
+}
+
+html.ui-v2 .chat-pane-beta .beta-bubble .chat-markdown a {
+  color: var(--v2-accent-strong);
+}
+
+html.ui-v2.app-dark .chat-pane-beta .beta-bubble .chat-markdown a {
+  color: #22d3ee;
+}
+
+/* Error block: soft amber card edge. */
+html.ui-v2 .chat-pane-beta .chat-error-block {
+  border-left: 3px solid var(--p-orange-500, #f97316);
+  padding-left: 0.75rem;
+  border-radius: 0.25rem;
+}
+
+/* ---------- Loading / generating bubble: shimmer + breathing label ---------- */
+html.ui-v2 .chat-pane-beta .beta-bubble.beta-bubble-loading {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 1rem;
+  border-radius: 0.45rem var(--v2-radius-lg) var(--v2-radius-lg) var(--v2-radius-lg);
+  border: 1px solid color-mix(in srgb, var(--v2-accent) 26%, var(--v2-border));
+  background: color-mix(in srgb, var(--v2-accent-soft) 55%, var(--v2-surface));
+  box-shadow: var(--v2-shadow-1);
+}
+
+html.ui-v2.app-dark .chat-pane-beta .beta-bubble.beta-bubble-loading {
+  background: color-mix(in srgb, var(--v2-accent-soft) 45%, var(--v2-surface-2));
+  border-color: color-mix(in srgb, var(--v2-accent) 30%, var(--v2-border));
+}
+
+html.ui-v2 .chat-pane-beta .beta-bubble.beta-bubble-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 25%,
+    rgba(34, 211, 238, 0.14) 50%,
+    transparent 75%
+  );
+  transform: translateX(-100%);
+  animation: v2-shimmer-sweep 1.9s var(--v2-ease) infinite;
+  pointer-events: none;
+}
+
+html.ui-v2 .chat-pane-beta .generation-label {
+  color: var(--v2-text);
+  font-size: 0.85rem;
+  animation: v2-breathe 2.2s var(--v2-ease) infinite;
+}
+
+html.ui-v2 .chat-pane-beta .generation-meta,
+html.ui-v2 .chat-pane-beta .beta-message-meta,
+html.ui-v2 .chat-pane-beta .generation-stats-footer {
+  color: var(--v2-text-3);
+}
+
+/* ---------- Role-switch notice: centered accent chip ---------- */
+html.ui-v2 .chat-pane-beta .role-switch-notice {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0.5rem auto 1rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--v2-radius-lg);
+  font-size: 0.78rem;
+}
+
+html.ui-v2 .chat-pane-beta .role-switch-notice-architect {
+  border-color: color-mix(in srgb, #7c3aed 35%, transparent);
+  background: color-mix(in srgb, #7c3aed 9%, transparent);
+}
+
+html.ui-v2 .chat-pane-beta .role-switch-notice-operator {
+  border-color: color-mix(in srgb, #059669 35%, transparent);
+  background: color-mix(in srgb, #059669 9%, transparent);
+}
+
+html.ui-v2 .chat-pane-beta .role-switch-notice-analyst {
+  border-color: color-mix(in srgb, #d97706 35%, transparent);
+  background: color-mix(in srgb, #d97706 9%, transparent);
+}
+
+/* ---------- Web sources ---------- */
+html.ui-v2 .chat-pane-beta .web-sources {
+  border-top: 1px dashed color-mix(in srgb, var(--v2-border-strong) 70%, transparent);
+}
+
+html.ui-v2 .chat-pane-beta .web-badge {
+  color: var(--v2-accent-strong);
+  background: var(--v2-gradient-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--v2-accent) 30%, transparent);
+  border-radius: var(--v2-radius-full);
+  padding: 0.12rem 0.5rem;
+}
+
+html.ui-v2.app-dark .chat-pane-beta .web-badge {
+  color: #22d3ee;
+}
+
+html.ui-v2 .chat-pane-beta .web-source-link {
+  color: var(--v2-text-2);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-full);
+  padding: 0.12rem 0.55rem;
+  background: color-mix(in srgb, var(--v2-surface) 55%, transparent);
+  transition:
+    color var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    background var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .chat-pane-beta .web-source-link:hover {
+    color: var(--v2-accent-strong);
+    border-color: color-mix(in srgb, var(--v2-accent) 45%, transparent);
+    background: var(--v2-accent-soft);
+  }
+}
+
+html.ui-v2 .chat-pane-beta .web-source-link:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Attachments (in-stream chips + pending tray) ---------- */
+html.ui-v2 .chat-pane-beta .attachment-chip,
+html.ui-v2 .chat-pane-beta .pending-attachment {
+  border-radius: var(--v2-radius-md);
+  background: color-mix(in srgb, var(--v2-surface) 65%, transparent);
+  border: 1px solid var(--v2-border);
+  color: var(--v2-text);
+  box-shadow: var(--v2-shadow-1);
+}
+
+html.ui-v2 .chat-pane-beta .attachment-thumb,
+html.ui-v2 .chat-pane-beta .pending-thumb {
+  border-radius: 0.4rem;
+}
+
+html.ui-v2 .chat-pane-beta .beta-pending {
+  border-top: 1px solid color-mix(in srgb, var(--v2-border) 80%, transparent);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0.6rem 1.25rem 0;
+}
+
+/* ---------- Deployment subtasks / design downloads ---------- */
+html.ui-v2 .chat-pane-beta .deployment-subtasks {
+  border-radius: var(--v2-radius-md);
+}
+
+html.ui-v2 .chat-pane-beta .design-doc-download {
+  border-top: 1px solid color-mix(in srgb, var(--v2-border) 80%, transparent);
+}
+
+/* ============================================================
+   7. Tool traces — compact modern collapsed cards
+   ============================================================ */
+html.ui-v2 .chat-pane-beta .tool-trace-wrap {
+  margin-top: 0.65rem;
+}
+
+html.ui-v2 .chat-pane-beta .tool-inline-result {
+  margin-bottom: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-md);
+  background: color-mix(in srgb, var(--v2-surface) 72%, transparent);
+  box-shadow: var(--v2-shadow-1);
+}
+
+html.ui-v2 .chat-pane-beta .tool-trace-panel {
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-md);
+  background: color-mix(in srgb, var(--v2-surface) 60%, transparent);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+html.ui-v2 .chat-pane-beta .tool-trace-panel .p-panel-header {
+  padding: 0.45rem 0.7rem;
+  background: transparent;
+  border: 0;
+  transition: background var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .chat-pane-beta .tool-trace-panel .p-panel-header:hover {
+    background: var(--v2-surface-hover);
+  }
+}
+
+html.ui-v2 .chat-pane-beta .tool-trace-panel .p-panel-content {
+  padding: 0.65rem 0.75rem;
+  background: transparent;
+  border: 0;
+}
+
+html.ui-v2 .chat-pane-beta .tool-trace-panel .p-panel-toggle-button {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .chat-pane-beta .tool-trace-header {
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .chat-pane-beta .tool-trace-header i {
+  color: var(--v2-accent-strong);
+}
+
+html.ui-v2.app-dark .chat-pane-beta .tool-trace-header i {
+  color: #22d3ee;
+}
+
+html.ui-v2 .chat-pane-beta .tool-trace-list {
+  gap: 0.6rem;
+}
+
+html.ui-v2 .chat-pane-beta .tool-trace-item + .tool-trace-item {
+  border-top: 1px dashed color-mix(in srgb, var(--v2-border-strong) 60%, transparent);
+  padding-top: 0.6rem;
+}
+
+/* ============================================================
+   8. Composer — floating glass pill + gradient send
+   ============================================================ */
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top: 1px solid color-mix(in srgb, var(--v2-border) 70%, transparent);
+  gap: 0.75rem;
+  padding: 0.9rem 1.25rem 1.1rem;
+  padding-bottom: calc(1.1rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 992px) {
+  html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) {
+    padding: 1rem 2rem 1.25rem;
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+html.ui-v2 .chat-pane-beta.pane-empty .beta-footer:not(.beta-footer-compact) {
+  border-top-color: transparent;
+}
+
+/* The input IS the pill on desktop. NOTE: PrimeVue 4 InputText renders a bare
+   <input>, so `.beta-composer-input` sits ON the input itself — we target it
+   directly (input.beta-composer-input) and keep the descendant form as a
+   defensive alias, out-gunning the scoped !important resets either way. */
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) input.beta-composer-input,
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) .beta-composer-input input {
+  width: 100%;
+  min-height: 2.9rem;
+  padding: 0.7rem 1.15rem !important;
+  border: 1px solid var(--v2-border) !important;
+  border-radius: var(--v2-radius-full) !important;
+  background: color-mix(in srgb, var(--v2-surface) 88%, transparent) !important;
+  color: var(--v2-text) !important;
+  box-shadow: var(--v2-shadow-1) !important;
+  font-size: 0.9375rem;
+  transition:
+    border-color var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    background var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) input.beta-composer-input::placeholder,
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) .beta-composer-input input::placeholder {
+  color: var(--v2-text-3);
+  opacity: 1;
+}
+
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) input.beta-composer-input:focus,
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) .beta-composer-input input:focus {
+  outline: none;
+  border-color: transparent !important;
+  background: var(--v2-surface) !important;
+  box-shadow: var(--v2-glow-accent) !important;
+}
+
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) input.beta-composer-input:disabled,
+html.ui-v2 .chat-pane-beta .beta-footer:not(.beta-footer-compact) .beta-composer-input input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Desktop footer action buttons (calibration / browse / attach): ghost circles. */
+html.ui-v2 .chat-pane-beta .beta-footer-actions .p-button:not(.beta-footer-send) {
+  flex: 0 0 auto;
+  width: 2.9rem;
+  height: 2.9rem;
+  padding: 0;
+  border-radius: var(--v2-radius-full);
+  color: var(--v2-text-2);
+  border: 1px solid var(--v2-border);
+  background: color-mix(in srgb, var(--v2-surface) 35%, transparent);
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .chat-pane-beta .beta-footer-actions .p-button:not(.beta-footer-send):not(:disabled):hover {
+    background: var(--v2-surface-hover);
+    color: var(--v2-text);
+    border-color: var(--v2-border-strong);
+    transform: translateY(-1px);
+  }
+}
+
+/* Gradient circular Send (new .beta-footer-send hook). Label is visually
+   hidden but kept in the accessibility tree. */
+html.ui-v2 .chat-pane-beta .beta-footer-send {
+  flex: 0 0 auto;
+  width: 2.9rem;
+  height: 2.9rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--v2-radius-full);
+  background: var(--v2-gradient-brand);
+  color: var(--v2-text-on-accent);
+  box-shadow: 0 4px 16px rgba(34, 211, 238, 0.32);
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease-spring),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    filter var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .chat-pane-beta .beta-footer-send .p-button-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+html.ui-v2 .chat-pane-beta .beta-footer-send .p-button-icon {
+  margin: 0;
+}
+
+@media (hover: hover) {
+  html.ui-v2 .chat-pane-beta .beta-footer-send:not(:disabled):hover {
+    background: var(--v2-gradient-brand);
+    filter: brightness(1.08);
+    transform: scale(1.06);
+    box-shadow: 0 6px 22px rgba(99, 102, 241, 0.4);
+  }
+}
+
+html.ui-v2 .chat-pane-beta .beta-footer-send:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+html.ui-v2 .chat-pane-beta .beta-footer-send:disabled {
+  filter: saturate(0.35);
+  opacity: 0.55;
+}
+
+html.ui-v2 .chat-pane-beta .beta-footer-send:focus-visible,
+html.ui-v2 .chat-pane-beta .beta-composer-send:focus-visible,
+html.ui-v2 .chat-pane-beta .beta-composer-icon:focus-visible,
+html.ui-v2 .chat-pane-beta .beta-footer-actions .p-button:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   9. Welcome screen (.bw-*) — retimed stagger + gradient accents
+   ============================================================ */
+html.ui-v2 .chat-pane-beta .bw-greeting {
+  font-size: clamp(1.5rem, 1rem + 2.2vw, 2.15rem);
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, var(--v2-text) 30%, var(--v2-accent-strong) 75%, var(--v2-accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+html.ui-v2.app-dark .chat-pane-beta .bw-greeting {
+  background: linear-gradient(135deg, var(--v2-text) 30%, #22d3ee 75%, #818cf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+html.ui-v2 .chat-pane-beta .bw-subtitle {
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .chat-pane-beta .bw-stage {
+  gap: 0.75rem;
+  animation-duration: var(--v2-dur-slow);
+  animation-timing-function: var(--v2-ease);
+}
+
+html.ui-v2 .chat-pane-beta .bw-unified {
+  animation-duration: var(--v2-dur-slow);
+  animation-timing-function: var(--v2-ease);
+}
+
+/* Role tabs — pill rail; the ACTIVE tab fills with its persona accent. */
+html.ui-v2 .chat-pane-beta .bw-role-tabs {
+  border-radius: var(--v2-radius-full);
+  padding: 0.3rem;
+  gap: 0.3rem;
+  background: color-mix(in srgb, var(--v2-surface) 70%, transparent);
+  border: 1px solid var(--v2-border);
+  box-shadow: var(--v2-shadow-1);
+}
+
+html.ui-v2.app-dark .chat-pane-beta .bw-role-tabs {
+  background: color-mix(in srgb, var(--v2-surface-2) 80%, transparent);
+  box-shadow: var(--v2-shadow-1);
+}
+
+html.ui-v2 .chat-pane-beta .bw-role-tab {
+  border-radius: var(--v2-radius-full);
+  animation-duration: var(--v2-dur-slow);
+  animation-timing-function: var(--v2-ease);
+  animation-delay: calc(var(--stagger, 0ms) + 40ms);
+}
+
+html.ui-v2 .chat-pane-beta .bw-role-tab-active {
+  background: var(--persona-accent, var(--v2-accent));
+  color: #ffffff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--persona-accent, var(--v2-accent)) 40%, transparent);
+}
+
+html.ui-v2 .chat-pane-beta .bw-role-tab-active .bw-role-tab-icon {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+html.ui-v2 .chat-pane-beta .bw-role-desc {
+  border-radius: var(--v2-radius-md);
+  animation-duration: var(--v2-dur);
+  animation-timing-function: var(--v2-ease);
+}
+
+html.ui-v2 .chat-pane-beta .bw-skills-list {
+  gap: 0.5rem;
+}
+
+html.ui-v2 .chat-pane-beta .bw-skills-list > li {
+  animation-duration: var(--v2-dur-slow);
+  animation-timing-function: var(--v2-ease);
+  animation-delay: calc(var(--stagger, 0ms) + 80ms);
+}
+
+html.ui-v2 .chat-pane-beta .bw-skill {
+  border-radius: var(--v2-radius-lg);
+  border-color: var(--v2-border);
+  background: color-mix(in srgb, var(--v2-surface) 80%, transparent);
+  box-shadow: var(--v2-shadow-1);
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .chat-pane-beta .bw-skill:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--v2-shadow-2);
+    border-color: color-mix(in srgb, var(--persona-accent, var(--v2-accent)) 48%, transparent);
+  }
+}
+
+html.ui-v2 .chat-pane-beta .bw-skill:focus-visible {
+  outline: 2px solid var(--persona-accent, var(--v2-accent));
+  outline-offset: 2px;
+  transform: translateY(-2px);
+}
+
+html.ui-v2 .chat-pane-beta .bw-skill-icon {
+  border-radius: 0.6rem;
+}
+
+html.ui-v2 .chat-pane-beta .bw-browse-blueprints {
+  border-radius: var(--v2-radius-full);
+}
+
+html.ui-v2 .chat-pane-beta .bw-note {
+  color: var(--v2-text-3);
+}
+
+/* ============================================================
+   10. Options popover, chats drawer, calibration dialog
+   ============================================================ */
+html.ui-v2 .p-popover.beta-options-popover {
+  background: var(--v2-surface-glass-strong);
+  backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-3);
+  color: var(--v2-text);
+}
+
+html.ui-v2 .p-popover.beta-options-popover::before,
+html.ui-v2 .p-popover.beta-options-popover::after {
+  display: none;
+}
+
+html.ui-v2 .beta-options-panel {
+  gap: 0.9rem;
+}
+
+html.ui-v2 .beta-options-label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .beta-options-hint {
+  color: var(--v2-text-3);
+}
+
+html.ui-v2 .beta-options-actions {
+  border-top-color: var(--v2-border);
+}
+
+html.ui-v2 .beta-bg-thumb {
+  border-radius: var(--v2-radius-sm);
+  transition:
+    transform var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .beta-bg-thumb:hover {
+    transform: translateY(-1px);
+  }
+}
+
+html.ui-v2 .beta-bg-thumb:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .beta-bg-thumb-active {
+  border-color: var(--v2-accent);
+  box-shadow: 0 0 0 3px var(--v2-accent-soft);
+}
+
+html.ui-v2 .beta-role-picker-btn {
+  border-radius: var(--v2-radius-md);
+  border-color: var(--v2-border);
+  background: var(--v2-surface);
+  color: var(--v2-text);
+}
+
+html.ui-v2 .beta-role-picker-btn-active {
+  border-color: var(--role-option-accent, var(--v2-accent));
+  background: color-mix(in srgb, var(--role-option-accent, var(--v2-accent)) 10%, var(--v2-surface));
+}
+
+/* Chats drawer (body-teleported; width !importants left to the original). */
+html.ui-v2 .p-drawer.beta-chats-drawer {
+  background: var(--v2-surface-glass-strong);
+  backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(140%);
+  border-right: 1px solid var(--v2-border);
+  box-shadow: var(--v2-shadow-3);
+  color: var(--v2-text);
+}
+
+html.ui-v2 .p-drawer.beta-chats-drawer .p-drawer-content {
+  background: transparent;
+}
+
+html.ui-v2.app-dark .p-drawer.beta-chats-drawer .p-drawer-content {
+  background: transparent;
+}
+
+html.ui-v2 .beta-chats-drawer-title {
+  background: var(--v2-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  font-weight: 700;
+}
+
+html.ui-v2 .beta-chats-drawer-close {
+  border-radius: var(--v2-radius-full);
+  color: var(--v2-text-2);
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .beta-chats-drawer-close:hover {
+    background: var(--v2-surface-hover);
+    color: var(--v2-text);
+  }
+}
+
+html.ui-v2 .beta-chats-drawer-close:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+/* Calibration feedback dialog (body-teleported). */
+html.ui-v2 .p-dialog.calibration-feedback-dialog {
+  border-radius: var(--v2-radius-lg);
+  border: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  box-shadow: var(--v2-shadow-3);
+  overflow: hidden;
+}
+
+/* ============================================================
+   11. Compact skin (phone + landscape phone)
+   MQ replicated EXACTLY from ChatPane line 4612 / responsiveLayout.js —
+   do not alter the condition.
+   ============================================================ */
+@media (max-width: 767px), (max-width: 991px) and (max-height: 500px) {
+  /* Re-point the whole phone theme through the --beta-mobile-* lever. */
+  html.ui-v2 .beta-shell-compact {
+    --beta-mobile-bg: var(--v2-bg);
+    --beta-mobile-surface: var(--v2-surface);
+    --beta-mobile-ink: var(--v2-text);
+    --beta-mobile-muted: var(--v2-text-2);
+    --beta-mobile-border: var(--v2-border);
+    --beta-mobile-chip-bg: var(--v2-surface);
+    --beta-mobile-chip-hover: var(--v2-surface-2);
+    --beta-mobile-composer-bg: var(--v2-surface);
+    --beta-mobile-user-bubble: var(--v2-accent-soft);
+    background: var(--beta-mobile-bg);
+    color: var(--beta-mobile-ink);
+  }
+
+  /* Out-gun the global.css dark-mobile !important block (lines 391-542). */
+  html.ui-v2.app-dark .beta-shell-compact {
+    --beta-mobile-bg: var(--v2-bg);
+    --beta-mobile-surface: var(--v2-surface);
+    --beta-mobile-ink: var(--v2-text);
+    --beta-mobile-muted: var(--v2-text-2);
+    --beta-mobile-border: var(--v2-border);
+    --beta-mobile-chip-bg: var(--v2-surface);
+    --beta-mobile-chip-hover: var(--v2-surface-2);
+    --beta-mobile-composer-bg: var(--v2-surface-2);
+    --beta-mobile-user-bubble: var(--v2-accent-soft);
+    background-color: var(--beta-mobile-bg) !important;
+    color: var(--beta-mobile-ink);
+  }
+
+  html.ui-v2 .chat-pane-beta:has(.beta-shell-compact) {
+    --glass-text: var(--v2-text);
+    --glass-muted: var(--v2-text-2);
+    background: var(--v2-bg);
+  }
+
+  html.ui-v2.app-dark .chat-pane-beta:has(.beta-shell-compact) {
+    --glass-text: var(--v2-text);
+    --glass-muted: var(--v2-text-2);
+    background-color: var(--v2-bg) !important;
+  }
+
+  html.ui-v2 .beta-shell-compact .beta-messages.user-message-container {
+    padding: 0.75rem 1rem 0.4rem;
+    background: var(--beta-mobile-bg) !important;
+  }
+
+  html.ui-v2.app-dark .beta-shell-compact .beta-messages.user-message-container,
+  html.ui-v2.app-dark .beta-shell-compact .beta-pending {
+    background-color: var(--beta-mobile-bg) !important;
+  }
+
+  /* Header */
+  html.ui-v2 .beta-header.beta-header-compact {
+    background: var(--beta-mobile-surface) !important;
+    border-bottom: 1px solid var(--beta-mobile-border);
+    padding:
+      calc(0.55rem + env(safe-area-inset-top, 0px))
+      0.85rem
+      0.55rem;
+  }
+
+  html.ui-v2.app-dark .beta-header.beta-header-compact {
+    background-color: var(--beta-mobile-surface) !important;
+    border-bottom-color: var(--beta-mobile-border) !important;
+  }
+
+  html.ui-v2 .beta-header-compact .beta-header-nav,
+  html.ui-v2 .beta-header-compact .beta-header-actions .p-button {
+    color: var(--beta-mobile-ink) !important;
+    border-radius: var(--v2-radius-full);
+  }
+
+  html.ui-v2.app-dark .beta-header-compact .beta-header-nav,
+  html.ui-v2.app-dark .beta-header-compact .beta-header-actions .p-button {
+    color: var(--beta-mobile-ink) !important;
+  }
+
+  html.ui-v2 .beta-header-compact .beta-role-chip {
+    font-weight: 600;
+  }
+
+  /* Empty state */
+  html.ui-v2 .beta-shell-compact .beta-empty-title {
+    background: linear-gradient(135deg, var(--v2-text) 35%, var(--v2-accent-strong) 80%, var(--v2-accent-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    letter-spacing: -0.03em;
+  }
+
+  html.ui-v2 .beta-shell-compact .beta-mobile-prompt {
+    border-radius: var(--v2-radius-md);
+    box-shadow: var(--v2-shadow-1);
+    transition:
+      background var(--v2-dur-fast) var(--v2-ease),
+      border-color var(--v2-dur-fast) var(--v2-ease),
+      transform var(--v2-dur-fast) var(--v2-ease);
+  }
+
+  html.ui-v2 .beta-shell-compact .beta-mobile-prompt:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  /* Bubbles: assistant stays flat modern text; user becomes the gradient pill. */
+  html.ui-v2 .beta-shell-compact .beta-bubble.beta-bubble-assistant:not(.beta-bubble-loading) {
+    max-width: 100%;
+    border: 0;
+    border-radius: 0;
+    padding: 0.55rem 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--beta-mobile-ink) !important;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+
+  html.ui-v2 .beta-shell-compact .beta-bubble.beta-bubble-user {
+    max-width: 85%;
+    margin-left: auto;
+    padding: 0.65rem 0.95rem;
+    border: 0 !important;
+    border-radius: var(--v2-radius-lg) var(--v2-radius-lg) 0.45rem var(--v2-radius-lg);
+    background: var(--v2-gradient-brand) !important;
+    color: var(--v2-text-on-accent) !important;
+    box-shadow: 0 4px 14px rgba(79, 111, 245, 0.28) !important;
+  }
+
+  html.ui-v2 .beta-shell-compact .beta-message-time {
+    color: var(--beta-mobile-muted);
+  }
+
+  html.ui-v2.app-dark .beta-shell-compact .beta-message-time,
+  html.ui-v2.app-dark .beta-shell-compact .beta-message-meta {
+    color: var(--beta-mobile-muted) !important;
+  }
+
+  /* Footer + composer pill */
+  html.ui-v2 .beta-footer.beta-footer-compact {
+    background: var(--beta-mobile-bg) !important;
+    border-top: 1px solid var(--beta-mobile-border);
+    padding:
+      0.6rem 0.8rem
+      calc(0.8rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  html.ui-v2.app-dark .beta-footer.beta-footer-compact {
+    background-color: var(--beta-mobile-bg) !important;
+    border-top-color: var(--beta-mobile-border) !important;
+  }
+
+  html.ui-v2 .beta-footer-compact .beta-composer {
+    border-radius: var(--v2-radius-full);
+    background: var(--beta-mobile-composer-bg) !important;
+    border: 1px solid var(--beta-mobile-border);
+    box-shadow: var(--v2-shadow-1);
+    padding: 0.4rem 0.45rem 0.4rem 0.35rem;
+    transition:
+      box-shadow var(--v2-dur) var(--v2-ease),
+      border-color var(--v2-dur) var(--v2-ease);
+  }
+
+  html.ui-v2.app-dark .beta-footer-compact .beta-composer {
+    background-color: var(--beta-mobile-composer-bg) !important;
+    border-color: var(--beta-mobile-border) !important;
+  }
+
+  html.ui-v2 .beta-footer-compact .beta-composer:focus-within {
+    border-color: transparent !important;
+    box-shadow: var(--v2-glow-accent);
+  }
+
+  /* The compact input lives INSIDE the pill: flatten it fully (the original
+     :deep(input) flatteners are dead selectors — InputText is a bare input). */
+  html.ui-v2 .beta-footer-compact input.beta-composer-input,
+  html.ui-v2 .beta-footer-compact .beta-composer-input input {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none;
+    padding: 0.45rem 0.35rem;
+    color: var(--beta-mobile-ink) !important;
+    font-size: 1rem;
+  }
+
+  html.ui-v2 .beta-footer-compact input.beta-composer-input::placeholder,
+  html.ui-v2 .beta-footer-compact .beta-composer-input input::placeholder {
+    color: var(--beta-mobile-muted) !important;
+    opacity: 1;
+  }
+
+  html.ui-v2.app-dark .beta-footer-compact .beta-composer-icon .p-button {
+    color: var(--beta-mobile-muted) !important;
+  }
+
+  /* Circular gradient send on mobile (out-guns the size/background !importants). */
+  html.ui-v2 .beta-footer-compact .beta-composer-send {
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    border-radius: var(--v2-radius-full) !important;
+    border: 0 !important;
+    background: var(--v2-gradient-brand) !important;
+    color: var(--v2-text-on-accent) !important;
+    box-shadow: 0 4px 14px rgba(34, 211, 238, 0.32);
+    transition:
+      transform var(--v2-dur-fast) var(--v2-ease-spring),
+      box-shadow var(--v2-dur) var(--v2-ease),
+      filter var(--v2-dur-fast) var(--v2-ease);
+  }
+
+  html.ui-v2 .beta-footer-compact .beta-composer-send:not(:disabled):active {
+    transform: scale(0.92);
+  }
+
+  html.ui-v2 .beta-footer-compact .beta-composer-send:disabled {
+    filter: saturate(0.35);
+    opacity: 0.55;
+  }
+}
+
+/* ============================================================
+   12. ≤991px structural re-theme (phones + tablets)
+   Out-guns the global.css dark-mobile #000 !important block so the V2
+   dark palette applies below the desktop cutoff.
+   ============================================================ */
+@media (max-width: 991px) {
+  html.ui-v2.app-dark .copilot-page .stage,
+  html.ui-v2.app-dark .copilot-page .stage-plain,
+  html.ui-v2.app-dark .beta-chat-layout,
+  html.ui-v2.app-dark .beta-chat-card,
+  html.ui-v2.app-dark .beta-chat-card.content-panel,
+  html.ui-v2.app-dark .beta-chat-pane.chat-pane-beta {
+    background-color: var(--v2-bg) !important;
+  }
+
+  html.ui-v2 .beta-chat-card,
+  html.ui-v2 .beta-chat-card.content-panel {
+    background: var(--v2-bg);
+  }
+}
+
+/* ============================================================
+   13. iPad-portrait fix (768-991px, height >500px)
+   Classic CSS display:none's the sidebar card while JS keeps it v-shown,
+   stranding conversation switching. Restore it as a narrow rail.
+   ============================================================ */
+@media (min-width: 768px) and (max-width: 991px) and (min-height: 500.02px) {
+  html.ui-v2 .beta-chat-layout {
+    flex-direction: row;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  html.ui-v2 .beta-chat-layout-sidebar-hidden {
+    gap: 0;
+  }
+
+  html.ui-v2 .beta-chat-layout .beta-sidebar-card {
+    display: block;
+    width: 15rem;
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: var(--v2-radius-lg);
+    border: 1px solid var(--v2-border);
+    background: var(--v2-surface);
+    box-shadow: var(--v2-shadow-1);
+    transition:
+      width var(--v2-dur) var(--v2-ease),
+      opacity var(--v2-dur) var(--v2-ease),
+      border-color var(--v2-dur) var(--v2-ease);
+  }
+
+  /* Respect the JS-driven collapsed state. */
+  html.ui-v2 .beta-chat-layout .beta-sidebar-card.beta-sidebar-card-collapsed {
+    width: 0;
+    opacity: 0;
+    border-color: transparent;
+    box-shadow: none;
+    pointer-events: none;
+  }
+
+  html.ui-v2 .beta-sidebar-card-inner {
+    width: 15rem;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* Neutralise BetaChatSidebar's dormant <992px horizontal-scroll variant —
+     with the card visible again it must read as a vertical rail. */
+  html.ui-v2 .beta-sidebar:not(.beta-sidebar-drawer) .beta-sidebar-list {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-bottom: 0;
+  }
+
+  html.ui-v2 .beta-sidebar:not(.beta-sidebar-drawer) .beta-sidebar-list .beta-pane-card {
+    min-width: 0;
+  }
+
+  html.ui-v2 .beta-sidebar:not(.beta-sidebar-drawer) .beta-sidebar-profile {
+    padding: 1rem 1rem 0.75rem;
+  }
+
+  html.ui-v2 .beta-sidebar:not(.beta-sidebar-drawer) .beta-sidebar-logo,
+  html.ui-v2 .beta-sidebar-lab:not(.beta-sidebar-drawer) .beta-sidebar-logo {
+    transform: scale(0.79);
+    transform-origin: center top;
+  }
+
+  /* The chat card becomes a floating rounded panel beside the rail. */
+  html.ui-v2 .beta-chat-card,
+  html.ui-v2 .beta-chat-card.content-panel {
+    border-radius: var(--v2-radius-lg);
+    border: 1px solid var(--v2-border);
+    background: var(--v2-surface);
+    box-shadow: var(--v2-shadow-1);
+  }
+
+  html.ui-v2.app-dark .beta-chat-card,
+  html.ui-v2.app-dark .beta-chat-card.content-panel {
+    background-color: var(--v2-surface) !important;
+    border-color: var(--v2-border);
+  }
+
+  html.ui-v2.app-dark .beta-chat-pane.chat-pane-beta {
+    background-color: transparent !important;
+  }
+}
+
+/* ============================================================
+   14. Touch ergonomics (≥44px targets on coarse pointers)
+   ============================================================ */
+@media (pointer: coarse) {
+  /* Sidebar delete reachable without hover. */
+  html.ui-v2 .beta-pane-card-lab .beta-pane-card-delete {
+    position: static;
+    transform: none;
+    opacity: 1;
+  }
+
+  html.ui-v2 .beta-pane-card-lab.beta-pane-card-deletable .beta-pane-card-main {
+    padding-right: 0;
+  }
+
+  html.ui-v2 .beta-pane-card .beta-pane-card-delete {
+    width: var(--v2-touch-target);
+    height: var(--v2-touch-target);
+  }
+
+  html.ui-v2 .chat-pane-beta .beta-composer-icon,
+  html.ui-v2 .beta-footer-compact .beta-composer-icon {
+    width: var(--v2-touch-target);
+    height: var(--v2-touch-target);
+  }
+
+  html.ui-v2 .beta-header-compact .beta-header-actions .p-button.p-button-rounded,
+  html.ui-v2 .beta-header-compact .beta-header-nav {
+    width: var(--v2-touch-target);
+    height: var(--v2-touch-target);
+    min-width: var(--v2-touch-target);
+    min-height: var(--v2-touch-target);
+  }
+
+  /* Compact loading bubble: ChatPane's compact !importants veto the desktop
+     glass background, leaving a hollow outline — re-assert a themed fill. */
+  html.ui-v2 .beta-shell-compact .beta-bubble.beta-bubble-loading {
+    background: color-mix(in srgb, var(--v2-accent) 10%, var(--v2-surface)) !important;
+    box-shadow: var(--v2-shadow-1) !important;
+  }
+
+  html.ui-v2 .beta-chats-drawer-close {
+    width: var(--v2-touch-target);
+    height: var(--v2-touch-target);
+  }
+}
+
+/* ============================================================
+   15. Reduced motion — kill every v2- keyframe in this layer
+   (transition durations already collapse via the --v2-dur* tokens)
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  html.ui-v2 .chat-pane-beta .beta-msg-row,
+  html.ui-v2 .chat-pane-beta .beta-messages > .beta-msg-generating,
+  html.ui-v2 .chat-pane-beta .beta-bubble.beta-bubble-loading::after,
+  html.ui-v2 .chat-pane-beta .generation-label,
+  html.ui-v2 .chat-pane-beta .beta-status-busy,
+  html.ui-v2 .beta-pane-card-status-busy,
+  html.ui-v2 .chat-pane-beta .bw-stage,
+  html.ui-v2 .chat-pane-beta .bw-unified,
+  html.ui-v2 .chat-pane-beta .bw-role-tab,
+  html.ui-v2 .chat-pane-beta .bw-skills-list > li,
+  html.ui-v2 .chat-pane-beta .bw-role-desc {
+    animation: none !important;
+  }
+
+  html.ui-v2 .beta-new-chat-btn,
+  html.ui-v2 .chat-pane-beta .beta-footer-send,
+  html.ui-v2 .chat-pane-beta .beta-composer-send,
+  html.ui-v2 .chat-pane-beta .bw-skill,
+  html.ui-v2 .beta-pane-card {
+    transition: none;
+  }
+
+  html.ui-v2 .chat-pane-beta .bw-skill:hover,
+  html.ui-v2 .chat-pane-beta .bw-skill:focus-visible,
+  html.ui-v2 .beta-pane-card:hover {
+    transform: none;
+  }
+}

@@ -1,0 +1,393 @@
+/* ============================================================================
+   JPilot UI V2 — animations layer
+   ----------------------------------------------------------------------------
+   The app-wide motion language: PrimeVue overlay enter/leave overrides and a
+   small utility vocabulary (v2-rise / v2-fade / v2-scale-in / v2-shimmer and
+   the .v2-stagger convention) that the other v2 layers can build on.
+
+   CONTRACT: every rule scoped under html.ui-v2 / html.ui-v2.app-dark, so the
+   classic pv-* motion in global.css stays untouched when the toggle is off.
+   Keyframes prefixed v2- (definitions are global but referenced only from
+   scoped rules). Every keyframe animation has a prefers-reduced-motion kill
+   at the bottom; durations also collapse via the --v2-dur* tokens.
+   ========================================================================== */
+
+/* ============================================================================
+   1. Anchored overlays — Select, Menu, Popover, Password meter, DatePicker
+      (scale 0.96 -> 1 + fade + slight rise, springy in / quick fade out)
+   ========================================================================== */
+
+html.ui-v2 .p-anchored-overlay-enter-active {
+  animation: v2-pop-in var(--v2-dur) var(--v2-ease-spring);
+  transform-origin: top center;
+}
+
+html.ui-v2 .p-anchored-overlay-leave-active {
+  animation: v2-pop-out var(--v2-dur-fast) var(--v2-ease);
+}
+
+@keyframes v2-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+}
+
+@keyframes v2-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+}
+
+/* ============================================================================
+   2. Dialog / ConfirmDialog — rise + soft spring settle
+   ========================================================================== */
+
+html.ui-v2 .p-dialog-enter-active {
+  animation: v2-dialog-in var(--v2-dur) var(--v2-ease-spring);
+}
+
+html.ui-v2 .p-dialog-leave-active {
+  animation: v2-dialog-out var(--v2-dur-fast) var(--v2-ease);
+}
+
+@keyframes v2-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+}
+
+@keyframes v2-dialog-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+
+/* ============================================================================
+   3. Drawer — position-aware slide + fade. The Drawer root carries the
+      enter/leave class; its mask carries .p-drawer-left/right/top/bottom.
+   ========================================================================== */
+
+html.ui-v2 .p-drawer-enter-active {
+  animation: v2-drawer-in-left var(--v2-dur-slow) var(--v2-ease);
+}
+
+html.ui-v2 .p-drawer-leave-active {
+  animation: v2-drawer-out-left var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .p-drawer-right .p-drawer-enter-active {
+  animation-name: v2-drawer-in-right;
+}
+
+html.ui-v2 .p-drawer-right .p-drawer-leave-active {
+  animation-name: v2-drawer-out-right;
+}
+
+html.ui-v2 .p-drawer-top .p-drawer-enter-active {
+  animation-name: v2-drawer-in-top;
+}
+
+html.ui-v2 .p-drawer-top .p-drawer-leave-active {
+  animation-name: v2-drawer-out-top;
+}
+
+html.ui-v2 .p-drawer-bottom .p-drawer-enter-active {
+  animation-name: v2-drawer-in-bottom;
+}
+
+html.ui-v2 .p-drawer-bottom .p-drawer-leave-active {
+  animation-name: v2-drawer-out-bottom;
+}
+
+@keyframes v2-drawer-in-left {
+  from { opacity: 0; transform: translateX(-28px); }
+}
+
+@keyframes v2-drawer-out-left {
+  to { opacity: 0; transform: translateX(-20px); }
+}
+
+@keyframes v2-drawer-in-right {
+  from { opacity: 0; transform: translateX(28px); }
+}
+
+@keyframes v2-drawer-out-right {
+  to { opacity: 0; transform: translateX(20px); }
+}
+
+@keyframes v2-drawer-in-top {
+  from { opacity: 0; transform: translateY(-28px); }
+}
+
+@keyframes v2-drawer-out-top {
+  to { opacity: 0; transform: translateY(-20px); }
+}
+
+@keyframes v2-drawer-in-bottom {
+  from { opacity: 0; transform: translateY(28px); }
+}
+
+@keyframes v2-drawer-out-bottom {
+  to { opacity: 0; transform: translateY(20px); }
+}
+
+/* ============================================================================
+   4. Overlay mask — plain fade (the frost comes from base.css)
+   ========================================================================== */
+
+html.ui-v2 .p-overlay-mask-enter-active {
+  animation: v2-fade var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .p-overlay-mask-leave-active {
+  animation: v2-fade-out var(--v2-dur-fast) var(--v2-ease);
+}
+
+/* ============================================================================
+   5. Message — drop in with a soft spring
+   ========================================================================== */
+
+html.ui-v2 .p-message-enter-active {
+  animation: v2-message-in var(--v2-dur) var(--v2-ease-spring);
+}
+
+html.ui-v2 .p-message-leave-active {
+  animation: v2-message-out var(--v2-dur-fast) var(--v2-ease);
+}
+
+@keyframes v2-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+
+@keyframes v2-message-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
+/* ============================================================================
+   6. Toast — glide in from off-screen right with a spring settle
+   ========================================================================== */
+
+html.ui-v2 .p-toast-message-enter-active {
+  animation: v2-toast-in var(--v2-dur-slow) var(--v2-ease-spring);
+}
+
+html.ui-v2 .p-toast-message-leave-active {
+  animation: v2-toast-out var(--v2-dur) var(--v2-ease);
+}
+
+@keyframes v2-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(100% + 1.5rem)) scale(0.97);
+  }
+}
+
+@keyframes v2-toast-out {
+  to {
+    opacity: 0;
+    transform: translateX(25%) scale(0.97);
+  }
+}
+
+/* ============================================================================
+   7. Collapsibles — Accordion, Panel, Fieldset, Stepper
+   ========================================================================== */
+
+html.ui-v2 .p-collapsible-enter-active {
+  animation: v2-expand var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .p-collapsible-leave-active {
+  animation: v2-collapse var(--v2-dur-fast) var(--v2-ease);
+}
+
+@keyframes v2-expand {
+  from { opacity: 0; grid-template-rows: 0fr; }
+  to   { opacity: 1; grid-template-rows: 1fr; }
+}
+
+@keyframes v2-collapse {
+  from { opacity: 1; grid-template-rows: 1fr; }
+  to   { opacity: 0; grid-template-rows: 0fr; }
+}
+
+/* ============================================================================
+   8. Utility keyframes + classes — shared entrance vocabulary.
+      Usage:
+        .v2-rise / .v2-fade / .v2-scale-in  — one-shot entrances; optionally
+          set --stagger (a delay, e.g. style="--stagger: 120ms").
+        .v2-stagger — put on a container: direct children rise in sequence;
+          --stagger is the per-item step (default 45ms), overridable inline.
+        .v2-shimmer — loading sheen sweep over any surface.
+   ========================================================================== */
+
+@keyframes v2-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes v2-fade {
+  from { opacity: 0; }
+}
+
+@keyframes v2-fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes v2-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes v2-shimmer {
+  to { transform: translateX(100%); }
+}
+
+html.ui-v2 .v2-rise {
+  animation: v2-rise var(--v2-dur-slow) var(--v2-ease) both;
+  animation-delay: var(--stagger, 0ms);
+}
+
+html.ui-v2 .v2-fade {
+  animation: v2-fade var(--v2-dur) var(--v2-ease) both;
+  animation-delay: var(--stagger, 0ms);
+}
+
+html.ui-v2 .v2-scale-in {
+  animation: v2-scale-in var(--v2-dur) var(--v2-ease-spring) both;
+  animation-delay: var(--stagger, 0ms);
+}
+
+html.ui-v2 .v2-stagger > * {
+  animation: v2-rise var(--v2-dur-slow) var(--v2-ease) both;
+  animation-delay: calc(var(--stagger, 45ms) * var(--v2-stagger-i, 0));
+}
+
+html.ui-v2 .v2-stagger > *:nth-child(2)  { --v2-stagger-i: 1; }
+html.ui-v2 .v2-stagger > *:nth-child(3)  { --v2-stagger-i: 2; }
+html.ui-v2 .v2-stagger > *:nth-child(4)  { --v2-stagger-i: 3; }
+html.ui-v2 .v2-stagger > *:nth-child(5)  { --v2-stagger-i: 4; }
+html.ui-v2 .v2-stagger > *:nth-child(6)  { --v2-stagger-i: 5; }
+html.ui-v2 .v2-stagger > *:nth-child(7)  { --v2-stagger-i: 6; }
+html.ui-v2 .v2-stagger > *:nth-child(8)  { --v2-stagger-i: 7; }
+html.ui-v2 .v2-stagger > *:nth-child(9)  { --v2-stagger-i: 8; }
+html.ui-v2 .v2-stagger > *:nth-child(10) { --v2-stagger-i: 9; }
+html.ui-v2 .v2-stagger > *:nth-child(11) { --v2-stagger-i: 10; }
+html.ui-v2 .v2-stagger > *:nth-child(12) { --v2-stagger-i: 11; }
+html.ui-v2 .v2-stagger > *:nth-child(n + 13) { --v2-stagger-i: 12; }
+
+/* Loading sheen */
+html.ui-v2 .v2-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+html.ui-v2 .v2-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    105deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 75%
+  );
+  animation: v2-shimmer 1.8s var(--v2-ease) infinite;
+  pointer-events: none;
+}
+
+html.ui-v2.app-dark .v2-shimmer::after {
+  background: linear-gradient(
+    105deg,
+    transparent 25%,
+    rgba(148, 163, 184, 0.14) 50%,
+    transparent 75%
+  );
+}
+
+/* ============================================================================
+   9. Page-level fallback vocabulary. The V2 shell owns its own <Transition>;
+      these classes are shared vocabulary for any layer that wants them.
+      Also refines the existing global page-fade under v2 (same class names
+      the classic shell/router transitions already apply).
+   ========================================================================== */
+
+/* NOTE: the v2-page-* route transition is owned by MainLayoutV2's scoped
+   styles — only the classic-named page-fade transition is refined here. */
+html.ui-v2 .page-fade-enter-active,
+html.ui-v2 .page-fade-leave-active {
+  transition:
+    opacity var(--v2-dur) var(--v2-ease),
+    transform var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+html.ui-v2 .page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+/* ============================================================================
+   10. Reduced motion — kill every v2 keyframe animation (mirrors the
+       global.css pattern; token collapse already shortens transitions).
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  html.ui-v2 .p-anchored-overlay-enter-active,
+  html.ui-v2 .p-anchored-overlay-leave-active,
+  html.ui-v2 .p-dialog-enter-active,
+  html.ui-v2 .p-dialog-leave-active,
+  html.ui-v2 .p-drawer-enter-active,
+  html.ui-v2 .p-drawer-leave-active,
+  html.ui-v2 .p-overlay-mask-enter-active,
+  html.ui-v2 .p-overlay-mask-leave-active,
+  html.ui-v2 .p-message-enter-active,
+  html.ui-v2 .p-message-leave-active,
+  html.ui-v2 .p-toast-message-enter-active,
+  html.ui-v2 .p-toast-message-leave-active,
+  html.ui-v2 .p-collapsible-enter-active,
+  html.ui-v2 .p-collapsible-leave-active,
+  html.ui-v2 .v2-rise,
+  html.ui-v2 .v2-fade,
+  html.ui-v2 .v2-scale-in,
+  html.ui-v2 .v2-stagger > *,
+  html.ui-v2 .v2-page-enter-active,
+  html.ui-v2 .v2-page-leave-active,
+  html.ui-v2 .page-fade-enter-active,
+  html.ui-v2 .page-fade-leave-active {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0s !important;
+  }
+
+  html.ui-v2 .v2-shimmer::after {
+    animation: none !important;
+  }
+}

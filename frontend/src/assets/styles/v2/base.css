@@ -1,0 +1,976 @@
+/* ============================================================================
+   JPilot UI V2 — base layer
+   ----------------------------------------------------------------------------
+   Foundation for the V2 skin: root surfaces, PrimeVue retheme (semantic token
+   remap + targeted class overrides), generic surface primitives, scrollbars,
+   selection and focus rings.
+
+   CONTRACT: every rule scoped under html.ui-v2 / html.ui-v2.app-dark.
+   Keyframes prefixed v2- (none defined here; see animations.css).
+   PrimeVue 4.5.5 class/token names verified against node_modules.
+   ========================================================================== */
+
+/* ============================================================================
+   1. Root & document
+   ========================================================================== */
+
+html.ui-v2 {
+  color-scheme: light;
+}
+
+html.ui-v2.app-dark {
+  color-scheme: dark;
+}
+
+html.ui-v2 body {
+  background: var(--v2-bg);
+  color: var(--v2-text);
+}
+
+html.ui-v2 * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ============================================================================
+   2. Severity palette — shared soft-tint ramp for Tag / Message / Toast.
+      Other v2 layers may consume these tokens for status-tinted chrome.
+      (bg = soft fill, fg = readable ink, bd = tinted border, solid = accent)
+   ========================================================================== */
+
+html.ui-v2 {
+  --v2-sev-primary-bg: rgba(6, 182, 212, 0.12);
+  --v2-sev-primary-fg: #0e7490;
+  --v2-sev-primary-bd: rgba(6, 182, 212, 0.3);
+  --v2-sev-primary-solid: #06b6d4;
+
+  --v2-sev-info-bg: rgba(99, 102, 241, 0.11);
+  --v2-sev-info-fg: #4338ca;
+  --v2-sev-info-bd: rgba(99, 102, 241, 0.3);
+  --v2-sev-info-solid: #6366f1;
+
+  --v2-sev-success-bg: rgba(16, 185, 129, 0.12);
+  --v2-sev-success-fg: #047857;
+  --v2-sev-success-bd: rgba(16, 185, 129, 0.3);
+  --v2-sev-success-solid: #10b981;
+
+  --v2-sev-warn-bg: rgba(245, 158, 11, 0.14);
+  --v2-sev-warn-fg: #b45309;
+  --v2-sev-warn-bd: rgba(245, 158, 11, 0.32);
+  --v2-sev-warn-solid: #f59e0b;
+
+  --v2-sev-danger-bg: rgba(239, 68, 68, 0.11);
+  --v2-sev-danger-fg: #b91c1c;
+  --v2-sev-danger-bd: rgba(239, 68, 68, 0.3);
+  --v2-sev-danger-solid: #ef4444;
+
+  --v2-sev-secondary-bg: rgba(15, 23, 42, 0.06);
+  --v2-sev-secondary-fg: #475569;
+  --v2-sev-secondary-bd: rgba(15, 23, 42, 0.12);
+  --v2-sev-secondary-solid: #64748b;
+
+  --v2-sev-contrast-bg: #0f172a;
+  --v2-sev-contrast-fg: #f8fafc;
+  --v2-sev-contrast-bd: #0f172a;
+  --v2-sev-contrast-solid: #0f172a;
+}
+
+html.ui-v2.app-dark {
+  --v2-sev-primary-bg: rgba(34, 211, 238, 0.15);
+  --v2-sev-primary-fg: #67e8f9;
+  --v2-sev-primary-bd: rgba(34, 211, 238, 0.35);
+  --v2-sev-primary-solid: #22d3ee;
+
+  --v2-sev-info-bg: rgba(129, 140, 248, 0.16);
+  --v2-sev-info-fg: #a5b4fc;
+  --v2-sev-info-bd: rgba(129, 140, 248, 0.35);
+  --v2-sev-info-solid: #818cf8;
+
+  --v2-sev-success-bg: rgba(52, 211, 153, 0.15);
+  --v2-sev-success-fg: #6ee7b7;
+  --v2-sev-success-bd: rgba(52, 211, 153, 0.32);
+  --v2-sev-success-solid: #34d399;
+
+  --v2-sev-warn-bg: rgba(251, 191, 36, 0.15);
+  --v2-sev-warn-fg: #fcd34d;
+  --v2-sev-warn-bd: rgba(251, 191, 36, 0.32);
+  --v2-sev-warn-solid: #fbbf24;
+
+  --v2-sev-danger-bg: rgba(248, 113, 113, 0.15);
+  --v2-sev-danger-fg: #fca5a5;
+  --v2-sev-danger-bd: rgba(248, 113, 113, 0.32);
+  --v2-sev-danger-solid: #f87171;
+
+  --v2-sev-secondary-bg: rgba(148, 163, 184, 0.12);
+  --v2-sev-secondary-fg: #cbd5e1;
+  --v2-sev-secondary-bd: rgba(148, 163, 184, 0.22);
+  --v2-sev-secondary-solid: #94a3b8;
+
+  --v2-sev-contrast-bg: #e2e8f0;
+  --v2-sev-contrast-fg: #0f172a;
+  --v2-sev-contrast-bd: #e2e8f0;
+  --v2-sev-contrast-solid: #e2e8f0;
+}
+
+/* ============================================================================
+   3. PrimeVue semantic token remap.
+      html.ui-v2 (type + class) out-specifies both the generated :root and
+      .app-dark token blocks, and --v2-* values flip per theme by themselves,
+      so a single remap covers light and dark unless noted.
+   ========================================================================== */
+
+html.ui-v2 {
+  /* Motion — snappier micro-interactions everywhere (collapses under
+     prefers-reduced-motion via the token sheet). */
+  --p-transition-duration: var(--v2-dur-fast);
+
+  /* Focus ring (buttons, paginator, checkboxes, ...) */
+  --p-focus-ring-width: 2px;
+  --p-focus-ring-style: solid;
+  --p-focus-ring-color: var(--v2-accent);
+  --p-focus-ring-offset: 2px;
+  --p-focus-ring-shadow: none;
+
+  /* Content surfaces + text (flows into cards, panels, menus, tables, ...) */
+  --p-content-background: var(--v2-surface);
+  --p-content-hover-background: var(--v2-surface-hover);
+  --p-content-border-color: var(--v2-border);
+  --p-content-border-radius: var(--v2-radius-md);
+  --p-content-color: var(--v2-text);
+  --p-content-hover-color: var(--v2-text);
+  --p-text-color: var(--v2-text);
+  --p-text-hover-color: var(--v2-text);
+  --p-text-muted-color: var(--v2-text-2);
+  --p-text-hover-muted-color: var(--v2-text);
+
+  /* Form fields (InputText, Textarea, Select, Password, InputNumber, ...) */
+  --p-form-field-border-radius: var(--v2-radius-md);
+  --p-form-field-padding-x: 0.875rem;
+  --p-form-field-background: var(--v2-surface);
+  --p-form-field-border-color: var(--v2-border-strong);
+  --p-form-field-hover-border-color: color-mix(in srgb, var(--v2-accent) 45%, var(--v2-border-strong));
+  --p-form-field-focus-border-color: var(--v2-accent);
+  --p-form-field-placeholder-color: var(--v2-text-3);
+  --p-form-field-icon-color: var(--v2-text-3);
+  --p-form-field-color: var(--v2-text);
+  --p-form-field-shadow: none;
+
+  /* Selection highlight (list options, paginator page, table rows, ...) */
+  --p-highlight-background: var(--v2-accent-soft);
+  --p-highlight-focus-background: color-mix(in srgb, var(--v2-accent) 20%, transparent);
+  --p-highlight-color: var(--v2-sev-primary-fg);
+  --p-highlight-focus-color: var(--v2-sev-primary-fg);
+
+  /* Overlays — modal (Dialog, ConfirmDialog, Drawer) */
+  --p-overlay-modal-background: var(--v2-surface-glass-strong);
+  --p-overlay-modal-border-color: var(--v2-border);
+  --p-overlay-modal-border-radius: var(--v2-radius-xl);
+  --p-overlay-modal-color: var(--v2-text);
+  --p-overlay-modal-shadow: var(--v2-shadow-3);
+
+  /* Overlays — anchored (Select, Popover, Menu, Password meter, ...) */
+  --p-overlay-select-background: var(--v2-surface-glass-strong);
+  --p-overlay-select-border-color: var(--v2-border);
+  --p-overlay-select-border-radius: var(--v2-radius-lg);
+  --p-overlay-select-color: var(--v2-text);
+  --p-overlay-select-shadow: var(--v2-shadow-2);
+  --p-overlay-popover-background: var(--v2-surface-glass-strong);
+  --p-overlay-popover-border-color: var(--v2-border);
+  --p-overlay-popover-border-radius: var(--v2-radius-lg);
+  --p-overlay-popover-color: var(--v2-text);
+  --p-overlay-popover-shadow: var(--v2-shadow-2);
+  --p-overlay-navigation-shadow: var(--v2-shadow-2);
+
+  /* Lists & navigation (options, menu items) */
+  --p-list-padding: 0.4rem;
+  --p-list-gap: 2px;
+  --p-list-option-border-radius: var(--v2-radius-sm);
+  --p-list-option-focus-background: var(--v2-surface-hover);
+  --p-navigation-list-padding: 0.4rem;
+  --p-navigation-item-border-radius: var(--v2-radius-sm);
+  --p-navigation-item-focus-background: var(--v2-surface-hover);
+  --p-navigation-item-active-background: var(--v2-surface-active);
+
+  /* Modal mask */
+  --p-mask-background: rgba(2, 6, 23, 0.42);
+
+  /* Buttons — gradient primary via tokens (Aura paints with `background:`,
+     so gradients flow through). Views can still override at low specificity. */
+  --p-button-border-radius: var(--v2-radius-full);
+  --p-button-padding-x: 1.125rem;
+  --p-button-primary-background: var(--v2-gradient-brand);
+  --p-button-primary-hover-background: linear-gradient(135deg, #3ddcf5 0%, #767af6 100%);
+  --p-button-primary-active-background: linear-gradient(135deg, #0fb3d4 0%, #5458e8 100%);
+  --p-button-primary-border-color: transparent;
+  --p-button-primary-hover-border-color: transparent;
+  --p-button-primary-active-border-color: transparent;
+  --p-button-primary-color: var(--v2-text-on-accent);
+  --p-button-primary-hover-color: var(--v2-text-on-accent);
+  --p-button-primary-active-color: var(--v2-text-on-accent);
+  --p-button-secondary-background: rgba(15, 23, 42, 0.05);
+  --p-button-secondary-hover-background: rgba(15, 23, 42, 0.09);
+  --p-button-secondary-active-background: rgba(15, 23, 42, 0.12);
+  --p-button-secondary-border-color: transparent;
+  --p-button-secondary-hover-border-color: transparent;
+  --p-button-secondary-active-border-color: transparent;
+  --p-button-secondary-color: #334155;
+  --p-button-secondary-hover-color: #0f172a;
+  --p-button-secondary-active-color: #0f172a;
+  --p-button-text-primary-color: var(--v2-accent-strong);
+  --p-button-text-primary-hover-background: var(--v2-accent-soft);
+  --p-button-text-secondary-color: var(--v2-text-2);
+  --p-button-text-secondary-hover-background: var(--v2-surface-hover);
+  --p-button-outlined-primary-color: var(--v2-accent-strong);
+  --p-button-outlined-primary-border-color: color-mix(in srgb, var(--v2-accent) 45%, transparent);
+  --p-button-outlined-primary-hover-background: var(--v2-accent-soft);
+  --p-button-outlined-secondary-color: var(--v2-text-2);
+  --p-button-outlined-secondary-border-color: var(--v2-border-strong);
+  --p-button-outlined-secondary-hover-background: var(--v2-surface-hover);
+
+  /* Toggles */
+  --p-toggleswitch-checked-background: var(--v2-gradient-brand);
+  --p-toggleswitch-checked-hover-background: var(--v2-gradient-brand);
+  --p-checkbox-border-radius: 0.4375rem;
+  --p-checkbox-checked-background: var(--v2-gradient-brand);
+  --p-checkbox-checked-hover-background: var(--v2-gradient-brand);
+  --p-checkbox-checked-border-color: transparent;
+  --p-checkbox-checked-hover-border-color: transparent;
+  --p-togglebutton-checked-color: var(--v2-accent-strong);
+  --p-togglebutton-content-checked-background: var(--v2-surface);
+
+  /* DataTable + Paginator */
+  --p-datatable-header-background: transparent;
+  --p-datatable-header-cell-background: transparent;
+  --p-datatable-header-cell-border-color: var(--v2-border);
+  --p-datatable-header-cell-color: var(--v2-text-2);
+  --p-datatable-row-background: transparent;
+  --p-datatable-row-hover-background: var(--v2-surface-hover);
+  --p-datatable-body-cell-border-color: var(--v2-border);
+  --p-datatable-footer-background: transparent;
+  --p-paginator-background: transparent;
+  --p-paginator-nav-button-border-radius: var(--v2-radius-full);
+
+  /* Small parts */
+  --p-tooltip-background: rgba(15, 23, 42, 0.92);
+  --p-tooltip-color: #f1f5f9;
+  --p-skeleton-background: rgba(15, 23, 42, 0.07);
+  --p-skeleton-animation-background: rgba(255, 255, 255, 0.45);
+}
+
+html.ui-v2.app-dark {
+  --p-mask-background: rgba(2, 6, 23, 0.62);
+
+  --p-button-secondary-background: rgba(148, 163, 184, 0.1);
+  --p-button-secondary-hover-background: rgba(148, 163, 184, 0.16);
+  --p-button-secondary-active-background: rgba(148, 163, 184, 0.22);
+  --p-button-secondary-color: #cbd5e1;
+  --p-button-secondary-hover-color: #f1f5f9;
+  --p-button-secondary-active-color: #f1f5f9;
+  --p-button-text-primary-color: #22d3ee;
+  --p-button-outlined-primary-color: #22d3ee;
+
+  --p-form-field-background: color-mix(in srgb, var(--v2-bg) 55%, var(--v2-surface));
+  --p-togglebutton-checked-color: #22d3ee;
+  --p-togglebutton-content-checked-background: var(--v2-surface-2);
+
+  --p-tooltip-background: rgba(30, 41, 59, 0.94);
+  --p-skeleton-background: rgba(148, 163, 184, 0.09);
+  --p-skeleton-animation-background: rgba(148, 163, 184, 0.07);
+}
+
+/* ============================================================================
+   4. Selection, focus, scrollbars
+   ========================================================================== */
+
+html.ui-v2 ::selection {
+  background: rgba(34, 211, 238, 0.3);
+}
+
+html.ui-v2.app-dark ::selection {
+  background: rgba(34, 211, 238, 0.24);
+}
+
+/* Standardized keyboard focus ring. Fields opt out below (they glow). */
+html.ui-v2 :focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+html.ui-v2 .p-inputtext:focus-visible,
+html.ui-v2 .p-textarea:focus-visible,
+html.ui-v2 .p-select:focus-visible,
+html.ui-v2 .p-multiselect:focus-visible,
+html.ui-v2 .p-inputnumber-input:focus-visible,
+html.ui-v2 .p-password-input:focus-visible {
+  outline: none;
+}
+
+html.ui-v2 input,
+html.ui-v2 textarea {
+  caret-color: var(--v2-accent);
+}
+
+/* Thin, rounded scrollbars. Standard properties cover Chromium 121+ and
+   Firefox; ::-webkit-scrollbar keeps Safari in line. */
+html.ui-v2,
+html.ui-v2 * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--v2-border-strong) transparent;
+}
+
+html.ui-v2 *:hover {
+  scrollbar-color: color-mix(in srgb, var(--v2-accent) 40%, var(--v2-border-strong)) transparent;
+}
+
+html.ui-v2 ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html.ui-v2 ::-webkit-scrollbar-track,
+html.ui-v2 ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html.ui-v2 ::-webkit-scrollbar-thumb {
+  background: var(--v2-border-strong);
+  border-radius: var(--v2-radius-full);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+html.ui-v2 ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--v2-accent) 40%, var(--v2-border-strong));
+  background-clip: padding-box;
+}
+
+/* ============================================================================
+   5. Surface primitives — the generic treatment every view refines
+   ========================================================================== */
+
+html.ui-v2 .content-panel {
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-1);
+  transition:
+    border-color var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2.app-dark .content-panel {
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.06), var(--v2-shadow-1);
+}
+
+html.ui-v2 .content-panel-padded {
+  padding: 1.5rem;
+}
+
+@media (max-width: 767px) {
+  html.ui-v2 .content-panel-padded {
+    padding: 1.25rem;
+  }
+}
+
+/* Glass utility — bg/border/shadow come from the refreshed --glass-panel-*
+   tokens in tokens.css; here we deepen the blur and round the corners. */
+html.ui-v2 .glass-panel {
+  backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  border-radius: var(--v2-radius-lg);
+}
+
+html.ui-v2 .stat-card {
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-1);
+  transition:
+    border-color var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease),
+    transform var(--v2-dur) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .stat-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--v2-accent) 35%, var(--v2-border));
+    box-shadow: var(--v2-shadow-2);
+  }
+
+  html.ui-v2.app-dark .stat-card:hover {
+    border-color: color-mix(in srgb, var(--v2-accent) 40%, var(--v2-border));
+    box-shadow: var(--v2-shadow-2);
+  }
+}
+
+html.ui-v2 .stat-label {
+  color: var(--v2-text-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+html.ui-v2 .stat-value {
+  color: var(--v2-text);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+html.ui-v2 .welcome-panel {
+  background:
+    linear-gradient(135deg, rgba(34, 211, 238, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%),
+    var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+}
+
+html.ui-v2.app-dark .welcome-panel {
+  background:
+    linear-gradient(135deg, rgba(34, 211, 238, 0.08) 0%, rgba(99, 102, 241, 0.12) 100%),
+    var(--v2-surface);
+}
+
+html.ui-v2 .welcome-panel h2 {
+  letter-spacing: -0.025em;
+}
+
+html.ui-v2 .welcome-panel p {
+  color: var(--v2-text-2);
+}
+
+html.ui-v2 .empty-hint {
+  color: var(--v2-text-3);
+}
+
+/* ============================================================================
+   6. Buttons — radius-full pills, gradient primary, lift + press
+   ========================================================================== */
+
+html.ui-v2 .p-button {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease),
+    outline-color var(--v2-dur-fast) var(--v2-ease),
+    opacity var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .p-button:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+}
+
+html.ui-v2 .p-button:not(:disabled):active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* Ambient brand shadow for solid primary buttons only (no severity class and
+   not a text/outlined/link ghost). Kept to box-shadow so lower-specificity
+   view rules can still restyle primary backgrounds. */
+html.ui-v2 .p-button:not(.p-button-text):not(.p-button-outlined):not(.p-button-link):not(.p-button-plain):not(.p-button-secondary):not(.p-button-success):not(.p-button-info):not(.p-button-warn):not(.p-button-danger):not(.p-button-help):not(.p-button-contrast):not(:disabled) {
+  box-shadow: 0 1px 2px rgba(8, 145, 178, 0.25), 0 4px 14px rgba(8, 145, 178, 0.22);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .p-button:not(.p-button-text):not(.p-button-outlined):not(.p-button-link):not(.p-button-plain):not(.p-button-secondary):not(.p-button-success):not(.p-button-info):not(.p-button-warn):not(.p-button-danger):not(.p-button-help):not(.p-button-contrast):not(:disabled):hover {
+    box-shadow: 0 2px 4px rgba(8, 145, 178, 0.28), 0 8px 24px rgba(8, 145, 178, 0.3);
+  }
+}
+
+html.ui-v2.app-dark .p-button:not(.p-button-text):not(.p-button-outlined):not(.p-button-link):not(.p-button-plain):not(.p-button-secondary):not(.p-button-success):not(.p-button-info):not(.p-button-warn):not(.p-button-danger):not(.p-button-help):not(.p-button-contrast):not(:disabled) {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 18px rgba(34, 211, 238, 0.22);
+}
+
+/* Touch comfort: honor the 44px target on coarse pointers. */
+@media (pointer: coarse) {
+  html.ui-v2 .p-button:not(.p-button-sm) {
+    min-height: var(--v2-touch-target);
+  }
+
+  html.ui-v2 .p-button-icon-only:not(.p-button-sm) {
+    min-width: var(--v2-touch-target);
+  }
+}
+
+/* ============================================================================
+   7. Form fields — soft focus glow, refined selects
+   ========================================================================== */
+
+html.ui-v2 .p-inputtext,
+html.ui-v2 .p-textarea,
+html.ui-v2 .p-select,
+html.ui-v2 .p-multiselect {
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease),
+    border-color var(--v2-dur-fast) var(--v2-ease),
+    box-shadow var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .p-inputtext:enabled:focus,
+html.ui-v2 .p-textarea:enabled:focus {
+  border-color: var(--v2-accent);
+  box-shadow: 0 0 0 4px var(--v2-accent-soft);
+}
+
+html.ui-v2 .p-select:not(.p-disabled).p-focus,
+html.ui-v2 .p-multiselect:not(.p-disabled).p-focus {
+  border-color: var(--v2-accent);
+  box-shadow: 0 0 0 4px var(--v2-accent-soft);
+  outline: none;
+}
+
+html.ui-v2 .p-select-dropdown,
+html.ui-v2 .p-multiselect-dropdown {
+  color: var(--v2-text-3);
+  transition: color var(--v2-dur-fast) var(--v2-ease), transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .p-select.p-select-open .p-select-dropdown-icon {
+  transform: rotate(180deg);
+}
+
+html.ui-v2 .p-select-dropdown-icon,
+html.ui-v2 .p-multiselect-dropdown-icon {
+  transition: transform var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .p-iconfield .p-inputicon {
+  color: var(--v2-text-3);
+}
+
+@media (pointer: coarse) {
+  html.ui-v2 .p-inputtext:not(.p-inputtext-sm),
+  html.ui-v2 .p-select:not(.p-select-sm) {
+    min-height: var(--v2-touch-target);
+  }
+}
+
+/* ============================================================================
+   8. ToggleSwitch — brand gradient when checked
+   ========================================================================== */
+
+html.ui-v2 .p-toggleswitch .p-toggleswitch-slider {
+  transition:
+    background var(--v2-dur) var(--v2-ease),
+    border-color var(--v2-dur) var(--v2-ease),
+    box-shadow var(--v2-dur) var(--v2-ease);
+}
+
+html.ui-v2 .p-toggleswitch.p-toggleswitch-checked .p-toggleswitch-slider {
+  border-color: transparent;
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.35);
+}
+
+html.ui-v2.app-dark .p-toggleswitch.p-toggleswitch-checked .p-toggleswitch-slider {
+  box-shadow: 0 2px 12px rgba(34, 211, 238, 0.3);
+}
+
+/* ============================================================================
+   9. Tag — soft tinted pills
+   ========================================================================== */
+
+html.ui-v2 .p-tag {
+  background: var(--v2-sev-primary-bg);
+  color: var(--v2-sev-primary-fg);
+  border-radius: var(--v2-radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.25rem 0.65rem;
+}
+
+html.ui-v2 .p-tag.p-tag-info {
+  background: var(--v2-sev-info-bg);
+  color: var(--v2-sev-info-fg);
+}
+
+html.ui-v2 .p-tag.p-tag-success {
+  background: var(--v2-sev-success-bg);
+  color: var(--v2-sev-success-fg);
+}
+
+html.ui-v2 .p-tag.p-tag-warn {
+  background: var(--v2-sev-warn-bg);
+  color: var(--v2-sev-warn-fg);
+}
+
+html.ui-v2 .p-tag.p-tag-danger {
+  background: var(--v2-sev-danger-bg);
+  color: var(--v2-sev-danger-fg);
+}
+
+html.ui-v2 .p-tag.p-tag-secondary {
+  background: var(--v2-sev-secondary-bg);
+  color: var(--v2-sev-secondary-fg);
+}
+
+html.ui-v2 .p-tag.p-tag-contrast {
+  background: var(--v2-sev-contrast-bg);
+  color: var(--v2-sev-contrast-fg);
+}
+
+/* ============================================================================
+   10. Message — soft tinted cards (28 usages, mostly inline notices)
+   ========================================================================== */
+
+html.ui-v2 .p-message {
+  border-radius: var(--v2-radius-md);
+}
+
+html.ui-v2 .p-message .p-message-text {
+  font-weight: 500;
+}
+
+html.ui-v2 .p-message-info:not(.p-message-outlined):not(.p-message-simple) {
+  background: var(--v2-sev-info-bg);
+  border-color: var(--v2-sev-info-bd);
+  color: var(--v2-sev-info-fg);
+  box-shadow: none;
+}
+
+html.ui-v2 .p-message-success:not(.p-message-outlined):not(.p-message-simple) {
+  background: var(--v2-sev-success-bg);
+  border-color: var(--v2-sev-success-bd);
+  color: var(--v2-sev-success-fg);
+  box-shadow: none;
+}
+
+html.ui-v2 .p-message-warn:not(.p-message-outlined):not(.p-message-simple) {
+  background: var(--v2-sev-warn-bg);
+  border-color: var(--v2-sev-warn-bd);
+  color: var(--v2-sev-warn-fg);
+  box-shadow: none;
+}
+
+html.ui-v2 .p-message-error:not(.p-message-outlined):not(.p-message-simple) {
+  background: var(--v2-sev-danger-bg);
+  border-color: var(--v2-sev-danger-bd);
+  color: var(--v2-sev-danger-fg);
+  box-shadow: none;
+}
+
+html.ui-v2 .p-message-secondary:not(.p-message-outlined):not(.p-message-simple) {
+  background: var(--v2-sev-secondary-bg);
+  border-color: var(--v2-sev-secondary-bd);
+  color: var(--v2-sev-secondary-fg);
+  box-shadow: none;
+}
+
+html.ui-v2 .p-message-contrast:not(.p-message-outlined):not(.p-message-simple) {
+  background: var(--v2-sev-contrast-bg);
+  border-color: var(--v2-sev-contrast-bd);
+  color: var(--v2-sev-contrast-fg);
+  box-shadow: none;
+}
+
+/* ============================================================================
+   11. Dialog — frosted glass modal (radius/background flow from the
+       overlay-modal tokens above; cmd-dialog keeps its !important layout
+       chain from global.css untouched — colors/radius only here)
+   ========================================================================== */
+
+html.ui-v2 .p-dialog {
+  backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  border: 1px solid var(--v2-border);
+  overflow: hidden;
+}
+
+html.ui-v2 .p-dialog .p-dialog-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+html.ui-v2 .p-dialog .p-dialog-close-button,
+html.ui-v2 .p-dialog .p-dialog-maximize-button {
+  color: var(--v2-text-2);
+  border-radius: var(--v2-radius-full);
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .p-dialog .p-dialog-close-button:hover,
+  html.ui-v2 .p-dialog .p-dialog-maximize-button:hover {
+    background: var(--v2-surface-hover);
+    color: var(--v2-text);
+    transform: scale(1.08);
+  }
+}
+
+/* Modal / drawer backdrop: dim + frost. */
+html.ui-v2 .p-overlay-mask {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* ============================================================================
+   12. Drawer — floating glass panel, detached from the viewport edge
+   ========================================================================== */
+
+html.ui-v2 .p-drawer {
+  border: 1px solid var(--v2-border);
+  box-shadow: var(--v2-shadow-3);
+  backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+}
+
+html.ui-v2 .p-drawer-left:not(.p-drawer-full) .p-drawer,
+html.ui-v2 .p-drawer-right:not(.p-drawer-full) .p-drawer {
+  margin: 0.75rem;
+  height: calc(100% - 1.5rem);
+  border-radius: var(--v2-radius-xl);
+}
+
+html.ui-v2 .p-drawer-top:not(.p-drawer-full) .p-drawer,
+html.ui-v2 .p-drawer-bottom:not(.p-drawer-full) .p-drawer {
+  margin: 0.75rem;
+  width: calc(100% - 1.5rem);
+  border-radius: var(--v2-radius-xl);
+}
+
+html.ui-v2 .p-drawer-bottom:not(.p-drawer-full) .p-drawer {
+  margin-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+html.ui-v2 .p-drawer .p-drawer-title {
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+html.ui-v2 .p-drawer .p-drawer-close-button {
+  color: var(--v2-text-2);
+  border-radius: var(--v2-radius-full);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .p-drawer .p-drawer-close-button:hover {
+    background: var(--v2-surface-hover);
+    color: var(--v2-text);
+  }
+}
+
+/* ============================================================================
+   13. Menu / Popover / Select overlay — glass sheets, sliding items
+   ========================================================================== */
+
+html.ui-v2 .p-menu.p-menu-overlay {
+  background: var(--v2-surface-glass-strong);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-2);
+}
+
+html.ui-v2 .p-menu.p-menu-overlay,
+html.ui-v2 .p-popover,
+html.ui-v2 .p-select-overlay,
+html.ui-v2 .p-multiselect-overlay,
+html.ui-v2 .p-password-overlay {
+  backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+}
+
+html.ui-v2 .p-menu .p-menu-item-content {
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease),
+    transform var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .p-menu .p-menu-item.p-focus > .p-menu-item-content {
+  transform: translateX(2px);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .p-menu .p-menu-item:not(.p-disabled) > .p-menu-item-content:hover {
+    background: var(--v2-surface-hover);
+    transform: translateX(2px);
+  }
+}
+
+html.ui-v2 .p-menu .p-menu-submenu-label {
+  color: var(--v2-text-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+html.ui-v2 .p-select-option,
+html.ui-v2 .p-multiselect-option {
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease);
+}
+
+/* ============================================================================
+   14. DataTable — clean headers, tinted row hover, pill paginator
+   ========================================================================== */
+
+html.ui-v2 .p-datatable .p-datatable-thead > tr > th {
+  color: var(--v2-text-3);
+  letter-spacing: 0.06em;
+}
+
+html.ui-v2 .p-datatable .p-datatable-tbody > tr {
+  transition: background var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .p-paginator .p-paginator-page,
+html.ui-v2 .p-paginator .p-paginator-first,
+html.ui-v2 .p-paginator .p-paginator-prev,
+html.ui-v2 .p-paginator .p-paginator-next,
+html.ui-v2 .p-paginator .p-paginator-last {
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease);
+}
+
+html.ui-v2 .p-paginator .p-paginator-page.p-paginator-page-selected {
+  background: var(--v2-accent-soft);
+  color: var(--v2-sev-primary-fg);
+  font-weight: 600;
+}
+
+/* ============================================================================
+   15. Toast — glass cards with a severity accent edge
+   ========================================================================== */
+
+html.ui-v2 .p-toast .p-toast-message {
+  background: var(--v2-surface-glass-strong);
+  backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--v2-blur)) saturate(150%);
+  border: 1px solid var(--v2-border);
+  border-left: 3px solid var(--v2-sev-primary-solid);
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-2);
+  color: var(--v2-text);
+}
+
+html.ui-v2 .p-toast .p-toast-message-info {
+  border-left-color: var(--v2-sev-info-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-success {
+  border-left-color: var(--v2-sev-success-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-warn {
+  border-left-color: var(--v2-sev-warn-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-error {
+  border-left-color: var(--v2-sev-danger-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-secondary {
+  border-left-color: var(--v2-sev-secondary-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-contrast {
+  border-left-color: var(--v2-sev-contrast-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-icon {
+  color: var(--v2-sev-primary-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-info .p-toast-message-icon {
+  color: var(--v2-sev-info-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-success .p-toast-message-icon {
+  color: var(--v2-sev-success-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-warn .p-toast-message-icon {
+  color: var(--v2-sev-warn-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-message-error .p-toast-message-icon {
+  color: var(--v2-sev-danger-solid);
+}
+
+html.ui-v2 .p-toast .p-toast-summary {
+  color: var(--v2-text);
+  font-weight: 600;
+}
+
+html.ui-v2 .p-toast .p-toast-detail {
+  color: var(--v2-text-2);
+  font-size: 0.85rem;
+}
+
+html.ui-v2 .p-toast .p-toast-close-button {
+  color: var(--v2-text-3);
+  border-radius: var(--v2-radius-full);
+  transition:
+    background var(--v2-dur-fast) var(--v2-ease),
+    color var(--v2-dur-fast) var(--v2-ease);
+}
+
+@media (hover: hover) {
+  html.ui-v2 .p-toast .p-toast-close-button:hover {
+    background: var(--v2-surface-hover);
+    color: var(--v2-text);
+  }
+}
+
+/* ============================================================================
+   16. Small components — Avatar, Chip, Skeleton, Spinner, ProgressBar, Tooltip
+   ========================================================================== */
+
+html.ui-v2 .p-avatar {
+  background: var(--v2-gradient-brand-soft);
+  color: var(--v2-sev-primary-fg);
+  font-weight: 600;
+}
+
+html.ui-v2 .p-avatar:not(.p-avatar-circle) {
+  border-radius: var(--v2-radius-sm);
+}
+
+html.ui-v2 .p-chip {
+  background: var(--v2-surface-hover);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-full);
+  color: var(--v2-text-2);
+}
+
+html.ui-v2 .p-skeleton:not(.p-skeleton-circle) {
+  border-radius: var(--v2-radius-sm);
+}
+
+/* Kill Aura's multicolor stroke cycle; brand accent only. (!important beats
+   the keyframe-driven stroke without touching the dash/rotate animations.) */
+html.ui-v2 .p-progressspinner-circle {
+  stroke: var(--p-primary-color) !important;
+}
+
+html.ui-v2 .p-progressbar {
+  border-radius: var(--v2-radius-full);
+  background: var(--v2-surface-active);
+}
+
+html.ui-v2 .p-progressbar .p-progressbar-value {
+  background: var(--v2-gradient-brand);
+  border-radius: var(--v2-radius-full);
+}
+
+html.ui-v2 .p-tooltip .p-tooltip-text {
+  border-radius: var(--v2-radius-sm);
+  box-shadow: var(--v2-shadow-2);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.45rem 0.7rem;
+}

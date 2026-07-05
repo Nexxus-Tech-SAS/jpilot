@@ -498,6 +498,9 @@ onMounted(async () => {
       finishNavPeekClose()
     }
   })
+  // Keep the toggle icon in sync when the theme is changed elsewhere
+  // (e.g. the Settings > Appearance panel).
+  window.addEventListener('jpilot-theme-change', syncThemeRef)
   try {
     const { data } = await api.get('/auth/me')
     currentUser.value = data
@@ -518,8 +521,14 @@ onUnmounted(() => {
   navSidebarCleanup?.()
   clearNavPeekLeaveTimer()
   window.removeEventListener('resize', onViewportChange)
+  window.removeEventListener('jpilot-theme-change', syncThemeRef)
   document.removeEventListener('fullscreenchange', syncFullscreenState)
 })
+
+function syncThemeRef(event) {
+  theme.value =
+    event?.detail === 'dark' || event?.detail === 'light' ? event.detail : getTheme()
+}
 
 function onViewportChange() {
   syncDesktopLayout()

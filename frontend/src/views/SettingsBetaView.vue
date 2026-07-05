@@ -105,6 +105,7 @@ import AiModelsPanel from '../components/settings-beta/AiModelsPanel.vue'
 import McpServerPanel from '../components/settings-beta/McpServerPanel.vue'
 import SmtpEmailPanel from '../components/settings-beta/SmtpEmailPanel.vue'
 import AssistantSettingsPanel from '../components/settings-beta/AssistantSettingsPanel.vue'
+import AppearancePanel from '../components/settings-beta/AppearancePanel.vue'
 import SecuritySettingsPanel from '../components/settings-beta/SecuritySettingsPanel.vue'
 import LegalLinksPanel from '../components/settings-beta/LegalLinksPanel.vue'
 import api from '../services/api'
@@ -131,6 +132,14 @@ const allSections = [
     group: 'workspace',
     description: 'Managed devices, vendors, and SSL certificates.',
     component: OtherAppliancesView
+  },
+  {
+    key: 'appearance',
+    label: 'Appearance',
+    icon: 'pi pi-palette',
+    group: 'workspace',
+    description: 'Interface style and theme',
+    component: AppearancePanel
   },
   {
     key: 'ai-models',
@@ -248,7 +257,9 @@ const defaultKey = computed(() => (isAdmin.value ? 'ai-models' : 'security'))
 const search = ref('')
 const activeKey = ref(defaultKey.value)
 const activeTabKey = ref('')
-const mobileShowDetail = ref(false)
+// Deep links (and shell-swap remounts, e.g. toggling the new UI from the
+// Appearance pane) land with ?section= set — restore the detail pane then.
+const mobileShowDetail = ref(typeof route.query.section === 'string' && route.query.section !== '')
 
 const matchesSearch = (section) => {
   const q = search.value.trim().toLowerCase()
