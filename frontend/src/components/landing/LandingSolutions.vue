@@ -15,11 +15,13 @@
             <li><i class="pi pi-check-circle" /><span>Memory-guided RAG gates API and CLI usage before execution</span></li>
           </ul>
         </div>
-        <div class="landing-solution-visual" aria-hidden="true">
-          <img
+        <div class="landing-solution-visual">
+          <LandingImageZoom
             :src="startupFeatureImg1"
             alt=""
-            class="landing-solution-visual-image"
+            aria-label="Enlarge design-to-execution screenshot"
+            trigger-class="landing-solution-visual-zoom"
+            img-class="landing-solution-visual-image"
           />
         </div>
       </div>
@@ -38,11 +40,13 @@
             <li><i class="pi pi-check-circle" /><span>Dual-pane chat with model-aware context usage rings</span></li>
           </ul>
         </div>
-        <div class="landing-solution-visual" aria-hidden="true">
-          <img
+        <div class="landing-solution-visual">
+          <LandingImageZoom
             :src="startupFeatureImg2"
             alt=""
-            class="landing-solution-visual-image"
+            aria-label="Enlarge troubleshooting screenshot"
+            trigger-class="landing-solution-visual-zoom"
+            img-class="landing-solution-visual-image"
           />
         </div>
       </div>
@@ -53,6 +57,7 @@
 <script setup>
 import startupFeatureImg1 from '../../assets/landing/startup-feature-img-1.png'
 import startupFeatureImg2 from '../../assets/landing/startup-feature-img-2.png'
+import LandingImageZoom from './LandingImageZoom.vue'
 </script>
 
 <style scoped>
@@ -127,9 +132,14 @@ import startupFeatureImg2 from '../../assets/landing/startup-feature-img-2.png'
   overflow: hidden;
 }
 
-.landing-solution-visual-image {
+.landing-solution-visual-zoom {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.landing-solution-visual-image {
   width: 100%;
   height: auto;
   max-width: none;

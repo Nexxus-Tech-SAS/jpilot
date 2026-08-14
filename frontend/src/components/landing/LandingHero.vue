@@ -39,9 +39,21 @@
           </div>
         </div>
 
-        <div class="landing-hero-visual landing-fade-in landing-fade-in-delay-2" aria-hidden="true">
-          <img :src="heroImg1" alt="" class="landing-hero-shot landing-hero-shot-main" />
-          <img :src="heroImg2" alt="" class="landing-hero-shot landing-hero-shot-overlay" />
+        <div class="landing-hero-visual landing-fade-in landing-fade-in-delay-2">
+          <LandingImageZoom
+            :src="heroImg1"
+            alt=""
+            aria-label="Enlarge JPilot product screenshot"
+            img-class="landing-hero-shot landing-hero-shot-main"
+            trigger-class="landing-hero-shot-trigger landing-hero-shot-trigger-main"
+          />
+          <LandingImageZoom
+            :src="heroImg2"
+            alt=""
+            aria-label="Enlarge JPilot product screenshot"
+            img-class="landing-hero-shot"
+            trigger-class="landing-hero-shot-trigger landing-hero-shot-trigger-overlay"
+          />
         </div>
       </div>
     </div>
@@ -53,6 +65,7 @@ import heroImg1 from '../../assets/landing/hero-img-1.png'
 import heroImg2 from '../../assets/landing/hero-img-2.png'
 import ConstellationCanvas from '../ConstellationCanvas.vue'
 import JPilotMark from '../JPilotMark.vue'
+import LandingImageZoom from './LandingImageZoom.vue'
 import LandingNavbar from './LandingNavbar.vue'
 
 const stats = [
@@ -191,19 +204,23 @@ const stats = [
 .landing-hero-shot {
   border-radius: 1rem;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
-.landing-hero-shot-main {
+.landing-hero-shot-trigger-main {
   width: min(100%, 22rem);
   margin-inline: auto;
   display: block;
 }
 
-.landing-hero-shot-overlay {
+.landing-hero-shot-trigger-overlay {
   position: absolute;
   width: min(72%, 16rem);
   right: 8%;
   bottom: -1.5rem;
+  display: block;
 }
 
 @media (min-width: 960px) {
@@ -213,11 +230,11 @@ const stats = [
     margin-top: 4rem;
   }
 
-  .landing-hero-shot-main {
+  .landing-hero-shot-trigger-main {
     margin-inline: 0 0 auto;
   }
 
-  .landing-hero-shot-overlay {
+  .landing-hero-shot-trigger-overlay {
     right: 0;
     bottom: 2rem;
   }

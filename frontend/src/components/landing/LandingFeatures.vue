@@ -12,10 +12,12 @@
 
       <div class="landing-features-showcase">
         <div class="landing-features-showcase-media">
-          <img
+          <LandingImageZoom
             :src="saasFeatureImg2"
             alt="JPilot enterprise isolation — private LLM endpoint and SDX/VPX/MPX inventory"
-            class="landing-features-showcase-image"
+            aria-label="Enlarge enterprise isolation screenshot"
+            img-class="landing-features-showcase-image"
+            trigger-class="landing-features-showcase-trigger"
           />
         </div>
         <div class="landing-features-showcase-copy">
@@ -42,6 +44,7 @@
 
 <script setup>
 import saasFeatureImg2 from '../../assets/landing/saas-feature-img-2.png'
+import LandingImageZoom from './LandingImageZoom.vue'
 
 const features = [
   {
@@ -124,12 +127,17 @@ const features = [
   padding: 2rem 1.5rem 0;
 }
 
-.landing-features-showcase-image {
+.landing-features-showcase-trigger {
   display: block;
   width: 100%;
   max-width: 29.125rem;
-  height: auto;
   margin-inline: auto;
+}
+
+.landing-features-showcase-image {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .landing-features-showcase-copy {
@@ -217,7 +225,7 @@ const features = [
     padding: 3rem 2rem 0;
   }
 
-  .landing-features-showcase-image {
+  .landing-features-showcase-trigger {
     max-width: 29.125rem;
   }
 
