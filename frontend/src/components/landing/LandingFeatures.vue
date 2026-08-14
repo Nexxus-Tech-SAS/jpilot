@@ -14,7 +14,7 @@
         <div class="landing-features-showcase-media">
           <img
             :src="saasFeatureImg2"
-            alt="JPilot platform dashboard preview"
+            alt="JPilot enterprise isolation — private LLM endpoint and SDX/VPX/MPX inventory"
             class="landing-features-showcase-image"
           />
         </div>

@@ -1,9 +1,9 @@
 <template>
   <div class="landing-page">
     <LandingHero />
+    <LandingInstall />
     <LandingFeatures />
     <LandingSolutions />
-    <LandingInstall />
     <LandingFooterCta />
   </div>
 </template>
