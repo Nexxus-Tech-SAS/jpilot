@@ -8,7 +8,7 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.123` (beta) — **Landing visuals refresh + Install under Hero.** Hero, Features, and Solutions sections use new product-context landing images aligned to each section’s copy (SDX / VPX / MPX labels allowed; no vendor brand names in the artwork). The Install section now sits directly under the Hero so setup is visible before Features and Solutions.
+**Current release:** `v0.123` (beta) — **Landing visuals refresh + Install under Hero.** Hero, Features, and Solutions sections use new product-context landing images aligned to each section’s copy (SDX / VPX / MPX labels allowed; no vendor brand names in the artwork). The Install section now sits directly under the Hero so setup is visible before Features and Solutions. Also pins the MCP server SDK below 2.0 so production rebuilds keep starting.
 
 **Previous release:** `v0.122` (beta) — **Switchable UI V2 preview — a full interface redesign you can opt into.** Settings gains an **Appearance** section (visible to every user) with a **"New JPilot interface"** toggle that swaps the entire app live — no reload — between the classic UI and a redesigned V2 experience; a **"New UI · Beta"** pill inside V2 switches back instantly. V2 brings an animated glass navigation rail (sliding gradient active indicator, staggered entrances, collapsible icon rail, morphing sun/moon theme toggle), a restructured chat (centered readable message column, gradient user bubbles, animated message entry, shimmer loading state, pill composer with glow focus, compact tool-trace cards, modernized conversation sidebar), reskinned dashboard / settings / Calibration Studio / plans / login views, a PrimeVue-wide retheme (glass dialogs, drawers, and toasts, a new overlay motion language, themed scrollbars), and first-class phone/iPad support (floating bottom dock, slide-in drawer, tablet icon rail, safe-area insets, 44px touch targets, full `prefers-reduced-motion` support) — including a fix for the classic iPad-portrait dead zone where chat conversations could not be switched. The implementation is fully additive: a `ui-v2` class on `<html>` (mirroring the dark-mode mechanism) gates six new stylesheets and a parallel `MainLayoutV2` shell, the classic UI renders unchanged when the toggle is off and remains the default, and the choice persists per the cookie-consent rules. Architecture and adoption notes in `docs/ui-v2.md`.
 
@@ -186,6 +186,7 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 |------|------------|
 | **Landing images** | New product-related art for Hero, Features, and Solutions, matched to section copy. SDX/VPX/MPX labels are fine; vendor brand names stay out of the artwork. |
 | **Landing layout** | Install moved directly under Hero (order: Hero → Install → Features → Solutions → Footer CTA). |
+| **MCP dependency** | Pin `mcp[cli]` to `>=1.0.0,<2` so rebuilds do not pull MCP SDK 2.0 (breaks `list_tools` / server startup). |
 
 ## What's new in v0.118
 
