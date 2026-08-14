@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.125` (beta) — **Landing layout fix for click-to-zoom.** Restores constrained Hero / Features / Solutions image frames after v0.124’s lightbox broke scoped CSS sizing (oversized PNGs overlapping copy). Zoom still works via a single-root `LandingImageZoom` wrapper + teleported lightbox.
+**Current release:** `v0.126` (beta) — **Landing product-UI screenshots.** Hero, Features, and Solutions PNGs regenerated to match the real dark JPilot chrome (mint `#70E2B7` accents, Architect purple, sidebar). Public landing copies synced. Builds on v0.125 layout fix for click-to-zoom.
+
+**Previous release:** `v0.125` (beta) — **Landing layout fix for click-to-zoom.** Restores constrained Hero / Features / Solutions image frames after v0.124’s lightbox broke scoped CSS sizing (oversized PNGs overlapping copy). Zoom still works via a single-root `LandingImageZoom` wrapper + teleported lightbox.
 
 **Previous release:** `v0.124` (beta) — **Landing image click-to-zoom.** Product screenshots on `/home` (Hero, Features showcase, and Solutions) open a lightbox on click — large centered view with backdrop dismiss, Escape, and an explicit close control, plus keyboard focus handling and a subtle fade/scale. Shared `LandingImageZoom` component; logos/icons unchanged. Also syncs `frontend/public/landing` PNGs with the new asset art and sets HTML/`/` `Cache-Control: no-cache, must-revalidate` in prod nginx so browsers revalidate the SPA shell after deploys.
 
@@ -183,6 +185,12 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.126
+
+| Area | Highlights |
+|------|------------|
+| **Landing images** | Regenerated Hero / Features / Solutions PNGs to match real dark product UI (mint accents, Architect purple, sidebar chrome). Mapping: home dashboard, Architect chat, Tools & MCP, Architect planning form, Calibration Studio. Synced `frontend/public/landing`. |
 
 ## What's new in v0.125
 
