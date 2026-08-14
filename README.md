@@ -8,7 +8,9 @@ Repository: [github.com/Nexxus-Tech-SAS/jpilot](https://github.com/Nexxus-Tech-S
 
 > **Disclaimer:** JPilot is an independent project and is not affiliated with, endorsed by, or sponsored by Citrix Systems, Inc. NetScaler is a trademark of Citrix Systems, Inc.
 
-**Current release:** `v0.124` (beta) — **Landing image click-to-zoom.** Product screenshots on `/home` (Hero, Features showcase, and Solutions) open a lightbox on click — large centered view with backdrop dismiss, Escape, and an explicit close control, plus keyboard focus handling and a subtle fade/scale. Shared `LandingImageZoom` component; logos/icons unchanged. Also syncs `frontend/public/landing` PNGs with the new asset art and sets HTML/`/` `Cache-Control: no-cache, must-revalidate` in prod nginx so browsers revalidate the SPA shell after deploys.
+**Current release:** `v0.125` (beta) — **Landing layout fix for click-to-zoom.** Restores constrained Hero / Features / Solutions image frames after v0.124’s lightbox broke scoped CSS sizing (oversized PNGs overlapping copy). Zoom still works via a single-root `LandingImageZoom` wrapper + teleported lightbox.
+
+**Previous release:** `v0.124` (beta) — **Landing image click-to-zoom.** Product screenshots on `/home` (Hero, Features showcase, and Solutions) open a lightbox on click — large centered view with backdrop dismiss, Escape, and an explicit close control, plus keyboard focus handling and a subtle fade/scale. Shared `LandingImageZoom` component; logos/icons unchanged. Also syncs `frontend/public/landing` PNGs with the new asset art and sets HTML/`/` `Cache-Control: no-cache, must-revalidate` in prod nginx so browsers revalidate the SPA shell after deploys.
 
 **Previous release:** `v0.123` (beta) — **Landing visuals refresh + Install under Hero.** Hero, Features, and Solutions sections use new product-context landing images aligned to each section’s copy (SDX / VPX / MPX labels allowed; no vendor brand names in the artwork). The Install section now sits directly under the Hero so setup is visible before Features and Solutions. Also pins the MCP server SDK below 2.0 so production rebuilds keep starting.
 
@@ -181,6 +183,12 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 - **Vendor platforms** — Settings → Appliances → **Vendors** tab to enable or disable vendor integrations platform-wide (inventory records stay; disabled vendors turn off matching appliances until re-enabled).
 - **Agent orchestration presets** — Settings → JPilot: **Standard**, **Extended**, **Max**, or **Custom** tool-round limits with an effective max-rounds summary.
 - **Settings** — redesigned master-detail experience at `/settings-beta` (searchable grouped sidebar: Workspace / People & access / System); legacy `/settings` deep links still work for bookmarks.
+
+## What's new in v0.125
+
+| Area | Highlights |
+|------|------------|
+| **Landing layout** | Fix broken `/home` layout from v0.124 zoom: `LandingImageZoom` is single-root so parent scoped sizing applies again; nested shot styles use `:deep()`. Lightbox zoom unchanged. |
 
 ## What's new in v0.124
 

@@ -1,44 +1,50 @@
 <template>
-  <button
-    ref="triggerRef"
-    type="button"
-    class="landing-image-zoom-trigger"
-    :class="triggerClass"
-    :aria-label="ariaLabel"
-    @click="open"
-  >
-    <img :src="src" :alt="alt" :class="imgClass" />
-  </button>
+  <!--
+    Single root so parent scoped CSS (triggerClass) pierces correctly.
+    Multi-root (button + Teleport) broke landing layout in v0.124: sizing
+    classes never applied and PNGs rendered at full intrinsic size.
+  -->
+  <div class="landing-image-zoom" :class="triggerClass">
+    <button
+      ref="triggerRef"
+      type="button"
+      class="landing-image-zoom-trigger"
+      :aria-label="ariaLabel"
+      @click="open"
+    >
+      <img :src="src" :alt="alt" class="landing-image-zoom-img" :class="imgClass" />
+    </button>
 
-  <Teleport to="body">
-    <Transition name="landing-lightbox">
-      <div
-        v-if="visible"
-        ref="dialogRef"
-        class="landing-lightbox"
-        role="dialog"
-        aria-modal="true"
-        :aria-label="ariaLabel"
-        @click.self="close"
-      >
-        <button
-          ref="closeRef"
-          type="button"
-          class="landing-lightbox-close"
-          aria-label="Close enlarged image"
-          @click="close"
+    <Teleport to="body">
+      <Transition name="landing-lightbox">
+        <div
+          v-if="visible"
+          ref="dialogRef"
+          class="landing-lightbox"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="ariaLabel"
+          @click.self="close"
         >
-          <i class="pi pi-times" aria-hidden="true" />
-        </button>
-        <img
-          :src="src"
-          :alt="alt || ariaLabel"
-          class="landing-lightbox-image"
-          @click.stop
-        />
-      </div>
-    </Transition>
-  </Teleport>
+          <button
+            ref="closeRef"
+            type="button"
+            class="landing-lightbox-close"
+            aria-label="Close enlarged image"
+            @click="close"
+          >
+            <i class="pi pi-times" aria-hidden="true" />
+          </button>
+          <img
+            :src="src"
+            :alt="alt || ariaLabel"
+            class="landing-lightbox-image"
+            @click.stop
+          />
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
 </template>
 
 <script setup>
@@ -123,6 +129,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.landing-image-zoom {
+  box-sizing: border-box;
+}
+
 .landing-image-zoom-trigger {
   appearance: none;
   border: 0;
@@ -133,6 +143,16 @@ onBeforeUnmount(() => {
   line-height: 0;
   color: inherit;
   font: inherit;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.landing-image-zoom-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
 }
 
 .landing-image-zoom-trigger:focus-visible {

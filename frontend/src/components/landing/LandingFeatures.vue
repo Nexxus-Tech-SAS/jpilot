@@ -134,7 +134,7 @@ const features = [
   margin-inline: auto;
 }
 
-.landing-features-showcase-image {
+:deep(.landing-features-showcase-image) {
   display: block;
   width: 100%;
   height: auto;

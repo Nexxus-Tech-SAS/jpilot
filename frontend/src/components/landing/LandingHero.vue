@@ -201,7 +201,8 @@ const stats = [
   min-height: 18rem;
 }
 
-.landing-hero-shot {
+/* :deep — img lives inside LandingImageZoom, not this component's template */
+:deep(.landing-hero-shot) {
   border-radius: 1rem;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
   width: 100%;

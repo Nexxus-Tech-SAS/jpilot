@@ -139,7 +139,7 @@ import LandingImageZoom from './LandingImageZoom.vue'
   height: 100%;
 }
 
-.landing-solution-visual-image {
+:deep(.landing-solution-visual-image) {
   width: 100%;
   height: auto;
   max-width: none;
