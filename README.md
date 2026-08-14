@@ -187,6 +187,8 @@ curl -fsSL https://install.nexxus-tech.com/jpilot | bash
 | Area | Highlights |
 |------|------------|
 | **Landing lightbox** | Click Hero, Features showcase, or Solutions product PNGs to open a zoomed overlay; dismiss with backdrop click, Escape, or the close control. Shared `LandingImageZoom` with zoom-in cursor, focus return, and subtle fade/scale. |
+| **Landing assets** | `frontend/public/landing` PNGs synced with the refreshed `src/assets/landing` product images. |
+| **Prod cache** | Nginx serves `/` and `index.html` with `Cache-Control: no-cache, must-revalidate` so clients pick up new hashed assets after deploys. |
 
 ## What's new in v0.123
 
